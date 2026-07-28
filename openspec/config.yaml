@@ -1,0 +1,47 @@
+schema: spec-driven
+
+context: |
+  Product: OneShowTools, a product under OneShow AI Lab.
+  Mission: provide the shared management platform for many independently
+  developed AI tools.
+
+  Platform responsibilities:
+  - Tool catalog, discovery, metadata, categories, launch links, and lifecycle.
+  - Unified user identity, sessions, roles, permissions, and access control.
+  - Shared quotas, credits, plans, billing entitlements, and usage records.
+  - Stable integration contracts for tools to report usage and receive user
+    context without coupling their internal AI workflows to the platform.
+  - User workspace features such as favorites, recent activity, and history.
+  - Administrative governance, observability, and product analytics.
+
+  Boundary:
+  - Tool-specific prompts, models, inference pipelines, uploads, and business
+    workflows belong to each individual AI tool.
+  - OneShowTools acts as the control plane and user-facing portal.
+  - Cross-tool capabilities should be implemented once at the platform layer.
+
+  Current stack:
+  - React 19 and Vite 6 frontend.
+  - Static Sites-compatible worker output.
+  - Phosphor icons.
+  - The current implementation is an interactive frontend prototype; backend
+    identity, persistence, billing, and tool APIs are not implemented yet.
+
+  Product language:
+  - Primary interface language is Simplified Chinese.
+  - Visual direction is calm, bright, practical, and low-decoration.
+
+rules:
+  proposal:
+    - State whether the change belongs to the platform or an individual tool.
+    - Include affected tools or integration contracts.
+    - Include explicit non-goals and backward-compatibility impact.
+    - Call out security, privacy, quota, and billing implications.
+  design:
+    - Keep tool-specific inference logic outside the platform.
+    - Prefer stable versioned contracts between the platform and tools.
+    - Document ownership of data and the source of truth.
+  tasks:
+    - Include acceptance validation for user-visible behavior.
+    - Include contract and migration checks when shared interfaces change.
+    - Include authorization and quota checks for protected capabilities.
