@@ -1,0 +1,35 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL COLLATE NOCASE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','suspended','deleted')), locale TEXT NOT NULL DEFAULT 'zh-CN' CHECK(locale IN ('zh-CN','en')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX users_email_unique ON users(lower(email));
+CREATE TABLE sessions (id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at INTEGER NOT NULL, ip_address TEXT, user_agent TEXT, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX sessions_token_unique ON sessions(token);
+CREATE INDEX sessions_user_idx ON sessions(user_id);
+CREATE TABLE accounts (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, provider_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, access_token TEXT, refresh_token TEXT, id_token TEXT, access_token_expires_at INTEGER, refresh_token_expires_at INTEGER, scope TEXT, password TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX accounts_provider_account_unique ON accounts(provider_id, account_id);
+CREATE INDEX accounts_user_idx ON accounts(user_id);
+CREATE TABLE verifications (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, value TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE INDEX verifications_identifier_idx ON verifications(identifier);
+CREATE TABLE profiles (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, display_name TEXT, locale TEXT NOT NULL DEFAULT 'zh-CN' CHECK(locale IN ('zh-CN','en')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE plans (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, name_zh TEXT NOT NULL, name_en TEXT NOT NULL, interval TEXT NOT NULL CHECK(interval IN ('month','year')), recurring_credits INTEGER NOT NULL DEFAULT 0, features_json TEXT NOT NULL DEFAULT '{}', active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE offers (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('subscription','top_up')), plan_id TEXT REFERENCES plans(id), code TEXT NOT NULL UNIQUE, currency TEXT NOT NULL, amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), credits INTEGER NOT NULL DEFAULT 0 CHECK(credits >= 0), active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE provider_mappings (id TEXT PRIMARY KEY, provider TEXT NOT NULL, object_type TEXT NOT NULL, object_id TEXT NOT NULL, owner_type TEXT NOT NULL, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX provider_object_unique ON provider_mappings(provider, object_type, object_id);
+CREATE TABLE subscriptions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), plan_id TEXT NOT NULL REFERENCES plans(id), provider TEXT NOT NULL, provider_subscription_id TEXT NOT NULL, status TEXT NOT NULL, current_period_end INTEGER, cancel_at_period_end INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX subscriptions_provider_id_unique ON subscriptions(provider, provider_subscription_id);
+CREATE INDEX subscriptions_user_idx ON subscriptions(user_id);
+CREATE TABLE webhook_receipts (id TEXT PRIMARY KEY, provider TEXT NOT NULL, provider_event_id TEXT NOT NULL, event_type TEXT NOT NULL, status TEXT NOT NULL, payload_hash TEXT NOT NULL, processed_at INTEGER, error_code TEXT, created_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX webhook_provider_event_unique ON webhook_receipts(provider, provider_event_id);
+CREATE TABLE ledger_entries (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), type TEXT NOT NULL, amount INTEGER NOT NULL, reference_type TEXT NOT NULL, reference_id TEXT NOT NULL, tool_id TEXT, expires_at INTEGER, metadata_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX ledger_reference_unique ON ledger_entries(type, reference_type, reference_id);
+CREATE INDEX ledger_user_created_idx ON ledger_entries(user_id, created_at DESC);
+CREATE TABLE reservations (id TEXT PRIMARY KEY, tool_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), usage_key TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount > 0), status TEXT NOT NULL CHECK(status IN ('reserved','committed','released','expired')), request_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, settled_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX reservations_tool_usage_unique ON reservations(tool_id, usage_key);
+CREATE INDEX reservations_expiry_idx ON reservations(status, expires_at);
+CREATE TABLE tools (id TEXT PRIMARY KEY, name TEXT NOT NULL, credential_hash TEXT NOT NULL, allowed_operations_json TEXT NOT NULL DEFAULT '[]', revoked_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE audit_events (id TEXT PRIMARY KEY, actor_type TEXT NOT NULL, actor_id TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, correlation_id TEXT NOT NULL, metadata_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+CREATE INDEX audit_correlation_idx ON audit_events(correlation_id);
+CREATE INDEX audit_created_idx ON audit_events(created_at DESC);
+
+CREATE TRIGGER ledger_entries_no_update BEFORE UPDATE ON ledger_entries BEGIN SELECT RAISE(ABORT, 'ledger entries are immutable'); END;
+CREATE TRIGGER ledger_entries_no_delete BEFORE DELETE ON ledger_entries BEGIN SELECT RAISE(ABORT, 'ledger entries are immutable'); END;

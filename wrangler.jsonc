@@ -1,0 +1,18 @@
+{
+  "name": "oneshowtools",
+  "main": "dist/server/index.js",
+  "compatibility_date": "2026-07-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist/client",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "oneshowtools",
+      "database_id": "managed-by-hosting-platform",
+      "migrations_dir": "db/migrations"
+    }
+  ]
+}

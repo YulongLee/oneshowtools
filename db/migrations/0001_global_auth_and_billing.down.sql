@@ -1,0 +1,16 @@
+DROP TRIGGER IF EXISTS ledger_entries_no_delete;
+DROP TRIGGER IF EXISTS ledger_entries_no_update;
+DROP TABLE IF EXISTS audit_events;
+DROP TABLE IF EXISTS tools;
+DROP TABLE IF EXISTS reservations;
+DROP TABLE IF EXISTS ledger_entries;
+DROP TABLE IF EXISTS webhook_receipts;
+DROP TABLE IF EXISTS subscriptions;
+DROP TABLE IF EXISTS provider_mappings;
+DROP TABLE IF EXISTS offers;
+DROP TABLE IF EXISTS plans;
+DROP TABLE IF EXISTS profiles;
+DROP TABLE IF EXISTS verifications;
+DROP TABLE IF EXISTS accounts;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS users;

@@ -42,9 +42,9 @@ test("falls back to index.html for an unknown app route", async () => {
 });
 
 test("does not turn missing API or write requests into the app shell", async () => {
-  for (const request of [
-    new Request("https://example.test/api/missing", { headers: { accept: "application/json" } }),
-    new Request("https://example.test/flow", { method: "POST", headers: { accept: "text/html" } }),
+  for (const [request, expectedAssetCalls] of [
+    [new Request("https://example.test/api/missing", { headers: { accept: "application/json" } }), 0],
+    [new Request("https://example.test/flow", { method: "POST", headers: { accept: "text/html" } }), 1],
   ]) {
     let calls = 0;
     const response = await worker.fetch(request, {
@@ -57,7 +57,7 @@ test("does not turn missing API or write requests into the app shell", async () 
     });
 
     assert.equal(response.status, 404);
-    assert.equal(calls, 1);
+    assert.equal(calls, expectedAssetCalls);
   }
 });
 

@@ -7,13 +7,23 @@
     "dev": "vite",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
-    "test:sites": "node --test tests/sites-worker.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:sites": "node --test tests/sites-worker.test.mjs",
+    "db:check": "node scripts/check-migrations.mjs",
+    "openspec:validate": "openspec validate add-global-auth-and-billing --strict"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "5.0.4",
+    "better-auth": "^1.6.25",
+    "drizzle-orm": "^0.45.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "stripe": "^22.3.2",
     "vite": "6.4.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.25.12"
   }
 }
