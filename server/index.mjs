@@ -7,6 +7,7 @@ import { handleApi } from "./api.mjs";
 const projectRoot = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(projectRoot, "dist/client");
 const port = Number(process.env.API_PORT || process.env.PORT || 8787);
+const host = process.env.API_HOST || "0.0.0.0";
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -70,6 +71,6 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(port, "0.0.0.0", () => {
-  console.log(`OneShowTools API listening on http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`OneShowTools API listening on http://${host}:${port}`);
 });
