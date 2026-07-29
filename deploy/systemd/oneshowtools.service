@@ -8,7 +8,8 @@ User=oneshowtools
 Group=oneshowtools
 WorkingDirectory=/var/www/oneshowtools/app
 EnvironmentFile=/etc/oneshowtools/oneshowtools.env
-ExecStart=/usr/bin/npm start
+Environment=PATH=/opt/node-v22/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=/opt/node-v22/bin/npm start
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
