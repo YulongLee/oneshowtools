@@ -369,6 +369,128 @@ function SystemRow({ icon: Icon, name, detail, ok }) {
   return <div className="system-row"><span className="system-icon"><Icon size={20} /></span><div><strong>{name}</strong><small>{detail}</small></div>{ok ? <CheckCircle size={20} weight="fill" /> : <Warning size={20} />}</div>;
 }
 
+function CapabilityNetwork({ locale }) {
+  const canvasRef = useRef(null);
+  const visualRef = useRef(null);
+  const pointerRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const visual = visualRef.current;
+    if (!canvas || !visual) return undefined;
+    const context = canvas.getContext("2d");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let frame;
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+
+    const resize = () => {
+      const bounds = visual.getBoundingClientRect();
+      width = bounds.width;
+      height = bounds.height;
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(width * pixelRatio));
+      canvas.height = Math.max(1, Math.round(height * pixelRatio));
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    };
+
+    const draw = (time = 0) => {
+      context.clearRect(0, 0, width, height);
+      const motionTime = reducedMotion ? 0 : time * 0.00018;
+      const centerX = width * 0.53 + pointerRef.current.x * 8;
+      const centerY = height * 0.5 + pointerRef.current.y * 6;
+      const rings = [
+        { rx: width * 0.22, ry: height * 0.18, speed: 0.7, alpha: 0.32 },
+        { rx: width * 0.32, ry: height * 0.27, speed: -0.45, alpha: 0.24 },
+        { rx: width * 0.42, ry: height * 0.36, speed: 0.3, alpha: 0.18 },
+      ];
+
+      context.lineWidth = 1;
+      rings.forEach((ring, index) => {
+        context.strokeStyle = `rgba(23, 105, 232, ${ring.alpha})`;
+        context.setLineDash(index === 2 ? [4, 5] : []);
+        context.beginPath();
+        context.ellipse(centerX, centerY, ring.rx, ring.ry, -0.08, 0, Math.PI * 2);
+        context.stroke();
+
+        const packetCount = index === 1 ? 4 : 3;
+        for (let packet = 0; packet < packetCount; packet += 1) {
+          const angle = motionTime * ring.speed * Math.PI * 2 + packet * (Math.PI * 2 / packetCount) + index;
+          const x = centerX + Math.cos(angle) * ring.rx;
+          const y = centerY + Math.sin(angle) * ring.ry;
+          const colors = ["#1769e8", "#8eb8f4", "#a7e8d3", "#f4c7ce"];
+          context.fillStyle = colors[(packet + index) % colors.length];
+          context.globalAlpha = packet === 0 ? 0.95 : 0.7;
+          context.beginPath();
+          context.roundRect(x - 4, y - 4, 8, 8, 2.5);
+          context.fill();
+        }
+      });
+
+      context.globalAlpha = 1;
+      context.setLineDash([]);
+      const streams = [-0.5, 0.08, 0.62];
+      streams.forEach((offset, index) => {
+        const startX = width * (index === 2 ? 0.88 : 0.08);
+        const startY = centerY + offset * height * 0.34;
+        context.strokeStyle = "rgba(23, 105, 232, 0.42)";
+        context.lineWidth = 1.5;
+        context.beginPath();
+        context.moveTo(startX, startY);
+        context.bezierCurveTo(width * 0.28, centerY + offset * 22, width * 0.4, centerY, centerX - 38, centerY);
+        context.stroke();
+
+        const progress = reducedMotion ? 0.72 : (motionTime * (1.4 + index * 0.2) + index * 0.24) % 1;
+        const inverse = 1 - progress;
+        const x = inverse ** 3 * startX + 3 * inverse ** 2 * progress * width * 0.28
+          + 3 * inverse * progress ** 2 * width * 0.4 + progress ** 3 * (centerX - 38);
+        const y = inverse ** 3 * startY + 3 * inverse ** 2 * progress * (centerY + offset * 22)
+          + 3 * inverse * progress ** 2 * centerY + progress ** 3 * centerY;
+        context.fillStyle = "#1769e8";
+        context.beginPath();
+        context.arc(x, y, 3.2, 0, Math.PI * 2);
+        context.fill();
+      });
+
+      if (!reducedMotion) frame = requestAnimationFrame(draw);
+    };
+
+    const onPointerMove = (event) => {
+      const bounds = visual.getBoundingClientRect();
+      pointerRef.current = {
+        x: (event.clientX - bounds.left) / bounds.width - 0.5,
+        y: (event.clientY - bounds.top) / bounds.height - 0.5,
+      };
+    };
+    const onPointerLeave = () => { pointerRef.current = { x: 0, y: 0 }; };
+    const observer = new ResizeObserver(() => { resize(); if (reducedMotion) draw(); });
+    observer.observe(visual);
+    visual.addEventListener("pointermove", onPointerMove);
+    visual.addEventListener("pointerleave", onPointerLeave);
+    resize();
+    draw();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+      visual.removeEventListener("pointermove", onPointerMove);
+      visual.removeEventListener("pointerleave", onPointerLeave);
+    };
+  }, []);
+
+  const labels = locale === "en"
+    ? [["discover", MagnifyingGlass, "Discover capabilities", "Always expanding"], ["run", RocketLaunch, "Run tasks", "Smart routing"], ["result", CheckCircle, "Generate results", "Reliable output"]]
+    : [["discover", MagnifyingGlass, "发现能力", "持续接入中"], ["run", RocketLaunch, "运行任务", "智能处理"], ["result", CheckCircle, "生成结果", "高效输出"]];
+
+  return <div className="capability-visual" ref={visualRef} aria-label={locale === "en" ? "Animated OneShowTools capability network" : "OneShowTools 平台能力网络动效"}>
+    <canvas ref={canvasRef} aria-hidden="true" />
+    <div className="capability-core"><span><SquaresFour size={31} weight="fill" /></span><strong>OneShowTools</strong></div>
+    <div className="capability-statuses">{labels.map(([key, Icon, title, detail]) => <div className={`capability-status ${key}`} key={key}><span><Icon size={17} /></span><div><strong>{title}</strong><small><i />{detail}</small></div></div>)}</div>
+  </div>;
+}
+
 function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
   const t = dictionary[locale];
   const [guestQuery, setGuestQuery] = useState("");
@@ -381,10 +503,9 @@ function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
     document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" });
   };
   return <div className="guest-shell"><header className="guest-header"><Brand /><nav><a href="#tools">{t.marketplace}</a><a href="#tools">{t.runtime}</a><a href="#tools">{t.billing}</a></nav><div><button className="locale-button" onClick={onLocale}><Translate size={17} />{t.language}</button><button className="primary-button" onClick={onAuth}>{t.login}</button></div></header>
-    <main><section className="guest-hero"><div><span className="eyebrow">ONESH​OWTOOLS PLATFORM</span><h1>{t.today}</h1><p>{t.todaySub}</p>
+    <main><section className="guest-hero"><div className="guest-hero-copy"><span className="eyebrow">ONESH​OWTOOLS PLATFORM</span><h1>{t.today}</h1><p>{t.todaySub}</p>
       <form className="home-search guest-home-search" onSubmit={showResults}><MagnifyingGlass size={21} /><input value={guestQuery} onChange={(event) => setGuestQuery(event.target.value)} placeholder={t.search} /><button>{t.searchAction}</button></form>
-      <div className="home-suggestions guest-suggestions"><span>{t.popularTools}</span><div>{tools.slice(0, 4).map((tool) => { const name = locale === "en" ? tool.nameEn : tool.nameZh; return <button key={tool.id} onClick={() => { setGuestQuery(name); setTimeout(() => document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" }), 0); }}>{name}</button>; })}</div></div>
-      <div className="hero-actions"><button className="primary-button" onClick={onAuth}>{t.signInAction}<ArrowRight size={18} /></button><a className="secondary-button" href="#tools">{t.marketplace}</a></div></div><aside><UserCircle size={36} /><h3>{t.welcome}</h3><p>{t.welcomeSub}</p><div className="trust-list"><span><Check size={16} />{t.nav.account}</span><span><Check size={16} />{t.nav.credits}</span><span><Check size={16} />{t.nav.tasks}</span></div></aside></section>
+      <div className="hero-actions"><button className="primary-button" onClick={onAuth}>{t.signInAction}<ArrowRight size={18} /></button><a className="secondary-button" href="#tools">{t.marketplace}</a></div></div><CapabilityNetwork locale={locale} /></section>
       <section id="tools" className="guest-tools"><SectionTitle title={t.marketplace} />{visibleTools.length ? <div className="tool-grid">{visibleTools.slice(0, 5).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <article className="tool-card" key={tool.id}><header><span className={`tool-icon ${tool.category}`}><Icon size={24} /></span><StatusPill status={tool.runtimeStatus} locale={locale} /></header><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span><button onClick={() => onRun(tool)}>{t.run}<ArrowRight size={17} /></button></footer></article>; })}</div> : <EmptyState icon={MagnifyingGlass} title={t.noResults} />}</section>
     </main>
   </div>;

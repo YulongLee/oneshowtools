@@ -4,6 +4,10 @@
 - Browser implementation: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-platform-marketplace.png`
 - Homepage search update: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-home-search.png`
 - Tool workspace update: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-tool-page.png`
+- Animated homepage source: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/docs/hero-motion-target.png`
+- Animated homepage implementation: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-home-motion-v2.png`
+- Animated homepage comparison: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-home-motion-comparison.png`
+- Animated homepage mobile capture: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-home-motion-mobile.png`
 - Combined comparison: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-comparison.png`
 - Viewport: 1440 × 1024 CSS pixels, device scale factor 1.
 - Source pixels: 1487 × 1058. Implementation pixels: 1440 × 1024.
@@ -109,6 +113,31 @@ The browser's retained log still contains the two pre-fix messages timestamped
   granting microphone permission during browser QA.
 - Direct tool routes retain the selected command-center layout, while signed-out
   visitors receive a focused login/register prompt before processing.
+
+### Iteration 5
+
+- Replaced the static sign-in card in the guest hero with the selected
+  OneShowTools capability-network direction.
+- Implemented the network as a responsive high-density canvas with three orbit
+  paths, moving capability packets, task streams, subtle pointer parallax, and
+  sequenced status labels.
+- Added a complete reduced-motion state: moving packets and label sequencing stop
+  when the visitor requests less motion.
+- Preserved the original Tool Marketplace grid and all real database-backed tool
+  names, statuses, credit costs, and routes.
+- First comparison found the hero section was approximately 55–60 CSS pixels
+  taller than the source, delaying the marketplace entry point.
+- Fix: reduced hero height and visual padding while preserving the search and
+  network proportions. The second 1440 × 1024 capture aligns the marketplace
+  boundary and primary hero hierarchy with the selected source.
+- Mobile verification at 390 × 844 shows a single-column hero, simplified
+  capability network, readable CTAs, and one-column tool cards without horizontal
+  overflow.
+- Primary interaction verification: searching `PDF` leaves only the PDF summary
+  tool visible and scrolls to the retained marketplace grid.
+- Browser console: no application errors or warnings were emitted. Browser-client
+  telemetry timeouts were external to the page and did not appear in the page
+  console.
 
 ## Follow-up polish
 
