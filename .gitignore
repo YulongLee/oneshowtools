@@ -8,3 +8,8 @@ dist/
 .idea/
 .vscode/
 coverage/
+data/
+qa-*.png
+qa-tool-*
+qa-compare.html
+reference-current-live.png

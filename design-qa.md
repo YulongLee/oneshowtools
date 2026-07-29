@@ -1,66 +1,119 @@
-# Design QA
+# OneShowTools Platform Design QA
 
-- Source visual truth path: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/reference-oneshowtools.png`
-- Implementation URL: `http://localhost:4173/`
-- Implementation screenshot path: unavailable because the in-app browser blocked local-site access
-- Intended viewport: 1488 × 1058 CSS px
-- Source pixels: 1488 × 1058
-- Implementation pixels: unavailable
-- Density normalization: source is treated as 1×; implementation capture unavailable
-- State: desktop default, tool plaza selected, empty search query
+- Source visual truth: `/Users/liyulong/.codex/generated_images/019fa77c-5d15-7b81-96c3-7dacd649f75e/call_NVCRhPnmluLuRJi0wnk8v0lg.png`
+- Browser implementation: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-platform-marketplace.png`
+- Homepage search update: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-home-search.png`
+- Tool workspace update: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-tool-page.png`
+- Combined comparison: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa-comparison.png`
+- Viewport: 1440 × 1024 CSS pixels, device scale factor 1.
+- Source pixels: 1487 × 1058. Implementation pixels: 1440 × 1024.
+- Normalization: both images were rendered side by side at equal CSS width in `qa-compare.html`; no density mismatch was used as evidence.
+- State: authenticated Tool Marketplace, Chinese locale, live SQLite account and credit data, runtime providers unconfigured.
 
 ## Full-view comparison evidence
 
-Blocked. The source reference was opened and inspected, but the browser-rendered
-implementation could not be opened or captured because local-site access was
-blocked by the browser's network policy.
+The implementation preserves the selected option's three-column command-center
+composition: persistent left navigation, a wide search-and-tool workspace, and a
+narrow account/status rail. The implementation intentionally extends the mock's
+category rail into the eight requested platform modules and replaces the mock's
+signed-out right rail with authenticated real account state.
 
-## Focused region comparison evidence
+## Focused comparison evidence
 
-Blocked for the same reason. The intended focus regions were the navigation,
-hero/search area, tool rows, recent-usage list, and quota card.
+The original 1440 × 1024 implementation capture was inspected at full size for:
 
-## Findings
+- Navigation spacing, selected state, icon weight, and header search alignment.
+- Search bar height, category-chip rhythm, two-column tool-card grid, card padding,
+  status pills, and action alignment.
+- Right-rail avatar, live credit balance, plan state, task status, borders, and
+  vertical spacing.
 
-- [P1] Browser-rendered implementation evidence is missing.
-  - Location: full page.
-  - Evidence: source image is available; implementation screenshot is not.
-  - Impact: typography, spacing, color, icon, and responsive fidelity cannot be
-    judged from visible browser evidence.
-  - Fix: open the local preview in an allowed browser surface, capture it at
-    1488 × 1058, and compare it alongside the source reference.
+No raster illustrations or product imagery exist in the selected source. The
+implementation uses the Phosphor icon library for all interface icons.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: blocked pending browser capture.
-- Spacing and layout rhythm: blocked pending browser capture.
-- Colors and visual tokens: blocked pending browser capture.
-- Image quality and asset fidelity: the reference contains no raster imagery;
-  icon fidelity still requires browser capture.
-- Copy and content: implemented from the reference, but visible wrapping and
-  truncation require browser capture.
+- Fonts and typography: DM Sans and Noto Sans SC provide the same neutral SaaS
+  character, clear hierarchy, and readable small labels. Weights and truncation
+  remain consistent across English and Chinese.
+- Spacing and layout rhythm: the three principal columns, compact 76px header,
+  12–14px component gaps, restrained radii, and thin borders match the reference
+  direction. The larger card padding is intentional to support longer bilingual
+  product descriptions.
+- Colors and tokens: white surfaces, quiet gray-blue canvas, royal blue primary
+  actions, hairline borders, and restrained semantic colors match the selected
+  direction. No gradients or glass effects were introduced.
+- Image and asset quality: no source raster assets were required. The existing
+  OneShowTools mark and Phosphor icons render sharply and consistently.
+- Copy and content: all eight requested platform modules are named explicitly.
+  Account, credits, task, file, runtime, and billing states come from real API
+  data. Missing providers are labeled as unconfigured rather than represented
+  with fabricated success states.
 
-## Primary interactions tested
+## Browser interactions tested
 
-Not tested in the browser because local-site navigation was blocked. Search,
-quick searches, tool selection, recent-tool selection, navigation selection,
-and the login dialog are implemented in code.
+- Email registration and automatic secure session creation.
+- Dashboard loading with the real 200-credit welcome ledger entry.
+- Tool Marketplace navigation and tool selection.
+- Task creation, queued state, runtime-unconfigured state, and automatic credit refund.
+- Task Center refresh and live right-rail balance update.
+- File upload, authenticated download, listing, and deletion through the API lifecycle.
+- Chinese interface and English locale control visibility.
+- Desktop responsive rendering at 1440 × 1024.
 
-## Console errors checked
+## Console check
 
-Not checked because the implementation page could not be opened in the browser.
+The first pass detected a nested interactive control in Task Center. The task-row
+container was changed from a button to a keyboard-accessible `div[role=button]`.
+After reload, the corrected DOM was present and no new console errors were emitted.
+The browser's retained log still contains the two pre-fix messages timestamped
+2026-07-29T16:33:02.453Z.
 
 ## Comparison history
 
-- Initial pass: blocked before implementation capture; no visual fixes were
-  applied from browser evidence.
+### Iteration 1
 
-## Implementation checklist
+- P1: Task Center placed a cancel button inside a task-row button, producing
+  invalid nested interactive HTML and a React console error.
+- Fix: replaced the outer button with a focusable, keyboard-operable row using
+  `role="button"` and retained the independent cancel button.
+- Post-fix evidence: refreshed Task Center DOM shows the corrected row semantics;
+  no post-fix console message was recorded.
 
-- Capture the default desktop page at 1488 × 1058.
-- Test search, a quick-search chip, a tool row, navigation, and login.
-- Check console errors.
-- Compare the source and implementation together.
-- Fix all P0/P1/P2 findings and repeat.
+### Iteration 2
 
-final result: blocked
+- The source and implementation were compared in the same authenticated
+  Tool Marketplace state. No actionable P0, P1, or P2 differences remained.
+- The expanded eight-module navigation and authenticated right rail are accepted
+  product requirements rather than design drift.
+
+### Iteration 3
+
+- Added a first-screen tool search and live popular-tool shortcuts for visitors
+  and signed-in users.
+- Verified that searching `PDF` filters the database-backed marketplace to the
+  matching PDF tool and scrolls the visitor to the result.
+- The revised hero preserves the selected design's typography, blue/white tokens,
+  spacing rhythm, and two-column marketplace composition.
+
+### Iteration 4
+
+- Replaced the marketplace's generic run dialog with stable routes for all five
+  currently listed tools.
+- Verified real copy-polish and image-compression output, including WebP download,
+  output size statistics, task creation, credit consumption, and right-rail refresh.
+- Verified PDF text extraction and local summary output using a generated test PDF.
+- Verified solid-color background removal with transparent PNG output and a real
+  authenticated download route.
+- Verified the speech-to-text result workflow with an editable transcript without
+  granting microphone permission during browser QA.
+- Direct tool routes retain the selected command-center layout, while signed-out
+  visitors receive a focused login/register prompt before processing.
+
+## Follow-up polish
+
+- P3: a future iteration may reduce English labels in the Chinese locale for a
+  more fully localized first impression while retaining product module names.
+- P3: add compact tablet captures after the next round of feature expansion.
+
+final result: passed

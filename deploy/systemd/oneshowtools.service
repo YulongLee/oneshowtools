@@ -1,0 +1,20 @@
+[Unit]
+Description=OneShowTools Platform
+After=network.target
+
+[Service]
+Type=simple
+User=oneshowtools
+Group=oneshowtools
+WorkingDirectory=/var/www/oneshowtools/app
+EnvironmentFile=/etc/oneshowtools/oneshowtools.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/www/oneshowtools/app/data
+
+[Install]
+WantedBy=multi-user.target

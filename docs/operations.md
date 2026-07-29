@@ -61,3 +61,20 @@ Do not enable live payments until launch countries, legal entity, supported
 currencies, taxes, privacy/retention, account export/deletion, refund terms,
 subscription cancellation policy, support ownership, monitoring, and recovery
 procedures have written approval.
+
+## Ubuntu deployment
+
+The production Node process serves both the compiled frontend and `/api`
+endpoints on `127.0.0.1:8787`. Nginx terminates HTTP/HTTPS and proxies the
+domain to that process.
+
+- Application directory: `/var/www/oneshowtools/app`
+- Persistent data: `/var/www/oneshowtools/app/data`
+- Environment file: `/etc/oneshowtools/oneshowtools.env`
+- Service: `oneshowtools.service`
+- Nginx site: `/etc/nginx/sites-available/oneshowtools.conf`
+
+The application and data directory are owned by the unprivileged
+`oneshowtools` system user. Deployments must preserve `data/`, install
+production dependencies, build the frontend, restart the service, and verify
+`/api/health` before switching traffic.
