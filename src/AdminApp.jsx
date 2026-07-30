@@ -42,6 +42,18 @@ const copy = {
     previous: "上一页", next: "下一页", page: "页", result: "结果", action: "操作",
     actor: "操作者", target: "对象", time: "时间", detailsJson: "变更摘要",
     role: "角色", changeRole: "变更角色", reasonRequired: "请先填写操作原因。",
+    addAdmin: "新增管理员", addAdminHint: "对方需要先注册账户并完成邮箱验证。",
+    adminEmail: "用户注册邮箱", selectRole: "分配角色", auditReason: "操作说明",
+    disableAdmin: "停用权限", enableAdmin: "恢复权限", adminAdded: "管理员添加成功",
+    super_admin: "超级管理员", operationsRole: "运营管理员", supportRole: "客服管理员",
+    financeRole: "财务管理员", tool_manager: "工具管理员", privacyRole: "隐私管理员",
+    read_only: "只读审计员",
+    adminAccountNotFound: "没有找到该邮箱账户，请让对方先注册。",
+    adminEmailNotVerified: "该账户尚未完成邮箱验证。",
+    adminAlreadyExists: "该账户已经是管理员。",
+    adminInactive: "该用户账户当前不可用。",
+    lastSuperAdmin: "系统必须至少保留一名正常的超级管理员。",
+    ownAdminLocked: "不能修改或停用自己的管理员权限。",
   },
   en: {
     console: "Commercial Admin", loading: "Loading secure administration…", signIn: "Administrator sign in",
@@ -77,7 +89,19 @@ const copy = {
     pending: "Pending", success: "Success", previous: "Previous", next: "Next", page: "Page",
     result: "Result", action: "Action", actor: "Actor", target: "Target", time: "Time",
     detailsJson: "Change summary", role: "Role", changeRole: "Change role",
-    reasonRequired: "Enter an action reason first.",
+    reasonRequired: "Enter an action reason first.", addAdmin: "Add administrator",
+    addAdminHint: "The user must register and verify their email first.",
+    adminEmail: "Registered user email", selectRole: "Assign role", auditReason: "Audit note",
+    disableAdmin: "Suspend access", enableAdmin: "Restore access", adminAdded: "Administrator added",
+    super_admin: "Super administrator", operationsRole: "Operations", supportRole: "Support",
+    financeRole: "Finance", tool_manager: "Tool manager", privacyRole: "Privacy",
+    read_only: "Read-only auditor",
+    adminAccountNotFound: "No account was found for that email. Ask the user to register first.",
+    adminEmailNotVerified: "That account has not verified its email.",
+    adminAlreadyExists: "That account is already an administrator.",
+    adminInactive: "That user account is not active.",
+    lastSuperAdmin: "At least one active super administrator must remain.",
+    ownAdminLocked: "You cannot change or suspend your own administrator access.",
   },
 };
 
@@ -324,12 +348,33 @@ function AuditView({ data, locale, onPage }) {
     {!data?.events?.length && <tr><td colSpan="6" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div><Pager data={data} onPage={onPage} locale={locale} /></section>;
 }
 
-function AdminsView({ data, locale, onRole }) {
+function AdminsView({ data, locale, currentAdminId, onCreate, onRole, onStatus }) {
   const t = copy[locale];
   const [drafts, setDrafts] = useState({});
-  return <section className="admin-v2-panel admin-table-panel"><div className="admin-v2-table-wrap"><table><thead><tr><th>{t.account}</th><th>{t.roles}</th><th>{t.mfa}</th><th>{t.status}</th><th>{t.changeRole}</th></tr></thead><tbody>
-    {data?.administrators?.map((admin) => <tr key={admin.userId}><td><strong>{admin.name}</strong><small>{admin.email}</small></td><td>{admin.roles.join(", ")}</td><td><span className={`admin-badge ${admin.mfaEnrolled ? "active" : "pending"}`}>{admin.mfaEnrolled ? t.enrolled : t.pending}</span></td><td>{admin.status}</td><td><div className="admin-inline-form"><select value={drafts[admin.userId]?.role || admin.roles[0]} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...drafts[admin.userId], role: event.target.value } })}>{data.roles.map((role) => <option key={role.code}>{role.code}</option>)}</select><input placeholder={t.reason} value={drafts[admin.userId]?.reason || ""} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...drafts[admin.userId], reason: event.target.value } })} /><button onClick={() => onRole(admin.userId, drafts[admin.userId] || { role: admin.roles[0], reason: "" })}>{t.changeRole}</button></div></td></tr>)}
-  </tbody></table></div></section>;
+  const [create, setCreate] = useState({ email: "", role: "operations", reason: "" });
+  const roleLabel = (role) => t[role === "operations" ? "operationsRole" : role === "support" ? "supportRole" : role === "finance" ? "financeRole" : role === "privacy" ? "privacyRole" : role] || role;
+  const submitCreate = async () => {
+    const success = await onCreate(create);
+    if (success) setCreate({ email: "", role: "operations", reason: "" });
+  };
+  return <div className="admin-access-stack">
+    <section className="admin-v2-panel admin-add-admin"><header><div><small>ACCESS CONTROL</small><h2>{t.addAdmin}</h2></div><UserCircle size={22} /></header>
+      <div className="admin-add-admin-body"><p>{t.addAdminHint}</p><div className="admin-add-admin-form">
+        <label>{t.adminEmail}<input type="email" value={create.email} placeholder="name@example.com" onChange={(event) => setCreate({ ...create, email: event.target.value })} /></label>
+        <label>{t.selectRole}<select value={create.role} onChange={(event) => setCreate({ ...create, role: event.target.value })}>{data?.roles?.map((role) => <option key={role.code} value={role.code}>{roleLabel(role.code)}</option>)}</select></label>
+        <label>{t.auditReason}<input value={create.reason} placeholder={t.reason} onChange={(event) => setCreate({ ...create, reason: event.target.value })} /></label>
+        <button onClick={submitCreate}><UserCircle size={17} />{t.addAdmin}</button>
+      </div></div>
+    </section>
+    <section className="admin-v2-panel admin-table-panel"><div className="admin-v2-table-wrap"><table><thead><tr><th>{t.account}</th><th>{t.roles}</th><th>{t.status}</th><th>{t.changeRole}</th><th>{t.action}</th></tr></thead><tbody>
+      {data?.administrators?.map((admin) => {
+        const draft = drafts[admin.userId] || { role: admin.roles[0], reason: "" };
+        const ownAccount = admin.userId === currentAdminId;
+        return <tr key={admin.userId}><td><strong>{admin.name}</strong><small>{admin.email}</small></td><td>{admin.roles.map(roleLabel).join(", ")}</td><td><span className={`admin-badge ${admin.status}`}>{admin.status === "active" ? t.active : t.suspended}</span></td><td><div className="admin-inline-form"><select disabled={ownAccount} value={draft.role} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...draft, role: event.target.value } })}>{data.roles.map((role) => <option key={role.code} value={role.code}>{roleLabel(role.code)}</option>)}</select><input disabled={ownAccount} placeholder={t.reason} value={draft.reason} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...draft, reason: event.target.value } })} /><button disabled={ownAccount} onClick={() => onRole(admin.userId, draft)}>{t.changeRole}</button></div></td><td><button className={`admin-access-status ${admin.status === "active" ? "danger" : ""}`} disabled={ownAccount} onClick={() => onStatus(admin.userId, { status: admin.status === "active" ? "suspended" : "active", reason: draft.reason })}>{admin.status === "active" ? t.disableAdmin : t.enableAdmin}</button></td></tr>;
+      })}
+      {!data?.administrators?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}
+    </tbody></table></div></section>
+  </div>;
 }
 
 export function AdminApp() {
@@ -382,6 +427,15 @@ export function AdminApp() {
   useEffect(() => { loadView(); }, [loadView]);
 
   const showToast = (text = t.success) => { setToast(text); setTimeout(() => setToast(""), 2600); };
+  const adminError = (code) => ({
+    ADMIN_ACCOUNT_NOT_FOUND: t.adminAccountNotFound,
+    ADMIN_EMAIL_NOT_VERIFIED: t.adminEmailNotVerified,
+    ADMIN_ALREADY_EXISTS: t.adminAlreadyExists,
+    ADMIN_ACCOUNT_INACTIVE: t.adminInactive,
+    LAST_SUPER_ADMIN_REQUIRED: t.lastSuperAdmin,
+    CANNOT_CHANGE_OWN_ADMIN_ROLE: t.ownAdminLocked,
+    CANNOT_CHANGE_OWN_ADMIN_STATUS: t.ownAdminLocked,
+  })[code] || code;
   const logout = async () => {
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     setSession(null); setData({}); setSelectedUser(null);
@@ -414,7 +468,13 @@ export function AdminApp() {
   const approve = async (id) => { try { await api(`/api/admin/v1/approvals/${id}/approve`, { method: "POST" }); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const lifecycle = async (id, state) => { try { await api(`/api/admin/v1/tools/${id}/lifecycle`, json("POST", { state, reason: "admin_console" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
-  const changeRole = async (id, draft) => { if (!draft.reason?.trim()) return setMessage(t.reasonRequired); try { await api(`/api/admin/v1/administrators/${id}/role`, json("POST", draft)); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
+  const createAdmin = async (draft) => {
+    if (!draft.email?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/administrators", json("POST", draft)); await loadView(); showToast(t.adminAdded); return true; }
+    catch (error) { setMessage(adminError(error.code)); return false; }
+  };
+  const changeRole = async (id, draft) => { if (!draft.reason?.trim()) return setMessage(t.reasonRequired); try { await api(`/api/admin/v1/administrators/${id}/role`, json("POST", draft)); await loadView(); showToast(); } catch (error) { setMessage(adminError(error.code)); } };
+  const changeAdminStatus = async (id, draft) => { if (!draft.reason?.trim()) return setMessage(t.reasonRequired); try { await api(`/api/admin/v1/administrators/${id}/status`, json("POST", draft)); await loadView(); showToast(); } catch (error) { setMessage(adminError(error.code)); } };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -433,7 +493,7 @@ export function AdminApp() {
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
     audit: <AuditView data={data.audit} locale={locale} onPage={setPage} />,
-    admins: <AdminsView data={data.admins} locale={locale} onRole={changeRole} />,
+    admins: <AdminsView data={data.admins} locale={locale} currentAdminId={session.admin.id} onCreate={createAdmin} onRole={changeRole} onStatus={changeAdminStatus} />,
   }[view];
 
   return <div className="admin-v2-shell"><aside className="admin-v2-sidebar">

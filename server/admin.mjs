@@ -789,7 +789,71 @@ function administrators() {
   };
 }
 
+function soleActiveSuperAdministrator(userId) {
+  const target = db.prepare(`
+    SELECT 1
+    FROM admin_memberships m
+    JOIN admin_membership_roles mr ON mr.user_id = m.user_id
+    JOIN admin_roles r ON r.id = mr.role_id
+    WHERE m.user_id = ? AND m.status = 'active' AND r.code = 'super_admin'
+  `).get(userId);
+  if (!target) return false;
+  const count = Number(db.prepare(`
+    SELECT COUNT(DISTINCT m.user_id) AS count
+    FROM admin_memberships m
+    JOIN admin_membership_roles mr ON mr.user_id = m.user_id
+    JOIN admin_roles r ON r.id = mr.role_id
+    WHERE m.status = 'active' AND r.code = 'super_admin'
+  `).get().count);
+  return count <= 1;
+}
+
+function assignAdministratorRole(targetId, roleId, actorId, timestamp) {
+  db.prepare("DELETE FROM admin_membership_roles WHERE user_id = ?").run(targetId);
+  db.prepare(`
+    INSERT INTO admin_membership_roles (user_id, role_id, assigned_by, assigned_at)
+    VALUES (?, ?, ?, ?)
+  `).run(targetId, roleId, actorId, timestamp);
+  db.prepare("UPDATE admin_memberships SET version = version + 1, updated_at = ? WHERE user_id = ?")
+    .run(timestamp, targetId);
+  db.prepare("DELETE FROM admin_auth_sessions WHERE user_id = ?").run(targetId);
+}
+
 async function adminCommands(request, path, context) {
+  if (path === "/api/admin/v1/administrators" && request.method === "POST") {
+    const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const email = String(data.email || "").trim().toLowerCase();
+    const reason = String(data.reason || "").trim();
+    const role = db.prepare("SELECT id, code FROM admin_roles WHERE code = ?").get(String(data.role || ""));
+    if (!email || !role || !reason) return fail("INVALID_ADMIN_CREATE");
+    const target = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email);
+    if (!target) return fail("ADMIN_ACCOUNT_NOT_FOUND", 404);
+    if (!target.email_verified) return fail("ADMIN_EMAIL_NOT_VERIFIED", 409);
+    if (target.status !== "active") return fail("ADMIN_ACCOUNT_INACTIVE", 409);
+    if (db.prepare("SELECT 1 FROM admin_memberships WHERE user_id = ?").get(target.id)) {
+      return fail("ADMIN_ALREADY_EXISTS", 409);
+    }
+    const timestamp = now();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`
+        INSERT INTO admin_memberships
+        (user_id, status, mfa_required, version, created_by, created_at, updated_at)
+        VALUES (?, 'active', 1, 1, ?, ?, ?)
+      `).run(target.id, context.user.id, timestamp, timestamp);
+      db.prepare(`
+        INSERT INTO admin_membership_roles (user_id, role_id, assigned_by, assigned_at)
+        VALUES (?, ?, ?, ?)
+      `).run(target.id, role.id, context.user.id, timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "admins.manage", action: "admin.create", targetType: "administrator", targetId: target.id, reason, after: { email: target.email, role: role.code, status: "active" } });
+    return json({ ok: true, administrator: { userId: target.id, email: target.email, role: role.code, status: "active" } }, 201);
+  }
   let match = path.match(/^\/api\/admin\/v1\/administrators\/([^/]+)\/role$/);
   if (match && request.method === "POST") {
     const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
@@ -797,6 +861,10 @@ async function adminCommands(request, path, context) {
     const role = db.prepare("SELECT id, code FROM admin_roles WHERE code = ?").get(String(data.role || ""));
     const target = db.prepare("SELECT * FROM users WHERE id = ? AND email_verified = 1").get(match[1]);
     if (!role || !target || !String(data.reason || "").trim()) return fail("INVALID_ADMIN_ROLE_CHANGE");
+    if (target.id === context.user.id) return fail("CANNOT_CHANGE_OWN_ADMIN_ROLE", 409);
+    if (role.code !== "super_admin" && soleActiveSuperAdministrator(target.id)) {
+      return fail("LAST_SUPER_ADMIN_REQUIRED", 409);
+    }
     const timestamp = now();
     db.exec("BEGIN IMMEDIATE");
     try {
@@ -805,14 +873,7 @@ async function adminCommands(request, path, context) {
         (user_id, status, mfa_required, version, created_by, created_at, updated_at)
         VALUES (?, 'active', 1, 1, ?, ?, ?)
       `).run(target.id, context.user.id, timestamp, timestamp);
-      db.prepare("DELETE FROM admin_membership_roles WHERE user_id = ?").run(target.id);
-      db.prepare(`
-        INSERT INTO admin_membership_roles (user_id, role_id, assigned_by, assigned_at)
-        VALUES (?, ?, ?, ?)
-      `).run(target.id, role.id, context.user.id, timestamp);
-      db.prepare("UPDATE admin_memberships SET version = version + 1, updated_at = ? WHERE user_id = ?")
-        .run(timestamp, target.id);
-      db.prepare("DELETE FROM admin_auth_sessions WHERE user_id = ?").run(target.id);
+      assignAdministratorRole(target.id, role.id, context.user.id, timestamp);
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -820,6 +881,38 @@ async function adminCommands(request, path, context) {
     }
     richAudit({ request, actor: context.user, roles: context.roles, permission: "admins.manage", action: "admin.role.assign", targetType: "administrator", targetId: target.id, reason: String(data.reason), after: { role: role.code } });
     return json({ ok: true });
+  }
+  match = path.match(/^\/api\/admin\/v1\/administrators\/([^/]+)\/status$/);
+  if (match && request.method === "POST") {
+    const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const status = String(data.status || "");
+    const reason = String(data.reason || "").trim();
+    const membership = db.prepare("SELECT * FROM admin_memberships WHERE user_id = ?").get(match[1]);
+    if (!membership) return fail("ADMIN_NOT_FOUND", 404);
+    if (!["active", "suspended"].includes(status) || !reason) return fail("INVALID_ADMIN_STATUS");
+    if (match[1] === context.user.id) return fail("CANNOT_CHANGE_OWN_ADMIN_STATUS", 409);
+    if (status === "suspended" && soleActiveSuperAdministrator(match[1])) {
+      return fail("LAST_SUPER_ADMIN_REQUIRED", 409);
+    }
+    const timestamp = now();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`
+        UPDATE admin_memberships SET status = ?, version = version + 1, updated_at = ?
+        WHERE user_id = ?
+      `).run(status, timestamp, match[1]);
+      if (status === "suspended") {
+        db.prepare("DELETE FROM admin_auth_sessions WHERE user_id = ?").run(match[1]);
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").run(match[1]);
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "admins.manage", action: `admin.status.${status}`, targetType: "administrator", targetId: match[1], reason, before: { status: membership.status }, after: { status } });
+    return json({ ok: true, status });
   }
   match = path.match(/^\/api\/admin\/v1\/jobs\/([^/]+)\/retry$/);
   if (match && request.method === "POST") {

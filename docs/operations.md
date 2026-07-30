@@ -87,6 +87,15 @@ environment. Enable `ADMIN_MFA_ENFORCED=true` only after the owner is ready to
 enroll a TOTP authenticator and securely save the one-time recovery codes.
 Never send TOTP secrets or recovery codes through email or support chat.
 
+To add another administrator, the person first registers a normal OneShowTools
+account and completes email verification. A super administrator then opens
+**Access Control / 权限管理**, enters that registered email, selects the
+least-privilege role needed, and records an audit reason. The new administrator
+uses their own email and password; no shared administrator password is created.
+Role changes and access suspension revoke active administrator sessions. An
+administrator cannot change or suspend their own access, and the final active
+super administrator is protected from removal.
+
 High-risk operations require a reason, immutable audit record, and—above the
 configured `ADMIN_CREDIT_APPROVAL_THRESHOLD`—a distinct finance approver.
 Balances are never edited directly; corrections append ledger entries.

@@ -68,6 +68,7 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   const customer = await createVerifiedUser(`customer-${Date.now()}@example.com`, "Customer");
   const support = await createVerifiedUser(`support-${Date.now()}@example.com`, "Support");
   const finance = await createVerifiedUser(`finance-${Date.now()}@example.com`, "Finance");
+  const invited = await createVerifiedUser(`operator-${Date.now()}@example.com`, "Operator");
 
   const ownerSession = await handleApi(authenticated("/api/admin/v1/session", owner.cookie));
   assert.equal(ownerSession.status, 200);
@@ -94,6 +95,36 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
     }))).status,
     403,
   );
+
+  const invitedEmail = db.prepare("SELECT email FROM users WHERE id = ?").get(invited.id).email;
+  const createAdministrator = await handleApi(authenticatedJson("/api/admin/v1/administrators", owner.cookie, {
+    email: invitedEmail, role: "operations", reason: "Expand the operations team",
+  }));
+  assert.equal(createAdministrator.status, 201);
+  assert.deepEqual(
+    (await handleApi(authenticated("/api/admin/v1/session", invited.cookie)).then((response) => response.json())).roles,
+    ["operations"],
+  );
+  assert.equal((await handleApi(authenticatedJson("/api/admin/v1/administrators", owner.cookie, {
+    email: invitedEmail, role: "operations", reason: "Duplicate test",
+  }))).status, 409);
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/administrators/${owner.id}/status`, owner.cookie, {
+    status: "suspended", reason: "Self lockout test",
+  }))).status, 409);
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/administrators/${invited.id}/role`, owner.cookie, {
+    role: "support", reason: "Move to customer support",
+  }))).status, 200);
+  assert.deepEqual(
+    (await handleApi(authenticated("/api/admin/v1/session", invited.cookie)).then((response) => response.json())).roles,
+    ["support"],
+  );
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/administrators/${invited.id}/status`, owner.cookie, {
+    status: "suspended", reason: "Temporary access suspension",
+  }))).status, 200);
+  assert.equal((await handleApi(authenticated("/api/admin/v1/session", invited.cookie))).status, 401);
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/administrators/${invited.id}/status`, owner.cookie, {
+    status: "active", reason: "Access review completed",
+  }))).status, 200);
 
   const adjustmentHeaders = { "idempotency-key": "admin-adjustment-small-1" };
   const smallAdjustment = await handleApi(authenticatedJson(`/api/admin/v1/users/${customer.id}/credits`, support.cookie, {
