@@ -5,6 +5,7 @@ import {
   House, ImageSquare, ListChecks, LockKey, MagicWand, MagnifyingGlass, Microphone,
   ArrowLeft, Copy, DownloadSimple, Play, RocketLaunch, SignOut, Sparkle, SpinnerGap,
   SquaresFour, StopCircle, Translate, Trash, User, UserCircle, Warning, Wrench, X,
+  Plus, PlugsConnected, ShieldCheck,
 } from "@phosphor-icons/react";
 
 const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone };
@@ -17,7 +18,7 @@ const dictionary = {
     creditsBalance: "可用积分", taskCount: "任务总数", fileCount: "文件数量", completed: "已完成", noTasks: "还没有任务", noTasksHint: "从工具市场选择一个工具，创建你的第一个任务。",
     marketplace: "Tool Marketplace", marketplaceSub: "发现并使用接入 OneShowTools Platform 的 AI 工具。", all: "全部", image: "图像工具", document: "文档工具", audio: "音频工具", writing: "写作工具",
     ready: "可运行", config: "待配置", creditsUnit: "积分 / 次", run: "打开工具", runTitle: "创建 AI 任务", inputLabel: "任务内容", inputPlaceholder: "输入需要处理的文本或任务要求…",
-    attach: "关联文件", createTask: "创建任务", taskCreated: "任务已创建，可在任务中心查看状态。", runtime: "AI Runtime", runtimeSub: "统一管理模型提供商和各工具的运行能力。",
+    attach: "关联文件", createTask: "创建任务", taskCreated: "任务已创建，可在任务中心查看状态。", runtime: "AI Runtime", runtimeSub: "管理平台托管模型、个人模型连接与工具运行方式。",
     provider: "运行提供商", model: "模型", status: "状态", configured: "已配置", notConfigured: "未配置", runtimeNote: "未配置的运行服务不会伪造结果；任务会保留真实状态并自动退回积分。",
     credits: "Credits", creditsSub: "每一笔获取与消耗都有可追踪的真实账本记录。", ledger: "积分流水", amount: "变动", balance: "余额", description: "说明", time: "时间",
     billing: "Billing", billingSub: "管理订阅方案、付款能力与当前订阅状态。", currentPlan: "当前方案", free: "免费版", monthly: "每月", subscribe: "订阅专业版",
@@ -42,6 +43,7 @@ const dictionary = {
     managedModel: "平台托管模型", personalModels: "我的模型连接", addModel: "添加模型连接", connectionName: "连接名称", providerTemplate: "接口类型", apiKey: "API Key", saveConnection: "安全保存",
     keyPrivacy: "API Key 会加密保存，提交后仅显示末四位，平台和管理员都无法再次查看明文。", noConnections: "尚未添加个人模型连接", testConnection: "测试", setDefault: "设为默认", disable: "停用", enable: "启用", rotateKey: "更换 Key", deleteConnection: "删除",
     selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用",
+    runtimeReady: "模型服务运行正常", managedDescription: "无需配置 API Key，登录后即可在支持的工具中使用。", connectionCount: "个人连接", enabledTools: "可用工具", addFirstConnection: "添加第一个连接", connectionsHint: "接入你自己的模型账户，并自由设置工具的运行来源。", toolRouting: "工具运行方式", toolRoutingHint: "每个工具都明确显示当前处理方式。", close: "关闭",
   },
   en: {
     nav: { dashboard: "Dashboard", marketplace: "Tool Marketplace", runtime: "AI Runtime", credits: "Credits", billing: "Billing", tasks: "Task Center", files: "File Center", account: "Account" },
@@ -50,7 +52,7 @@ const dictionary = {
     creditsBalance: "Available credits", taskCount: "Total tasks", fileCount: "Files", completed: "Completed", noTasks: "No tasks yet", noTasksHint: "Choose a tool in the marketplace to create your first task.",
     marketplace: "Tool Marketplace", marketplaceSub: "Discover AI tools connected to OneShowTools Platform.", all: "All", image: "Image", document: "Documents", audio: "Audio", writing: "Writing",
     ready: "Ready", config: "Setup required", creditsUnit: "credits / run", run: "Open tool", runTitle: "Create AI task", inputLabel: "Task content", inputPlaceholder: "Enter the text or instructions to process…",
-    attach: "Attach files", createTask: "Create task", taskCreated: "Task created. Track it in Task Center.", runtime: "AI Runtime", runtimeSub: "Manage model providers and runtime availability for every tool.",
+    attach: "Attach files", createTask: "Create task", taskCreated: "Task created. Track it in Task Center.", runtime: "AI Runtime", runtimeSub: "Manage the hosted model, personal connections, and tool routing.",
     provider: "Provider", model: "Model", status: "Status", configured: "Configured", notConfigured: "Not configured", runtimeNote: "Unconfigured runtimes never fabricate results. Tasks retain their real state and credits are refunded.",
     credits: "Credits", creditsSub: "Every grant and charge is recorded in a traceable ledger.", ledger: "Credit ledger", amount: "Change", balance: "Balance", description: "Description", time: "Time",
     billing: "Billing", billingSub: "Manage plans, payment capability, and subscription status.", currentPlan: "Current plan", free: "Free", monthly: "month", subscribe: "Subscribe to Pro",
@@ -75,6 +77,7 @@ const dictionary = {
     managedModel: "Managed model", personalModels: "My model connections", addModel: "Add model connection", connectionName: "Connection name", providerTemplate: "API type", apiKey: "API Key", saveConnection: "Save securely",
     keyPrivacy: "API keys are encrypted and cannot be displayed again. Only the last four characters remain visible.", noConnections: "No personal model connections yet", testConnection: "Test", setDefault: "Set default", disable: "Disable", enable: "Enable", rotateKey: "Rotate key", deleteConnection: "Delete",
     selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready",
+    runtimeReady: "Model service operational", managedDescription: "No API key setup required. Use it immediately in supported tools.", connectionCount: "Personal connections", enabledTools: "Available tools", addFirstConnection: "Add your first connection", connectionsHint: "Connect your own model account and choose how supported tools run.", toolRouting: "Tool routing", toolRoutingHint: "See the processing route for every tool at a glance.", close: "Close",
   },
 };
 
@@ -361,6 +364,13 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
   const t = dictionary[locale];
   const [form, setForm] = useState({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
   const [busy, setBusy] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  useEffect(() => {
+    if (!showForm) return undefined;
+    const closeOnEscape = (event) => { if (event.key === "Escape") setShowForm(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [showForm]);
   if (!data) return <Loading locale={locale} />;
   const mutate = async (path, options, success) => {
     setBusy(true);
@@ -368,22 +378,30 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
       await api(path, options);
       await onRefresh();
       onNotice(success);
+      return true;
     } catch {
       onNotice(t.error);
+      return false;
     } finally {
       setBusy(false);
     }
   };
   const submit = async (event) => {
     event.preventDefault();
-    await mutate("/api/model-connections", jsonOptions("POST", form), t.configured);
-    setForm({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
+    const saved = await mutate("/api/model-connections", jsonOptions("POST", form), t.configured);
+    if (saved) {
+      setForm({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
+      setShowForm(false);
+    }
   };
-  return <div className="page-stack"><PageHeading title={t.runtime} subtitle={t.runtimeSub} /><div className="notice-card"><LockKey size={21} /><p>{t.keyPrivacy}</p></div>
-    <section><SectionTitle title={t.managedModel} /><div className="provider-grid single"><article className="provider-card surface"><span className="provider-logo"><Sparkle size={23} /></span><div><h3>{data.managed.name}</h3><p>{t.managedModel}</p></div><span className={`config-status ${data.managed.configured ? "on" : ""}`}>{data.managed.configured ? <Check size={15} /> : <Warning size={15} />}{data.managed.configured ? t.configured : t.notConfigured}</span></article></div></section>
-    <section><SectionTitle title={t.personalModels} /><div className="model-connections-layout"><div className="connection-list">{data.connections.length ? data.connections.map((connection) => <article className="connection-card surface" key={connection.id}><div><h3>{connection.name}{connection.isDefault && <span className="default-badge">{locale === "en" ? "Default" : "默认"}</span>}</h3><p>{connection.modelId} · {connection.keyHint}</p><small>{connection.lastTestStatus || (locale === "en" ? "Not tested" : "尚未测试")}</small></div><div className="connection-actions"><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}/test`, { method: "POST" }, t.connectionHealthy)}>{t.testConnection}</button>{!connection.isDefault && connection.status === "active" && <button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { isDefault: true }), t.configured)}>{t.setDefault}</button>}<button disabled={busy} onClick={() => { const apiKey = window.prompt(t.apiKey); if (apiKey) mutate(`/api/model-connections/${connection.id}/rotate`, jsonOptions("POST", { apiKey }), t.configured); }}>{t.rotateKey}</button><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { status: connection.status === "active" ? "disabled" : "active" }), t.configured)}>{connection.status === "active" ? t.disable : t.enable}</button><button className="danger-link" disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, { method: "DELETE" }, t.deleteConnection)}>{t.deleteConnection}</button></div></article>) : <div className="surface empty-connection">{t.noConnections}</div>}</div>
-      {data.byokEnabled && <form className="surface connection-form" onSubmit={submit}><h3>{t.addModel}</h3><label><span>{t.connectionName}</span><input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label><span>{t.providerTemplate}</span><select value={form.providerTemplate} onChange={(event) => setForm({ ...form, providerTemplate: event.target.value })}>{data.supportedTemplates.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>{t.model}</span><input required value={form.modelId} onChange={(event) => setForm({ ...form, modelId: event.target.value })} /></label><label><span>{t.apiKey}</span><input required type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></label><button className="primary-button" disabled={busy}>{busy ? <SpinnerGap className="spin" size={18} /> : <LockKey size={18} />}{t.saveConnection}</button></form>}</div></section>
-    <section><SectionTitle title={t.marketplace} /><div className="surface runtime-table"><div className="table-head"><span>{t.marketplace}</span><span>{t.provider}</span><span>{t.status}</span></div>{data.tools.map((tool) => <div className="table-row" key={tool.id}><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><span>{["copy-polish", "pdf-summary"].includes(tool.slug) ? "OneShowModel" : t.localMode}</span><StatusPill status={tool.runtimeStatus} locale={locale} /></div>)}</div></section>
+  return <div className="page-stack runtime-page"><PageHeading title={t.runtime} subtitle={t.runtimeSub} action={data.byokEnabled ? <button className="primary-button" onClick={() => setShowForm(true)}><Plus size={18} />{t.addModel}</button> : null} />
+    <article className="runtime-hero surface"><div className="runtime-identity"><span className="runtime-hero-icon"><Sparkle size={27} weight="fill" /></span><div><span className="runtime-kicker">{t.managedModel}</span><h2>{data.managed.name}</h2><p>{t.managedDescription}</p></div></div><div className="runtime-health"><span className={`runtime-live-dot ${data.managed.configured ? "on" : ""}`} /><div><strong>{data.managed.configured ? t.runtimeReady : t.notConfigured}</strong><small>{data.managed.configured ? t.online : t.runtimeNote}</small></div></div><div className="runtime-stats"><div><strong>{data.connections.length}</strong><span>{t.connectionCount}</span></div><div><strong>{data.tools.length}</strong><span>{t.enabledTools}</span></div></div></article>
+    <div className="runtime-security-note"><ShieldCheck size={18} weight="fill" /><span>{t.keyPrivacy}</span></div>
+    <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.personalModels}</h2><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addModel}</button>}</div>
+      <div className="connection-list">{data.connections.length ? data.connections.map((connection) => <article className="connection-card surface" key={connection.id}><span className="connection-icon"><PlugsConnected size={21} /></span><div className="connection-copy"><h3>{connection.name}{connection.isDefault && <span className="default-badge">{locale === "en" ? "Default" : "默认"}</span>}</h3><p>{connection.modelId} · {connection.keyHint}</p><small><span className={`connection-state ${connection.status}`} />{connection.lastTestStatus || (locale === "en" ? "Not tested" : "尚未测试")}</small></div><div className="connection-actions"><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}/test`, { method: "POST" }, t.connectionHealthy)}>{t.testConnection}</button>{!connection.isDefault && connection.status === "active" && <button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { isDefault: true }), t.configured)}>{t.setDefault}</button>}<button disabled={busy} onClick={() => { const apiKey = window.prompt(t.apiKey); if (apiKey) mutate(`/api/model-connections/${connection.id}/rotate`, jsonOptions("POST", { apiKey }), t.configured); }}>{t.rotateKey}</button><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { status: connection.status === "active" ? "disabled" : "active" }), t.configured)}>{connection.status === "active" ? t.disable : t.enable}</button><button className="danger-link" disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, { method: "DELETE" }, t.deleteConnection)}>{t.deleteConnection}</button></div></article>) : <div className="surface empty-connection"><span><PlugsConnected size={25} /></span><div><h3>{t.noConnections}</h3><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addFirstConnection}</button>}</div>}</div>
+    </section>
+    <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.toolRouting}</h2><p>{t.toolRoutingHint}</p></div></div><div className="runtime-tool-grid">{data.tools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const managed = ["copy-polish", "pdf-summary"].includes(tool.slug); return <article className="runtime-tool-card surface" key={tool.id}><span className={`tool-icon compact ${tool.category}`}><Icon size={20} /></span><div><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><small>{managed ? "OneShowModel" : t.localMode}</small></div><StatusPill status={tool.runtimeStatus} locale={locale} /></article>; })}</div></section>
+    {showForm && <div className="runtime-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false); }}><div className="runtime-dialog surface" role="dialog" aria-modal="true" aria-labelledby="runtime-dialog-title"><header><div><span className="runtime-dialog-icon"><PlugsConnected size={21} /></span><div><h2 id="runtime-dialog-title">{t.addModel}</h2><p>{t.keyPrivacy}</p></div></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label={t.close}><X size={19} /></button></header><form className="connection-form" onSubmit={submit}><label><span>{t.connectionName}</span><input autoFocus required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label><span>{t.providerTemplate}</span><select value={form.providerTemplate} onChange={(event) => setForm({ ...form, providerTemplate: event.target.value })}>{data.supportedTemplates.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>{t.model}</span><input required value={form.modelId} onChange={(event) => setForm({ ...form, modelId: event.target.value })} /></label><label><span>{t.apiKey}</span><input required type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></label><footer><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>{t.close}</button><button className="primary-button" disabled={busy}>{busy ? <SpinnerGap className="spin" size={18} /> : <LockKey size={18} />}{t.saveConnection}</button></footer></form></div></div>}
   </div>;
 }
 
