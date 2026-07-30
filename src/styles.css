@@ -253,9 +253,10 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .empty-connection > span { width: 46px; height: 46px; border-radius: 13px; display: inline-flex; align-items: center; justify-content: center; color: #5e83b9; background: #f0f5fc; }
 .empty-connection h3 { margin: 0 0 5px; color: #33435c; font-size: 13px; }
 .empty-connection p { margin: 0; font-size: 10px; }
-.runtime-tool-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.runtime-tool-grid { display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); gap: 10px; }
 .runtime-tool-card { min-height: 72px; padding: 13px 15px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; }
-.runtime-tool-card.configurable { min-height: 86px; }
+.runtime-tool-card.configurable { min-height: 86px; grid-column: span 6; }
+.runtime-tool-card.local { grid-column: span 4; }
 .runtime-tool-card strong, .runtime-tool-card small { display: block; }
 .runtime-tool-card strong { margin-bottom: 4px; color: var(--navy); font-size: 11px; }
 .runtime-tool-card small { color: #8792a3; font-size: 9px; }
@@ -473,6 +474,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .runtime-identity { grid-column: 1 / -1; }
   .runtime-health { padding-left: 0; border-left: 0; }
   .runtime-tool-grid { grid-template-columns: 1fr; }
+  .runtime-tool-card.configurable, .runtime-tool-card.local { grid-column: 1 / -1; }
   .runtime-tool-actions { flex-wrap: wrap; justify-content: flex-end; }
   .guest-header nav { display: none; }
   .guest-header { grid-template-columns: 1fr auto; padding: 0 20px; }
