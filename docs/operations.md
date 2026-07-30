@@ -15,8 +15,8 @@ support procedures, and legal review are complete.
 Google sign-in is independently controlled by `GOOGLE_AUTH_ENABLED`. Create a
 Google OAuth web client and configure these exact callback URLs:
 
-- Local: `http://localhost:5173/api/auth/callback/google`
-- Production: `https://oneshowtools.com/api/auth/callback/google`
+- Local: `http://localhost:5173/api/auth/google/callback`
+- Production: `https://oneshowtools.com/api/auth/google/callback`
 
 Store the Client ID and Client Secret as hosted secrets. Google account linking
 is allowed only when the provider returns the same verified email; accounts
