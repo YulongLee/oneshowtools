@@ -183,6 +183,16 @@ test("production cookie mutations reject cross-origin requests", async () => {
   process.env.APP_URL = "http://localhost";
 });
 
+test("Google authentication routes are not exposed", async () => {
+  const start = await handleApi(request("/api/auth/google/start"));
+  const callback = await handleApi(request("/api/auth/google/callback?code=test&state=test"));
+  assert.equal(start.status, 404);
+  assert.equal(callback.status, 404);
+  assert.equal((await start.json()).error.code, "NOT_FOUND");
+  const health = await (await handleApi(request("/api/health"))).json();
+  assert.equal(Object.hasOwn(health, "googleAuthEnabled"), false);
+});
+
 test.after(async () => {
   await rm(dataDirectory, { recursive: true, force: true });
 });

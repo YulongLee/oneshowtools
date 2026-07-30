@@ -15,22 +15,6 @@ export function createAuth(env, config, executionCtx) {
     secret: config.authSecret,
     trustedOrigins: [config.appUrl],
     database: drizzleAdapter(db, { provider: "sqlite", schema }),
-    socialProviders: config.google.enabled
-      ? {
-          google: {
-            clientId: config.google.clientId,
-            clientSecret: config.google.clientSecret,
-            prompt: "select_account",
-          },
-        }
-      : {},
-    account: {
-      accountLinking: {
-        enabled: true,
-        disableImplicitLinking: false,
-        allowDifferentEmails: false,
-      },
-    },
     emailAndPassword: {
       enabled: true,
       disableSignUp: !config.registrationEnabled,

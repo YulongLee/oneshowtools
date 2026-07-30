@@ -3,8 +3,8 @@
 ### Requirement: Account entry point
 
 The portal SHALL provide visible, accessible, bilingual entry points for
-registration, verification, sign-in, recovery, and Google authentication when
-the corresponding feature is available.
+registration, verification, sign-in, and recovery when the corresponding
+feature is available.
 
 #### Scenario: Visitor opens account access
 

@@ -190,107 +190,6 @@ function createLoginResponse(userId, request, status = 200) {
   return json({ user: cleanUser(user) }, status, { "set-cookie": sessionCookie(token) });
 }
 
-const googleConfigured = (request) => getServerConfig(request.url).googleEnabled;
-
-function googleRedirectUri(request) {
-  const appUrl = process.env.APP_URL || new URL(request.url).origin;
-  return `${appUrl.replace(/\/$/, "")}/api/auth/google/callback`;
-}
-
-function startGoogleAuth(request) {
-  if (!googleConfigured(request)) return fail("GOOGLE_AUTH_NOT_CONFIGURED", 503);
-  const state = createSessionToken();
-  const authorization = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  authorization.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
-  authorization.searchParams.set("redirect_uri", googleRedirectUri(request));
-  authorization.searchParams.set("response_type", "code");
-  authorization.searchParams.set("scope", "openid email profile");
-  authorization.searchParams.set("state", state);
-  authorization.searchParams.set("prompt", "select_account");
-  const secure = process.env.APP_URL?.startsWith("https://") ? "; Secure" : "";
-  return new Response(null, {
-    status: 302,
-    headers: {
-      location: authorization.toString(),
-      "set-cookie": `ost_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secure}`,
-    },
-  });
-}
-
-async function finishGoogleAuth(request) {
-  if (!googleConfigured(request)) return fail("GOOGLE_AUTH_NOT_CONFIGURED", 503);
-  const url = new URL(request.url);
-  const cookies = parseCookies(request.headers.get("cookie") || "");
-  if (!url.searchParams.get("code") || !url.searchParams.get("state") || cookies.ost_oauth_state !== url.searchParams.get("state")) {
-    return fail("INVALID_OAUTH_STATE", 400);
-  }
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code: url.searchParams.get("code"),
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: googleRedirectUri(request),
-      grant_type: "authorization_code",
-    }),
-  });
-  if (!tokenResponse.ok) return fail("GOOGLE_TOKEN_EXCHANGE_FAILED", 502);
-  const token = await tokenResponse.json();
-  const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-    headers: { authorization: `Bearer ${token.access_token}` },
-  });
-  if (!profileResponse.ok) return fail("GOOGLE_PROFILE_FAILED", 502);
-  const profile = await profileResponse.json();
-  const email = String(profile.email || "").trim().toLowerCase();
-  if (!email || !profile.email_verified) return fail("GOOGLE_EMAIL_UNVERIFIED", 403);
-
-  let user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-  if (!user) {
-    const id = randomUUID();
-    const timestamp = Date.now();
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      db.prepare(`
-        INSERT INTO users (id, name, email, password_hash, locale, email_verified, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'zh-CN', 1, ?, ?)
-      `).run(id, String(profile.name || email.split("@")[0]).slice(0, 80), email, `oauth:google:${randomUUID()}`, timestamp, timestamp);
-      db.prepare(`
-        INSERT INTO credit_ledger
-        (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
-        VALUES (?, ?, 'welcome', 200, '新用户欢迎积分', 'New account welcome credits', 'user', ?, ?)
-      `).run(randomUUID(), id, id, timestamp);
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-    user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-    audit(id, "user.register.google", "user", id);
-  } else {
-    if (!user.email_verified) return fail("GOOGLE_LINK_REQUIRES_VERIFIED_ACCOUNT", 409);
-  }
-  const providerAccountId = String(profile.sub || "");
-  if (!providerAccountId) return fail("GOOGLE_IDENTITY_INVALID", 403);
-  const linked = db.prepare("SELECT user_id FROM provider_accounts WHERE provider = 'google' AND provider_account_id = ?")
-    .get(providerAccountId);
-  if (linked && linked.user_id !== user.id) return fail("GOOGLE_IDENTITY_CONFLICT", 409);
-  db.prepare(`
-    INSERT OR IGNORE INTO provider_accounts
-    (id, user_id, provider, provider_account_id, provider_email, created_at)
-    VALUES (?, ?, 'google', ?, ?, ?)
-  `).run(randomUUID(), user.id, providerAccountId, email, Date.now());
-  const loginResponse = createLoginResponse(user.id, request);
-  audit(user.id, "user.login.google", "user", user.id);
-  return new Response(null, {
-    status: 302,
-    headers: {
-      location: "/",
-      "set-cookie": loginResponse.headers.get("set-cookie"),
-    },
-  });
-}
-
 async function login(request) {
   const data = await body(request);
   const email = String(data.email || "").trim().toLowerCase();
@@ -833,7 +732,6 @@ export async function handleApi(request) {
     ok: true,
     database: "sqlite",
     registrationEnabled: config.registrationEnabled,
-    googleAuthEnabled: config.googleEnabled,
     billingEnabled: config.billingEnabled,
     accountDeletionEnabled: config.accountDeletionEnabled,
     emailEnabled: config.emailConfigured,
@@ -851,8 +749,7 @@ export async function handleApi(request) {
   if (path === "/api/auth/resend-verification" && request.method === "POST") return resendVerification(request);
   if (path === "/api/auth/forgot-password" && request.method === "POST") return requestPasswordReset(request);
   if (path === "/api/auth/reset-password" && request.method === "POST") return resetPassword(request);
-  if (path === "/api/auth/google/start" && request.method === "GET") return startGoogleAuth(request);
-  if (path === "/api/auth/google/callback" && request.method === "GET") return finishGoogleAuth(request);
+  if (path.startsWith("/api/auth/google/")) return fail("NOT_FOUND", 404);
   if (path === "/api/auth/logout" && request.method === "POST") {
     const token = parseCookies(request.headers.get("cookie") || "").ost_session;
     if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashToken(token));

@@ -310,12 +310,7 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .auth-modal .brand-lockup { height: auto; padding: 0; justify-content: center; }
 .auth-modal h2 { margin: 25px 0 7px; text-align: center; font-size: 23px; }
 .modal-subtitle { margin-bottom: 20px; color: var(--muted); text-align: center; font-size: 12px; }
-.google-button { width: 100%; height: 43px; border: 1px solid #dbe2eb; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #2f3b4f; background: #fff; font-weight: 600; }
-.google-button:disabled { cursor: not-allowed; opacity: .55; }
 .config-caption { margin-top: 6px; display: block; color: #9a6a28; text-align: center; font-size: 9px; }
-.auth-divider { margin: 19px 0; display: flex; align-items: center; color: #9aa4b4; font-size: 10px; }
-.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-.auth-divider span { padding: 0 10px; }
 .auth-form { display: grid; gap: 14px; }
 .auth-form label, .field-label { display: grid; gap: 7px; color: #465268; font-size: 11px; font-weight: 600; }
 .auth-form input, .auth-form select, textarea { width: 100%; border: 1px solid #dce3ec; border-radius: 8px; outline: 0; color: var(--navy); background: #fff; }

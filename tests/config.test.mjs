@@ -23,18 +23,3 @@ test("registration can be disabled without email credentials", () => {
   const config = getConfig({ REGISTRATION_ENABLED: "false", TOOL_CREDENTIAL_PEPPER: "x" }, "https://example.test/");
   assert.equal(config.registrationEnabled, false);
 });
-
-test("Google sign-in is opt-in and requires both OAuth credentials", () => {
-  assert.equal(getConfig(base, "https://example.test/").google.enabled, false);
-  assert.throws(
-    () => getConfig({ ...base, GOOGLE_AUTH_ENABLED: "true" }, "https://example.test/"),
-    /GOOGLE_CLIENT_ID/,
-  );
-  const config = getConfig({
-    ...base,
-    GOOGLE_AUTH_ENABLED: "true",
-    GOOGLE_CLIENT_ID: "google-client-id",
-    GOOGLE_CLIENT_SECRET: "google-client-secret",
-  }, "https://example.test/");
-  assert.equal(config.google.enabled, true);
-});

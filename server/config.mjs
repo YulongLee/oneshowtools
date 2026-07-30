@@ -25,7 +25,6 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
     emailProvider === "smtp" ? smtpConfigured : resendConfigured
   );
   const developmentEmail = !production && enabled("ALLOW_DEV_EMAIL_DELIVERY", false);
-  const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   const stripeConfigured = Boolean(
     process.env.STRIPE_SECRET_KEY
     && process.env.STRIPE_WEBHOOK_SECRET
@@ -40,7 +39,6 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
     emailConfigured,
     developmentEmail,
     registrationEnabled: enabled("REGISTRATION_ENABLED", false) && (emailConfigured || developmentEmail),
-    googleEnabled: enabled("GOOGLE_AUTH_ENABLED", false) && googleConfigured,
     billingEnabled: enabled("BILLING_ENABLED", false) && stripeConfigured,
     accountDeletionEnabled: enabled("ACCOUNT_DELETION_ENABLED", false),
   });
@@ -51,7 +49,6 @@ export function validateServerConfig(config) {
   if (config.production && !config.appUrl.startsWith("https://")) errors.push("APP_URL_HTTPS_REQUIRED");
   if (!config.emailProviderSupported) errors.push("EMAIL_PROVIDER_UNSUPPORTED");
   if (process.env.REGISTRATION_ENABLED === "true" && !config.registrationEnabled) errors.push("EMAIL_PROVIDER_REQUIRED");
-  if (process.env.GOOGLE_AUTH_ENABLED === "true" && !config.googleEnabled) errors.push("GOOGLE_CREDENTIALS_REQUIRED");
   if (process.env.BILLING_ENABLED === "true" && !config.billingEnabled) errors.push("STRIPE_CONFIGURATION_REQUIRED");
   return errors;
 }

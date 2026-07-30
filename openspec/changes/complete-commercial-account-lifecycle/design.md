@@ -11,8 +11,7 @@ cookie sessions, but its commercial account lifecycle is incomplete:
 - Verification, resend, password recovery, password change, email change,
   session listing/revocation, export, deletion, CSRF/origin checks, and auth rate
   limits are absent.
-- Google OAuth code exists, but production credentials are not configured and
-  provider identities are not stored separately.
+- Social sign-in is outside the approved public account scope.
 - Stripe Checkout creation exists, but production billing is disabled and there
   is no webhook, Customer Portal, top-up, invoice, refund, dispute, or
   reconciliation implementation.
@@ -28,7 +27,7 @@ outputs, and inference workflows.
 
 **Goals:**
 
-- Make email and Google authentication safe for a public commercial service.
+- Make verified email and password authentication safe for a public commercial service.
 - Give customers complete bilingual profile, security, privacy, subscription,
   invoice, and credit controls.
 - Reconcile Stripe events into normalized platform subscription and ledger
@@ -61,7 +60,7 @@ user-scoped authorization.
 
 **Alternative considered:** hardening the custom scrypt/session implementation
 would avoid migration work, but would require maintaining verification,
-recovery, OAuth linking, replay protection, and session-management security
+recovery and session-management security
 that a maintained framework already provides.
 
 ### 2. Separate auth identity from platform profile and commercial state
@@ -71,16 +70,15 @@ tokens. Platform tables own display name, locale, account status, deletion
 state, plan, subscriptions, credits, usage, and audit records. Stable opaque
 user IDs join these domains.
 
-Google linking requires a stored provider-account row and the same verified
-email. The callback must validate state and identity claims; a Google callback
-never implicitly overwrites a platform email or merges different users.
+Social-provider routes remain unavailable. Additive provider-account tables are
+retained only for migration compatibility and possible future reviewed changes.
 
 ### 3. Introduce explicit one-time token and security-event storage
 
 Verification and reset tokens are stored only as hashes with purpose, user,
 expiry, and consumption time. Rate limits apply by normalized email hash and
 network identity. Security events store action, result, correlation ID, coarse
-client metadata, and timestamps, never raw passwords, tokens, OAuth codes, or
+client metadata, and timestamps, never raw passwords, tokens, or
 payment credentials.
 
 All cookie-authenticated mutation routes require an allowed origin and CSRF
@@ -112,8 +110,7 @@ unique idempotency identity; balances are never overwritten.
 
 The frontend uses versioned same-origin endpoints for:
 
-- registration, verification, resend, sign-in, recovery, reset, Google start
-  and callback, and sign-out;
+- registration, verification, resend, sign-in, recovery, reset, and sign-out;
 - profile and locale updates, password/email changes, session listing and
   revocation;
 - export request/status/download and deletion request/confirmation/cancellation;
@@ -139,7 +136,7 @@ window and are then revoked.
 
 ### 8. Gate commercial capabilities independently
 
-Registration, Google sign-in, Stripe checkout, and destructive account actions
+Registration, Stripe checkout, and destructive account actions
 have separate flags. Startup configuration validates provider secrets,
 production HTTPS, cookie settings, migrations, webhook secret, price mappings,
 and callback URLs.
@@ -155,8 +152,6 @@ evidence.
   state, sessions, subscriptions, entitlements, credits, platform usage, export
   and deletion state, security and audit events.
 - **Email provider:** delivery execution and delivery telemetry only.
-- **Google:** external identity assertion only; it does not own platform
-  entitlement or profile truth.
 - **Stripe:** payment execution and sensitive payment credentials; the platform
   stores only identifiers and normalized reconciliation state.
 - **Individual AI tools:** tool inputs, outputs, prompts, models, and inference
@@ -169,9 +164,6 @@ evidence.
   legacy sessions after the announced window.
 - **Email delivery blocks account access** → configure a verified provider,
   monitor bounces, provide rate-limited resend, and keep generic responses.
-- **OAuth account takeover through unsafe linking** → require verified matching
-  email, explicit provider rows, full callback claim validation, and security
-  notifications.
 - **Webhook duplication or reordering corrupts commercial state** → persist
   event IDs, normalize events, use unique mutation keys and transactions, and
   run provider-to-platform reconciliation jobs.
@@ -192,19 +184,19 @@ evidence.
    framework auth tables, and legacy compatibility without changing public UX.
 3. Deploy bilingual verification, recovery, profile, security, export, deletion,
    and Account Center UI behind flags.
-4. Configure and verify transactional email and Google in a staging/test
-   environment; run callback, replay, enumeration, expiry, and revocation tests.
+4. Configure and verify transactional email in a staging/test environment; run
+   enumeration, expiry, and revocation tests.
 5. Configure Stripe test products, prices, webhook, and portal; reconcile
    subscription, top-up, duplicate, delayed, refund, dispute, and failure cases.
 6. Migrate legacy identities and sessions, verify every user balance and
    ownership relation, then enable email verification for new registration.
-7. Enable Google, checkout, and destructive account controls independently only
+7. Enable checkout and destructive account controls independently only
    after their acceptance gates pass.
 8. Run production smoke tests with synthetic accounts and test-mode payments,
    verify monitoring, record rollback evidence, and then deliberately enable
    approved live capabilities.
 
-Rollback disables new registration, Google sign-in, checkout, and new credit
+Rollback disables new registration, checkout, and new credit
 reservations while leaving public discovery available. It does not delete
 users, provider events, subscriptions, ledger entries, or audit records.
 

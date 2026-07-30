@@ -2,8 +2,8 @@
 
 ### Requirement: Independent commercial feature gates
 
-The platform SHALL independently gate email registration, Google sign-in,
-checkout creation, and destructive account actions without disabling public
+The platform SHALL independently gate email registration, checkout creation,
+and destructive account actions without disabling public
 tool discovery.
 
 #### Scenario: Provider configuration is incomplete
@@ -28,7 +28,7 @@ conditions are invalid.
 ### Requirement: Commercial observability
 
 The platform SHALL expose redacted operational signals and alerts for
-authentication abuse, email delivery, OAuth callbacks, webhook failures,
+authentication abuse, email delivery, webhook failures,
 reconciliation delays, ledger invariants, and deletion/export jobs.
 
 #### Scenario: Reconciliation repeatedly fails

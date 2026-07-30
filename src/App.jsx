@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowClockwise, ArrowRight, Bell, Check, CheckCircle, Clock, CloudArrowUp,
-  Coins, CreditCard, Database, File, FilePdf, FolderOpen, GoogleLogo, GridFour,
+  Coins, CreditCard, Database, File, FilePdf, FolderOpen, GridFour,
   House, ImageSquare, ListChecks, LockKey, MagicWand, MagnifyingGlass, Microphone,
   ArrowLeft, Copy, DownloadSimple, Play, RocketLaunch, SignOut, Sparkle, SpinnerGap,
   SquaresFour, StopCircle, Translate, Trash, User, UserCircle, Warning, Wrench, X,
@@ -26,8 +26,8 @@ const dictionary = {
     files: "File Center", filesSub: "上传、下载和管理 AI 任务使用的真实文件。", upload: "上传文件", uploadHint: "单个文件最大 25MB", fileName: "文件名", size: "大小", download: "下载", delete: "删除", emptyFiles: "还没有上传文件",
     account: "用户系统", accountSub: "管理你的 OneShowTools Platform 账户与语言偏好。", emailStatus: "邮箱状态", pendingVerify: "待验证", verified: "已验证", memberSince: "注册时间",
     system: "平台状态", database: "SQLite 数据库", online: "运行正常", signInTitle: "登录 OneShowTools", signUpTitle: "创建 OneShowTools 账户", authSub: "一个账户，统一使用所有 AI 工具。",
-    name: "姓名", email: "邮箱", password: "密码", passwordHint: "至少 10 位", google: "使用 Google 继续", or: "或使用邮箱", noAccount: "还没有账户？", hasAccount: "已有账户？",
-    invalid: "请检查输入信息后重试。", googleDisabled: "Google 登录尚未配置。", welcome: "登录后使用完整平台", welcomeSub: "注册即可获得真实记录的 200 欢迎积分。",
+    name: "姓名", email: "邮箱", password: "密码", passwordHint: "至少 10 位", noAccount: "还没有账户？", hasAccount: "已有账户？",
+    invalid: "请检查输入信息后重试。", welcome: "登录后使用完整平台", welcomeSub: "注册即可获得真实记录的 200 欢迎积分。",
     recentEmpty: "登录后，这里会显示你的真实任务和账户状态。", signInAction: "登录或注册", planPro: "专业版", planDesc: "适合持续使用多个 AI 工具的个人与团队。",
     error: "操作失败，请稍后重试。", insufficient: "积分不足，请先充值或订阅。", loading: "正在加载真实数据…", inputRequired: "请输入任务内容，或选择一个文件。", noResults: "没有找到匹配的工具",
     backToMarket: "返回工具市场", toolWorkspace: "工具工作区", chooseFile: "选择文件", selectedFile: "已选择", startProcessing: "开始处理", processing: "正在处理",
@@ -56,8 +56,8 @@ const dictionary = {
     files: "File Center", filesSub: "Upload, download, and manage real files used by AI tasks.", upload: "Upload file", uploadHint: "25MB maximum per file", fileName: "File name", size: "Size", download: "Download", delete: "Delete", emptyFiles: "No files uploaded yet",
     account: "User system", accountSub: "Manage your OneShowTools Platform account and language.", emailStatus: "Email status", pendingVerify: "Pending verification", verified: "Verified", memberSince: "Member since",
     system: "Platform status", database: "SQLite database", online: "Operational", signInTitle: "Sign in to OneShowTools", signUpTitle: "Create your OneShowTools account", authSub: "One account for every AI tool.",
-    name: "Name", email: "Email", password: "Password", passwordHint: "10 characters minimum", google: "Continue with Google", or: "or use email", noAccount: "New to OneShowTools?", hasAccount: "Already have an account?",
-    invalid: "Check your details and try again.", googleDisabled: "Google sign-in is not configured.", welcome: "Sign in for the complete platform", welcomeSub: "New accounts receive 200 credits recorded in the real ledger.",
+    name: "Name", email: "Email", password: "Password", passwordHint: "10 characters minimum", noAccount: "New to OneShowTools?", hasAccount: "Already have an account?",
+    invalid: "Check your details and try again.", welcome: "Sign in for the complete platform", welcomeSub: "New accounts receive 200 credits recorded in the real ledger.",
     recentEmpty: "Your real tasks and account state will appear here after sign-in.", signInAction: "Sign in or sign up", planPro: "Pro", planDesc: "For individuals and teams using multiple AI tools regularly.",
     error: "Something went wrong. Please try again.", insufficient: "Not enough credits. Top up or subscribe first.", loading: "Loading live data…", inputRequired: "Enter task content or select a file.", noResults: "No matching tools found",
     backToMarket: "Back to marketplace", toolWorkspace: "Tool workspace", chooseFile: "Choose file", selectedFile: "Selected", startProcessing: "Start processing", processing: "Processing",
@@ -112,7 +112,7 @@ function EmptyState({ icon: Icon = ListChecks, title, body, action }) {
   return <div className="empty-state"><span><Icon size={28} /></span><h3>{title}</h3>{body && <p>{body}</p>}{action}</div>;
 }
 
-function AuthDialog({ locale, googleEnabled, registrationEnabled, onClose, onAuthenticated }) {
+function AuthDialog({ locale, registrationEnabled, onClose, onAuthenticated }) {
   const t = dictionary[locale];
   const resetToken = new URLSearchParams(location.search).get("resetToken");
   const [mode, setMode] = useState(resetToken ? "reset" : "login");
@@ -156,8 +156,6 @@ function AuthDialog({ locale, googleEnabled, registrationEnabled, onClose, onAut
   return <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="auth-modal" role="dialog" aria-modal="true">
     <button className="icon-button modal-close" onClick={onClose}><X size={20} /></button><Brand />
     <h2>{title}</h2><p className="modal-subtitle">{mode === "pending" ? t.verificationPendingBody : mode === "forgot" ? t.recoveryBody : t.authSub}</p>
-    {["login", "signup"].includes(mode) && <><button className="google-button" type="button" disabled={!googleEnabled} onClick={() => googleEnabled ? location.assign("/api/auth/google/start") : setMessage(t.googleDisabled)}><GoogleLogo size={20} weight="bold" />{t.google}</button>
-      {!googleEnabled && <span className="config-caption">{t.googleDisabled}</span>}<div className="auth-divider"><span>{t.or}</span></div></>}
     {mode === "pending" ? <div className="auth-form"><button className="secondary-button full" disabled={busy || !form.email} onClick={resend}>{t.resendVerification}</button><button className="primary-button full" onClick={() => setMode("login")}>{t.login}</button>{message && <p className="form-note">{message}</p>}</div> : <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
       {mode !== "reset" && <label>{t.email}<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>}
       {!["forgot"].includes(mode) && <label>{mode === "reset" ? t.newPassword : t.password}<input type="password" required minLength={10} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>{t.passwordHint}</small></label>}
@@ -670,7 +668,7 @@ export function App() {
   if (session === undefined) return <Loading locale={locale} />;
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
   if (!session && routeSlug && !routeTool) return <Loading locale={locale} />;
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} googleEnabled={health.googleAuthEnabled} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {

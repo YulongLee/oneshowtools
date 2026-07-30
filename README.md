@@ -50,8 +50,6 @@ use. The platform runs without provider keys, but AI tasks remain in
 - `OPENAI_API_KEY` enables OpenAI-backed tools.
 - `TOOL_RUNTIME_BASE_URL` connects independent tool runtimes.
 - `STRIPE_SECRET_KEY` and `STRIPE_PRO_PRICE_ID` enable real subscription checkout.
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` enable the real Google OAuth
-  redirect and callback flow.
 
 ## Verification
 

@@ -28,7 +28,6 @@ async function handleApi(request, env, executionCtx, config, url) {
     return json({
       ok: true,
       registrationEnabled: config.registrationEnabled,
-      googleAuthEnabled: config.google.enabled,
       billingEnabled: config.billingEnabled,
     });
   }

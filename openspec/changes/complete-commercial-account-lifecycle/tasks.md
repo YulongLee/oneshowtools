@@ -16,13 +16,9 @@
 - [x] 2.6 Implement production cookie hardening, session rotation, origin validation, CSRF protection, and redacted request correlation
 - [x] 2.7 Implement IP and account-scoped rate limits plus security-event audit records for registration, resend, sign-in, recovery, reset, and sensitive account mutations
 
-## 3. Google OAuth and Provider Identity
+## 3. Authentication Scope Decision
 
-- [x] 3.1 Store Google identities as explicit provider-account records linked to stable platform user IDs
-- [ ] 3.2 Validate OAuth state, nonce, issuer, audience, expiry, verified email, and callback replay before creating a session
-- [x] 3.3 Implement safe verified-email linking and deny implicit merge for different or unverified addresses
-- [ ] 3.4 Add localized Google denial, cancellation, unavailable, and callback-error states
-- [ ] 3.5 Add integration tests for new-user creation, existing-user linking, duplicate prevention, invalid claims, replay, denial, suspended users, and callback failure
+- [x] 3.1 Remove Google sign-in UI, configuration, public API routes, Worker provider setup, and operational guidance while preserving additive database compatibility
 
 ## 4. Account Center Backend
 
@@ -49,20 +45,20 @@
 - [ ] 6.2 Preserve intended tool destinations and safe form state through authentication and language changes
 - [x] 6.3 Add Account Center sections for profile, locale, password/email changes, sessions, privacy export, and account deletion
 - [x] 6.4 Add Account Center commercial summary, subscription state, invoices, Customer Portal, credit balance, ledger history, checkout pending, and payment recovery states
-- [x] 6.5 Add honest unavailable states driven by independent registration, Google, billing, and deletion feature flags
+- [x] 6.5 Add honest unavailable states driven by independent registration, billing, and deletion feature flags
 - [ ] 6.6 Validate keyboard, focus, screen-reader names, live validation, loading, error, success, reduced-motion, narrow-screen, and Chinese/English behavior
 
 ## 7. Commercial Release Gates and Operations
 
-- [x] 7.1 Add independent server-controlled flags for registration, Google sign-in, checkout, and account deletion while preserving public discovery
-- [x] 7.2 Add production startup validation for HTTPS app URL, secure cookies, auth secret, email provider, Google callbacks, Stripe keys, webhook secret, price mappings, and required migrations
-- [ ] 7.3 Add redacted metrics and alerts for auth abuse, email delivery, OAuth callbacks, session anomalies, webhook failures, reconciliation delay, ledger invariants, export jobs, and deletion jobs
-- [x] 7.4 Document email, Google, Stripe test/live, secret rotation, support, refund, dispute, reconciliation, privacy, retention, export, deletion, and incident procedures
+- [x] 7.1 Add independent server-controlled flags for registration, checkout, and account deletion while preserving public discovery
+- [x] 7.2 Add production startup validation for HTTPS app URL, secure cookies, auth secret, email provider, Stripe keys, webhook secret, price mappings, and required migrations
+- [ ] 7.3 Add redacted metrics and alerts for auth abuse, email delivery, session anomalies, webhook failures, reconciliation delay, ledger invariants, export jobs, and deletion jobs
+- [x] 7.4 Document email, Stripe test/live, secret rotation, support, refund, dispute, reconciliation, privacy, retention, export, deletion, and incident procedures
 - [ ] 7.5 Record approved launch countries, legal entity, currencies, tax treatment, privacy terms, refund terms, support contact, and retention policy before enabling live billing
 
 ## 8. End-to-End Acceptance and Deployment
 
-- [ ] 8.1 Run unit and integration suites for enumeration resistance, verification, recovery, session expiry/revocation, account states, CSRF/origin checks, rate limits, OAuth, ownership, webhooks, ledger, export, and deletion
+- [ ] 8.1 Run unit and integration suites for enumeration resistance, verification, recovery, session expiry/revocation, account states, CSRF/origin checks, rate limits, ownership, webhooks, ledger, export, and deletion
 - [ ] 8.2 Run bilingual browser acceptance for registration through verification, sign-in, recovery, profile/security management, subscription checkout, top-up, portal, invoices, export, and deletion
 - [ ] 8.3 Run contract tests proving every AI tool receives only minimal versioned identity/entitlement context and cannot access payment credentials or unrelated user data
 - [x] 8.4 Deploy migrations and code with all new commercial flags disabled, then verify public discovery, existing login, tools, tasks, files, and balances remain backward compatible

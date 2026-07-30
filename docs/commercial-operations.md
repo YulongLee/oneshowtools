@@ -8,7 +8,6 @@ required provider configuration are present:
 | Capability | Flag | Required configuration |
 | --- | --- | --- |
 | Email registration | `REGISTRATION_ENABLED=true` | configured SMTP or Resend provider, `EMAIL_FROM`, HTTPS `APP_URL` |
-| Google sign-in | `GOOGLE_AUTH_ENABLED=true` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Stripe billing | `BILLING_ENABLED=true` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID` |
 | Account deletion | `ACCOUNT_DELETION_ENABLED=true` | approved retention and deletion policy |
 
@@ -32,16 +31,6 @@ commercial features are disabled.
 
 `ALLOW_DEV_EMAIL_DELIVERY=true` writes messages to the local database outbox and
 must never be enabled with an HTTPS production `APP_URL`.
-
-## Google OAuth
-
-Configure the production callback as:
-
-`https://oneshowtools.com/api/auth/google/callback`
-
-The consent screen and verified domain must match OneShowTools. Test new-user,
-existing verified-email linking, cancellation, invalid state, replay, suspended
-account, and provider outage behavior before enabling the flag.
 
 ## Stripe
 
@@ -68,7 +57,7 @@ Before every schema or commercial release:
 4. Run `npm test`, `npm run db:check`, health checks, and production smoke tests.
 5. Enable one approved feature at a time.
 
-Rollback disables registration, Google, billing, account deletion, and new paid
+Rollback disables registration, billing, account deletion, and new paid
 credit reservations. Never delete users, webhook receipts, subscriptions,
 ledger entries, or audit records during rollback.
 

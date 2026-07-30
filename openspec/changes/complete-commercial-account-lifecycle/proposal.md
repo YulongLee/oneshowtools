@@ -4,7 +4,7 @@ The production site currently supports basic email/password session creation,
 but it does not yet provide a commercially safe account lifecycle. Registration
 immediately creates a session without verifying email ownership, duplicate
 registration reveals account existence, recovery and account-control flows are
-missing, Google and billing providers are disabled in production, and payment
+missing, billing providers are disabled in production, and payment
 events cannot yet reconcile subscriptions or purchased credits.
 
 OneShowTools must close these gaps before paid acquisition or live checkout is
@@ -23,9 +23,8 @@ every current and future AI tool.
 - Add secure session management with session listing, current/other-session
   revocation, credential-change revocation, account-state enforcement, CSRF and
   origin protection, and auditable security events.
-- Complete Google OAuth using verified identities, explicit provider-account
-  records, safe linking rules, callback replay protection, and production
-  configuration checks.
+- Remove social sign-in and make verified email registration plus password
+  sign-in the only public authentication method.
 - Expand Account Center so users can edit profile and locale, manage security,
   export their platform data, request account deletion, and view subscription,
   invoices, credit balance, and immutable credit history.
@@ -33,7 +32,7 @@ every current and future AI tool.
   verified Stripe webhooks, idempotent subscription and top-up reconciliation,
   Customer Portal access, payment recovery states, refunds and disputes, and
   credit-ledger compensation.
-- Add launch gates so registration, Google authentication, checkout, and account
+- Add launch gates so registration, checkout, and account
   deletion can be independently enabled only when required providers, secrets,
   migrations, monitoring, support policy, and legal copy are ready.
 - Add bilingual end-to-end and security tests for the complete account and
@@ -91,6 +90,6 @@ every current and future AI tool.
   after verified, idempotent webhook reconciliation. Refunds and disputes append
   compensating ledger entries rather than rewriting balances.
 - **External dependencies:** transactional email provider and verified sending
-  domain, Google OAuth credentials and consent screen, Stripe test/live
+  domain, Stripe test/live
   products and webhook endpoint, production secret storage, monitoring/alerting,
   and approved privacy/refund/retention policies.

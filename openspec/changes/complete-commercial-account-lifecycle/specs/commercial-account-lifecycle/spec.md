@@ -50,22 +50,16 @@ enumeration-resistant password recovery using expiring single-use tokens.
 - **AND** it SHALL consume the token
 - **AND** it SHALL revoke all previously active sessions
 
-### Requirement: Google identity linking
+### Requirement: Email-owned platform identity
 
-The platform SHALL create or link Google identities only from valid callbacks
-that contain a verified email address and pass state, nonce, issuer, audience,
-expiry, and replay validation.
+The platform SHALL expose verified email registration and password sign-in as
+its only public authentication method and SHALL NOT expose social-provider
+authentication routes.
 
-#### Scenario: Google email matches an existing verified account
+#### Scenario: Visitor attempts social sign-in
 
-- **WHEN** a valid Google identity has the same verified email as an existing user
-- **THEN** the platform SHALL link an explicit provider-account record
-- **AND** it SHALL not create a duplicate user
-
-#### Scenario: Google callback cannot be trusted
-
-- **WHEN** callback state, identity claims, or replay checks fail
-- **THEN** the platform SHALL deny authentication
+- **WHEN** a visitor requests a retired social-authentication route
+- **THEN** the platform SHALL return a not-found response
 - **AND** it SHALL not create or link an account
 
 ### Requirement: Profile and credential control

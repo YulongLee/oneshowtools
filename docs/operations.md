@@ -12,15 +12,9 @@ and a verified sender. Billing is disabled by default. Enable it only after
 Stripe test products, price mappings, webhook signing secret, Customer Portal,
 support procedures, and legal review are complete.
 
-Google sign-in is independently controlled by `GOOGLE_AUTH_ENABLED`. Create a
-Google OAuth web client and configure these exact callback URLs:
-
-- Local: `http://localhost:5173/api/auth/google/callback`
-- Production: `https://oneshowtools.com/api/auth/google/callback`
-
-Store the Client ID and Client Secret as hosted secrets. Google account linking
-is allowed only when the provider returns the same verified email; accounts
-with different emails are never merged automatically.
+OneShowTools uses verified email registration and password sign-in as its only
+public authentication method. Social sign-in providers are intentionally not
+enabled.
 
 ## Database
 
