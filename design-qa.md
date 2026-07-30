@@ -139,6 +139,22 @@ The browser's retained log still contains the two pre-fix messages timestamped
   telemetry timeouts were external to the page and did not appear in the page
   console.
 
+### Iteration 6
+
+- Compared the selected motion target and the corrected implementation together
+  after the task-stream geometry was reported as inaccurate.
+- Replaced the shared, left-biased curve controls with four independent cubic
+  paths that approach the platform core tangentially from their own side.
+- Stream paths now stop at the edge of the core card instead of crossing through
+  the OneShowTools mark, and every moving task packet is evaluated from the exact
+  cubic curve used for its visible line.
+- Corrected orbit-packet geometry so each square follows the same rotated ellipse
+  that is painted on the canvas instead of an unrotated approximation.
+- Desktop verification at 1440 × 1024 shows clean bilateral convergence without
+  line segments passing through the logo. Mobile verification at 390 × 844 shows
+  the same geometry with no horizontal overflow.
+- Browser console: no application errors or warnings were emitted.
+
 ## Follow-up polish
 
 - P3: a future iteration may reduce English labels in the Chinese locale for a

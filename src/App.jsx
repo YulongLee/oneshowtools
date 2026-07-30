@@ -407,20 +407,23 @@ function CapabilityNetwork({ locale }) {
         { rx: width * 0.32, ry: height * 0.27, speed: -0.45, alpha: 0.24 },
         { rx: width * 0.42, ry: height * 0.36, speed: 0.3, alpha: 0.18 },
       ];
+      const ringRotation = -0.08;
 
       context.lineWidth = 1;
       rings.forEach((ring, index) => {
         context.strokeStyle = `rgba(23, 105, 232, ${ring.alpha})`;
         context.setLineDash(index === 2 ? [4, 5] : []);
         context.beginPath();
-        context.ellipse(centerX, centerY, ring.rx, ring.ry, -0.08, 0, Math.PI * 2);
+        context.ellipse(centerX, centerY, ring.rx, ring.ry, ringRotation, 0, Math.PI * 2);
         context.stroke();
 
         const packetCount = index === 1 ? 4 : 3;
         for (let packet = 0; packet < packetCount; packet += 1) {
           const angle = motionTime * ring.speed * Math.PI * 2 + packet * (Math.PI * 2 / packetCount) + index;
-          const x = centerX + Math.cos(angle) * ring.rx;
-          const y = centerY + Math.sin(angle) * ring.ry;
+          const localX = Math.cos(angle) * ring.rx;
+          const localY = Math.sin(angle) * ring.ry;
+          const x = centerX + localX * Math.cos(ringRotation) - localY * Math.sin(ringRotation);
+          const y = centerY + localX * Math.sin(ringRotation) + localY * Math.cos(ringRotation);
           const colors = ["#1769e8", "#8eb8f4", "#a7e8d3", "#f4c7ce"];
           context.fillStyle = colors[(packet + index) % colors.length];
           context.globalAlpha = packet === 0 ? 0.95 : 0.7;
@@ -432,23 +435,51 @@ function CapabilityNetwork({ locale }) {
 
       context.globalAlpha = 1;
       context.setLineDash([]);
-      const streams = [-0.5, 0.08, 0.62];
-      streams.forEach((offset, index) => {
-        const startX = width * (index === 2 ? 0.88 : 0.08);
-        const startY = centerY + offset * height * 0.34;
-        context.strokeStyle = "rgba(23, 105, 232, 0.42)";
-        context.lineWidth = 1.5;
+      const streams = [
+        {
+          start: [width * 0.06, centerY - height * 0.17],
+          controlA: [width * 0.22, centerY - height * 0.22],
+          controlB: [centerX - width * 0.18, centerY - height * 0.1],
+          end: [centerX - 54, centerY - 20],
+        },
+        {
+          start: [width * 0.07, centerY + height * 0.2],
+          controlA: [width * 0.24, centerY + height * 0.24],
+          controlB: [centerX - width * 0.18, centerY + height * 0.1],
+          end: [centerX - 54, centerY + 20],
+        },
+        {
+          start: [width * 0.94, centerY - height * 0.19],
+          controlA: [width * 0.8, centerY - height * 0.24],
+          controlB: [centerX + width * 0.18, centerY - height * 0.1],
+          end: [centerX + 54, centerY - 20],
+        },
+        {
+          start: [width * 0.93, centerY + height * 0.18],
+          controlA: [width * 0.78, centerY + height * 0.23],
+          controlB: [centerX + width * 0.18, centerY + height * 0.1],
+          end: [centerX + 54, centerY + 20],
+        },
+      ];
+      const pointOnCurve = ({ start, controlA, controlB, end }, progress) => {
+        const inverse = 1 - progress;
+        return [
+          inverse ** 3 * start[0] + 3 * inverse ** 2 * progress * controlA[0]
+            + 3 * inverse * progress ** 2 * controlB[0] + progress ** 3 * end[0],
+          inverse ** 3 * start[1] + 3 * inverse ** 2 * progress * controlA[1]
+            + 3 * inverse * progress ** 2 * controlB[1] + progress ** 3 * end[1],
+        ];
+      };
+      streams.forEach((stream, index) => {
+        context.strokeStyle = "rgba(23, 105, 232, 0.34)";
+        context.lineWidth = 1.35;
         context.beginPath();
-        context.moveTo(startX, startY);
-        context.bezierCurveTo(width * 0.28, centerY + offset * 22, width * 0.4, centerY, centerX - 38, centerY);
+        context.moveTo(...stream.start);
+        context.bezierCurveTo(...stream.controlA, ...stream.controlB, ...stream.end);
         context.stroke();
 
-        const progress = reducedMotion ? 0.72 : (motionTime * (1.4 + index * 0.2) + index * 0.24) % 1;
-        const inverse = 1 - progress;
-        const x = inverse ** 3 * startX + 3 * inverse ** 2 * progress * width * 0.28
-          + 3 * inverse * progress ** 2 * width * 0.4 + progress ** 3 * (centerX - 38);
-        const y = inverse ** 3 * startY + 3 * inverse ** 2 * progress * (centerY + offset * 22)
-          + 3 * inverse * progress ** 2 * centerY + progress ** 3 * centerY;
+        const progress = reducedMotion ? 0.68 : (motionTime * (1.25 + index * 0.08) + index * 0.21) % 1;
+        const [x, y] = pointOnCurve(stream, progress);
         context.fillStyle = "#1769e8";
         context.beginPath();
         context.arc(x, y, 3.2, 0, Math.PI * 2);
