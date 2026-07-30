@@ -16,6 +16,7 @@ import {
 } from "./security.mjs";
 import { executeTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
+import { createAdminHandler } from "./admin.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -824,6 +825,8 @@ async function stripeWebhook(request) {
   return json({ received: true });
 }
 
+const handleAdminV1 = createAdminHandler({ currentUser, currentSession, issueAccountToken });
+
 export async function handleApi(request) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -840,6 +843,8 @@ export async function handleApi(request) {
     configurationErrors,
     openAiEnabled: Boolean(process.env.OPENAI_API_KEY),
     externalRuntimeEnabled: Boolean(process.env.TOOL_RUNTIME_BASE_URL),
+    adminConsoleVersion: "v1",
+    adminMfaEnforced: config.adminMfaEnforced,
   });
   if (path === "/api/billing/webhook" && request.method === "POST") return stripeWebhook(request);
   if (path === "/api/auth/verify" && request.method === "GET") return verifyEmail(request);
@@ -870,6 +875,7 @@ export async function handleApi(request) {
     `).all();
     return json({ plans });
   }
+  if (path.startsWith("/api/admin/v1/")) return handleAdminV1(request, path);
   if (path.startsWith("/api/admin/")) return handleAdmin(request, path);
 
   const auth = requireUser(request);

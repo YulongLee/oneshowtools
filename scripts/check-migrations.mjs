@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 const migration = await readFile(new URL("../db/migrations/0001_global_auth_and_billing.sql", import.meta.url), "utf8");
 const commercialMigration = await readFile(new URL("../db/migrations/0002_commercial_account_lifecycle.sql", import.meta.url), "utf8");
+const adminMigration = await readFile(new URL("../db/migrations/0003_commercial_admin_console.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -27,6 +28,20 @@ for (const table of [
 ]) {
   if (!commercialMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
     throw new Error(`Commercial migration is missing table: ${table}`);
+  }
+}
+
+for (const table of [
+  "admin_roles", "admin_permissions", "admin_memberships", "admin_membership_roles",
+  "admin_mfa_factors", "admin_recovery_codes", "admin_auth_sessions", "admin_approvals",
+  "admin_idempotency", "admin_audit_events", "support_notes", "policy_versions",
+  "user_consents", "legal_holds", "operational_jobs", "operational_alerts",
+  "commercial_orders", "commercial_payment_events", "commercial_refunds",
+  "commercial_disputes", "reconciliation_exceptions", "tool_versions",
+  "tool_health_reports",
+]) {
+  if (!adminMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`Commercial admin migration is missing table: ${table}`);
   }
 }
 

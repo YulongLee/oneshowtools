@@ -13,7 +13,7 @@ task, and file layer for AI tools published by OneShow AI Lab.
 6. Task Center — persistent task input, output, runtime state, and credit cost.
 7. File Center — authenticated upload, download, listing, and deletion.
 8. Dashboard — live account, task, file, credit, and subscription metrics.
-9. Admin Console — protected user management, credit adjustments, task visibility, and audit records.
+9. Admin Console — role-based operations, MFA, customer 360, governed credits, commerce, tool governance, jobs, privacy, and audit records.
 
 No visitor metrics, balances, tasks, files, or billing state are mocked. Optional
 providers are shown as unconfigured until their environment variables are present.
@@ -56,11 +56,14 @@ use. The platform runs without provider keys, but AI tasks remain in
 ## Admin console
 
 The standalone admin console is available at `/admin`. It uses the same verified
-email/password account system as the customer app, followed by a server-side
-administrator allowlist check. Admins can search users, suspend or restore
-accounts, make reasoned credit adjustments, review platform tasks, and inspect
+email/password account system as the customer app, followed by server-side RBAC
+and optional mandatory TOTP MFA. The commercial console provides real operational
+data for dashboard metrics, customer 360, session and account controls, governed
+credit adjustments and approvals, provider-neutral commerce records, tool
+lifecycle management, operational jobs, privacy status, administrator roles, and
 an immutable audit trail. Suspending a user immediately revokes that user's
-sessions. Password hashes and session tokens are never returned by admin APIs.
+sessions. Password hashes, session tokens, MFA secrets, and provider credentials
+are never returned by admin APIs.
 
 ## Verification
 

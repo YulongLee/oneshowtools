@@ -41,6 +41,13 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
     registrationEnabled: enabled("REGISTRATION_ENABLED", false) && (emailConfigured || developmentEmail),
     billingEnabled: enabled("BILLING_ENABLED", false) && stripeConfigured,
     accountDeletionEnabled: enabled("ACCOUNT_DELETION_ENABLED", false),
+    adminRbacEnabled: enabled("ADMIN_RBAC_ENABLED", true),
+    adminMfaEnforced: enabled("ADMIN_MFA_ENFORCED", false),
+    adminCustomerOperationsEnabled: enabled("ADMIN_CUSTOMER_OPERATIONS_ENABLED", true),
+    adminCommercialOperationsEnabled: enabled("ADMIN_COMMERCIAL_OPERATIONS_ENABLED", true),
+    adminToolGovernanceEnabled: enabled("ADMIN_TOOL_GOVERNANCE_ENABLED", true),
+    adminPrivacyOperationsEnabled: enabled("ADMIN_PRIVACY_OPERATIONS_ENABLED", true),
+    adminObservabilityEnabled: enabled("ADMIN_OBSERVABILITY_ENABLED", true),
   });
 }
 
@@ -50,5 +57,6 @@ export function validateServerConfig(config) {
   if (!config.emailProviderSupported) errors.push("EMAIL_PROVIDER_UNSUPPORTED");
   if (process.env.REGISTRATION_ENABLED === "true" && !config.registrationEnabled) errors.push("EMAIL_PROVIDER_REQUIRED");
   if (process.env.BILLING_ENABLED === "true" && !config.billingEnabled) errors.push("STRIPE_CONFIGURATION_REQUIRED");
+  if (config.adminMfaEnforced && !process.env.ADMIN_MFA_ENCRYPTION_KEY) errors.push("ADMIN_MFA_ENCRYPTION_KEY_REQUIRED");
   return errors;
 }

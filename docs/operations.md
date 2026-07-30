@@ -18,7 +18,8 @@ enabled.
 
 ## Database
 
-Apply `db/migrations/0001_global_auth_and_billing.sql`, then `db/seed.sql`.
+Apply migrations in numeric order through
+`db/migrations/0003_commercial_admin_console.sql`, then `db/seed.sql`.
 Run `npm run db:check` before release. The matching `.down.sql` is for local or
 pre-release rollback only; never erase production financial history. A
 production rollback disables registration, billing checkout, and new tool
@@ -72,3 +73,20 @@ The application and data directory are owned by the unprivileged
 `oneshowtools` system user. Deployments must preserve `data/`, install
 production dependencies, build the frontend, restart the service, and verify
 `/api/health` before switching traffic.
+
+## Commercial administrator access
+
+The versioned administration boundary is `/api/admin/v1` and the operator
+application is `/admin`. Existing `ADMIN_EMAILS` accounts are bootstrap inputs,
+not the long-term authorization source. The first successful access persists a
+`super_admin` membership; all subsequent access is checked against stored roles
+and permissions.
+
+Set a unique, randomly generated `ADMIN_MFA_ENCRYPTION_KEY` in the production
+environment. Enable `ADMIN_MFA_ENFORCED=true` only after the owner is ready to
+enroll a TOTP authenticator and securely save the one-time recovery codes.
+Never send TOTP secrets or recovery codes through email or support chat.
+
+High-risk operations require a reason, immutable audit record, and—above the
+configured `ADMIN_CREDIT_APPROVAL_THRESHOLD`—a distinct finance approver.
+Balances are never edited directly; corrections append ledger entries.

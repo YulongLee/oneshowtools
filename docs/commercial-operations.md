@@ -10,6 +10,10 @@ required provider configuration are present:
 | Email registration | `REGISTRATION_ENABLED=true` | configured SMTP or Resend provider, `EMAIL_FROM`, HTTPS `APP_URL` |
 | Stripe billing | `BILLING_ENABLED=true` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID` |
 | Account deletion | `ACCOUNT_DELETION_ENABLED=true` | approved retention and deletion policy |
+| Admin RBAC | `ADMIN_RBAC_ENABLED=true` | bootstrapped verified administrator and role migration |
+| Admin MFA | `ADMIN_MFA_ENFORCED=true` | `ADMIN_MFA_ENCRYPTION_KEY`, enrolled owner, tested recovery codes |
+| Alipay adapter | `ALIPAY_ENABLED=true` | approved Alipay application, signing keys, callback verification |
+| WeChat Pay adapter | `WECHAT_PAY_ENABLED=true` | approved merchant account, certificates, callback verification |
 
 Public tool discovery and existing authenticated free use remain available when
 commercial features are disabled.
@@ -79,3 +83,16 @@ Live billing and account deletion must remain disabled until the business record
 - grace period, refund, dispute, and negative-balance policy;
 - privacy policy, retention schedule, deletion/anonymization rules;
 - support contact and response process.
+
+## Administrator role ownership
+
+- `super_admin`: owner-only access to administrator identities, roles, and emergency recovery.
+- `operations`: customer lifecycle, tools, jobs, and general operating health.
+- `support`: customer search, session/account support, notes, and bounded credit requests.
+- `finance`: commercial records, high-value credit approvals, refunds, disputes, and reconciliation.
+- `tool_manager`: catalog metadata, contract readiness, publishing, maintenance, and retirement.
+- `privacy`: policy consent, export, deletion, retention, and legal-hold workflows.
+- `read_only`: dashboards and audit views without mutations.
+
+Role changes, MFA recovery, high-value credits, refunds, privacy overrides, and
+tool publication must carry an operator reason and immutable audit event.
