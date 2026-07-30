@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { handleApi } from "./api.mjs";
+import { getServerConfig, validateServerConfig } from "./config.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(projectRoot, "dist/client");
@@ -18,6 +19,12 @@ const mimeTypes = {
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
 };
+
+const startupConfig = getServerConfig(process.env.APP_URL || `http://${host}:${port}`);
+const startupConfigurationErrors = validateServerConfig(startupConfig);
+if (startupConfigurationErrors.length) {
+  console.error(`Commercial capabilities disabled: ${startupConfigurationErrors.join(", ")}`);
+}
 
 function toRequest(req) {
   const origin = process.env.APP_URL || `http://${req.headers.host || `localhost:${port}`}`;

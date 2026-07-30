@@ -34,6 +34,11 @@ const dictionary = {
     result: "处理结果", downloadResult: "下载结果", copyResult: "复制结果", copied: "已复制", imageTolerance: "背景容差", imageQuality: "压缩质量",
     textInput: "输入原始文案", pdfInput: "上传 PDF 文件", imageInput: "上传图片", speechInput: "实时语音识别", startSpeech: "开始识别", stopSpeech: "停止识别",
     browserUnsupported: "当前浏览器不支持实时语音识别。", loginToUse: "登录后即可运行此工具并保存任务记录。", localMode: "本地处理", aiMode: "AI 增强",
+    registrationUnavailable: "邮箱注册尚未开放，请稍后再试。", verificationPending: "验证邮件已发送", verificationPendingBody: "验证邮箱后即可登录并领取欢迎积分。", resendVerification: "重新发送验证邮件",
+    forgotPassword: "忘记密码？", recoveryTitle: "找回密码", recoveryBody: "如果该邮箱已注册，你将收到重置邮件。", sendRecovery: "发送重置邮件", resetTitle: "设置新密码", newPassword: "新密码", resetSuccess: "密码已更新，请重新登录。",
+    accountProfile: "账户资料", saveProfile: "保存资料", accountSecurity: "账户安全", currentPassword: "当前密码", changePassword: "修改密码", newEmail: "新邮箱", changeEmail: "验证新邮箱",
+    activeSessions: "登录设备", revokeOthers: "退出其他设备", privacyControls: "隐私与数据", exportData: "导出账户数据", deleteAccount: "删除账户", deletionUnavailable: "账户删除需完成政策配置后开放。",
+    billingPortal: "管理付款与发票", invoices: "发票记录", noInvoices: "暂无发票记录", pendingConfirmation: "付款完成后需要等待安全回调确认。",
   },
   en: {
     nav: { dashboard: "Dashboard", marketplace: "Tool Marketplace", runtime: "AI Runtime", credits: "Credits", billing: "Billing", tasks: "Task Center", files: "File Center", account: "Account" },
@@ -59,6 +64,11 @@ const dictionary = {
     result: "Result", downloadResult: "Download result", copyResult: "Copy result", copied: "Copied", imageTolerance: "Background tolerance", imageQuality: "Compression quality",
     textInput: "Enter original copy", pdfInput: "Upload PDF", imageInput: "Upload image", speechInput: "Live speech recognition", startSpeech: "Start recognition", stopSpeech: "Stop recognition",
     browserUnsupported: "Live speech recognition is not supported in this browser.", loginToUse: "Sign in to run this tool and save its task record.", localMode: "Local processing", aiMode: "AI enhanced",
+    registrationUnavailable: "Email registration is not open yet.", verificationPending: "Verification email sent", verificationPendingBody: "Verify your email before signing in and receiving welcome credits.", resendVerification: "Resend verification",
+    forgotPassword: "Forgot password?", recoveryTitle: "Recover your account", recoveryBody: "If the email is registered, a reset message is on the way.", sendRecovery: "Send reset email", resetTitle: "Choose a new password", newPassword: "New password", resetSuccess: "Password updated. Sign in again.",
+    accountProfile: "Profile", saveProfile: "Save profile", accountSecurity: "Account security", currentPassword: "Current password", changePassword: "Change password", newEmail: "New email", changeEmail: "Verify new email",
+    activeSessions: "Signed-in devices", revokeOthers: "Sign out other devices", privacyControls: "Privacy and data", exportData: "Export account data", deleteAccount: "Delete account", deletionUnavailable: "Account deletion opens after the retention policy is configured.",
+    billingPortal: "Manage payments and invoices", invoices: "Invoices", noInvoices: "No invoices yet", pendingConfirmation: "Payment access updates only after secure provider confirmation.",
   },
 };
 
@@ -102,9 +112,10 @@ function EmptyState({ icon: Icon = ListChecks, title, body, action }) {
   return <div className="empty-state"><span><Icon size={28} /></span><h3>{title}</h3>{body && <p>{body}</p>}{action}</div>;
 }
 
-function AuthDialog({ locale, googleEnabled, onClose, onAuthenticated }) {
+function AuthDialog({ locale, googleEnabled, registrationEnabled, onClose, onAuthenticated }) {
   const t = dictionary[locale];
-  const [mode, setMode] = useState("login");
+  const resetToken = new URLSearchParams(location.search).get("resetToken");
+  const [mode, setMode] = useState(resetToken ? "reset" : "login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -113,25 +124,49 @@ function AuthDialog({ locale, googleEnabled, onClose, onAuthenticated }) {
     setBusy(true);
     setMessage("");
     try {
-      const result = await api(mode === "signup" ? "/api/auth/register" : "/api/auth/login", jsonOptions("POST", { ...form, locale }));
-      onAuthenticated(result.user);
-      onClose();
-    } catch {
-      setMessage(t.invalid);
+      if (mode === "signup") {
+        await api("/api/auth/register", jsonOptions("POST", { ...form, locale }));
+        setMode("pending");
+      } else if (mode === "forgot") {
+        await api("/api/auth/forgot-password", jsonOptions("POST", { email: form.email }));
+        setMessage(t.recoveryBody);
+      } else if (mode === "reset") {
+        await api("/api/auth/reset-password", jsonOptions("POST", { token: resetToken, password: form.password }));
+        history.replaceState({}, "", location.pathname);
+        setMode("login");
+        setMessage(t.resetSuccess);
+      } else {
+        const result = await api("/api/auth/login", jsonOptions("POST", { ...form, locale }));
+        onAuthenticated(result.user);
+        onClose();
+      }
+    } catch (error) {
+      setMessage(error.message === "EMAIL_UNVERIFIED" ? t.verificationPendingBody : t.invalid);
     } finally {
       setBusy(false);
     }
   };
+  const resend = async () => {
+    setBusy(true);
+    await api("/api/auth/resend-verification", jsonOptions("POST", { email: form.email })).catch(() => {});
+    setMessage(t.verificationPendingBody);
+    setBusy(false);
+  };
+  const title = mode === "signup" ? t.signUpTitle : mode === "forgot" ? t.recoveryTitle : mode === "reset" ? t.resetTitle : mode === "pending" ? t.verificationPending : t.signInTitle;
   return <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="auth-modal" role="dialog" aria-modal="true">
     <button className="icon-button modal-close" onClick={onClose}><X size={20} /></button><Brand />
-    <h2>{mode === "signup" ? t.signUpTitle : t.signInTitle}</h2><p className="modal-subtitle">{t.authSub}</p>
-    <button className="google-button" type="button" disabled={!googleEnabled} onClick={() => googleEnabled ? location.assign("/api/auth/google/start") : setMessage(t.googleDisabled)}><GoogleLogo size={20} weight="bold" />{t.google}</button>
-    {!googleEnabled && <span className="config-caption">{t.googleDisabled}</span>}<div className="auth-divider"><span>{t.or}</span></div>
-    <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
-      <label>{t.email}<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-      <label>{t.password}<input type="password" required minLength={10} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>{t.passwordHint}</small></label>
-      {message && <p className="form-error"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy}>{busy ? <SpinnerGap className="spin" size={20} /> : mode === "signup" ? t.signup : t.login}</button>
-    </form><p className="auth-switch">{mode === "signup" ? t.hasAccount : t.noAccount}<button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? t.login : t.signup}</button></p>
+    <h2>{title}</h2><p className="modal-subtitle">{mode === "pending" ? t.verificationPendingBody : mode === "forgot" ? t.recoveryBody : t.authSub}</p>
+    {["login", "signup"].includes(mode) && <><button className="google-button" type="button" disabled={!googleEnabled} onClick={() => googleEnabled ? location.assign("/api/auth/google/start") : setMessage(t.googleDisabled)}><GoogleLogo size={20} weight="bold" />{t.google}</button>
+      {!googleEnabled && <span className="config-caption">{t.googleDisabled}</span>}<div className="auth-divider"><span>{t.or}</span></div></>}
+    {mode === "pending" ? <div className="auth-form"><button className="secondary-button full" disabled={busy || !form.email} onClick={resend}>{t.resendVerification}</button><button className="primary-button full" onClick={() => setMode("login")}>{t.login}</button>{message && <p className="form-note">{message}</p>}</div> : <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
+      {mode !== "reset" && <label>{t.email}<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>}
+      {!["forgot"].includes(mode) && <label>{mode === "reset" ? t.newPassword : t.password}<input type="password" required minLength={10} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>{t.passwordHint}</small></label>}
+      {message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || (mode === "signup" && !registrationEnabled)}>{busy ? <SpinnerGap className="spin" size={20} /> : mode === "signup" ? t.signup : mode === "forgot" ? t.sendRecovery : mode === "reset" ? t.changePassword : t.login}</button>
+      {mode === "login" && <button className="text-button" type="button" onClick={() => { setMode("forgot"); setMessage(""); }}>{t.forgotPassword}</button>}
+      {mode === "signup" && !registrationEnabled && <p className="config-caption">{t.registrationUnavailable}</p>}
+    </form>}
+    {["login", "signup"].includes(mode) && <p className="auth-switch">{mode === "signup" ? t.hasAccount : t.noAccount}{(registrationEnabled || mode === "signup") && <button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? t.login : t.signup}</button>}</p>}
+    {mode === "forgot" && <p className="auth-switch"><button onClick={() => { setMode("login"); setMessage(""); }}>{t.login}</button></p>}
   </section></div>;
 }
 
@@ -334,12 +369,13 @@ function Credits({ data, locale }) {
   </div>;
 }
 
-function Billing({ plans, status, locale, onCheckout }) {
+function Billing({ plans, status, locale, onCheckout, onPortal }) {
   const t = dictionary[locale];
   if (!status) return <Loading locale={locale} />;
   return <div className="page-stack"><PageHeading title={t.billing} subtitle={t.billingSub} /><div className={`notice-card ${status.configured ? "success" : "warning"}`}>{status.configured ? <CheckCircle size={21} /> : <Warning size={21} />}<p>{status.configured ? t.billingReady : t.billingUnavailable}</p></div>
-    <section><SectionTitle title={t.currentPlan} /><article className="current-plan surface"><div><span className="plan-icon"><CreditCard size={24} /></span><div><small>{t.currentPlan}</small><h3>{status.subscription ? (locale === "en" ? status.subscription.nameEn : status.subscription.nameZh) : t.free}</h3></div></div><span className="status-pill completed"><CheckCircle size={14} weight="fill" />{status.subscription?.status || "active"}</span></article></section>
+    <section><SectionTitle title={t.currentPlan} action={status.subscription && status.configured ? <button className="secondary-button" onClick={onPortal}>{t.billingPortal}</button> : null} /><article className="current-plan surface"><div><span className="plan-icon"><CreditCard size={24} /></span><div><small>{t.currentPlan}</small><h3>{status.subscription ? (locale === "en" ? status.subscription.nameEn : status.subscription.nameZh) : t.free}</h3></div></div><span className="status-pill completed"><CheckCircle size={14} weight="fill" />{status.subscription?.status || "active"}</span></article><p className="billing-note">{t.pendingConfirmation}</p></section>
     <div className="plan-grid">{plans.map((plan) => <article className={`plan-card surface ${plan.code === "pro-monthly" ? "featured" : ""}`} key={plan.id}><span className="plan-badge">{plan.code === "pro-monthly" ? t.planPro : t.free}</span><h2>{locale === "en" ? plan.nameEn : plan.nameZh}</h2><p>{plan.code === "pro-monthly" ? t.planDesc : t.welcomeSub}</p><strong className="plan-price">{new Intl.NumberFormat(locale === "en" ? "en-US" : "zh-CN", { style: "currency", currency: plan.currency }).format(plan.amountMinor / 100)}<small> / {t.monthly}</small></strong><div className="plan-credit"><Coins size={18} />{plan.recurringCredits.toLocaleString()} {t.credits}</div>{plan.code === "pro-monthly" && <button className="primary-button full" disabled={!status.configured} onClick={() => onCheckout(plan.id)}>{t.subscribe}</button>}</article>)}</div>
+    <section><SectionTitle title={t.invoices} /><div className="surface account-list">{status.invoices?.length ? status.invoices.map((invoice) => <div className="account-list-row" key={invoice.id}><div><strong>{invoice.status}</strong><small>{formatDate(invoice.createdAt, locale)}</small></div><span>{new Intl.NumberFormat(locale === "en" ? "en-US" : "zh-CN", { style: "currency", currency: invoice.currency }).format(invoice.amountPaid / 100)}</span>{invoice.hostedUrl && <a href={invoice.hostedUrl} target="_blank" rel="noreferrer">{t.download}</a>}</div>) : <p className="account-empty">{t.noInvoices}</p>}</div></section>
   </div>;
 }
 
@@ -359,10 +395,57 @@ function Files({ files, locale, onUpload, onDelete }) {
   </div>;
 }
 
-function Account({ user, health, locale, onLogout }) {
+function Account({ user, health, locale, onLogout, onUserChange, onLocaleChange, onNotice }) {
   const t = dictionary[locale];
+  const [profile, setProfile] = useState({ name: user.name, locale });
+  const [credentials, setCredentials] = useState({ currentPassword: "", newPassword: "", email: "" });
+  const [sessions, setSessions] = useState([]);
+  const refreshSessions = useCallback(() => api("/api/account/sessions").then((result) => setSessions(result.sessions)).catch(() => setSessions([])), []);
+  useEffect(() => { refreshSessions(); }, [refreshSessions]);
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api("/api/account/profile", jsonOptions("PATCH", profile));
+      onUserChange(result.user);
+      onLocaleChange(result.user.locale);
+      onNotice(t.saveProfile);
+    } catch { onNotice(t.error); }
+  };
+  const changePassword = async (event) => {
+    event.preventDefault();
+    try {
+      await api("/api/account/password", jsonOptions("POST", credentials));
+      setCredentials({ ...credentials, currentPassword: "", newPassword: "" });
+      onNotice(t.changePassword);
+      refreshSessions();
+    } catch { onNotice(t.error); }
+  };
+  const changeEmail = async (event) => {
+    event.preventDefault();
+    try {
+      await api("/api/account/email", jsonOptions("POST", { email: credentials.email, password: credentials.currentPassword }));
+      onNotice(t.verificationPending);
+    } catch { onNotice(t.error); }
+  };
+  const exportData = async () => {
+    try {
+      const result = await api("/api/account/export", { method: "POST" });
+      location.assign(`/api/account/exports/${result.export.id}/download`);
+    } catch { onNotice(t.error); }
+  };
+  const deleteAccount = async () => {
+    if (!credentials.currentPassword) return onNotice(t.invalid);
+    try {
+      await api("/api/account/deletion", jsonOptions("POST", { password: credentials.currentPassword }));
+      onLogout();
+    } catch { onNotice(health.accountDeletionEnabled ? t.error : t.deletionUnavailable); }
+  };
   return <div className="page-stack"><PageHeading title={t.account} subtitle={t.accountSub} /><div className="account-grid"><article className="surface profile-panel"><span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span><h2>{user.name}</h2><p>{user.email}</p><dl><div><dt>{t.emailStatus}</dt><dd>{user.emailVerified ? t.verified : t.pendingVerify}</dd></div><div><dt>{t.memberSince}</dt><dd>{formatDate(user.createdAt, locale)}</dd></div></dl><button className="secondary-button full" onClick={onLogout}><SignOut size={17} />{t.logout}</button></article>
-    <article className="surface system-panel"><SectionTitle title={t.system} /><SystemRow icon={Database} name={t.database} detail={t.online} ok /><SystemRow icon={Sparkle} name="OpenAI Runtime" detail={health.openAiEnabled ? t.configured : t.notConfigured} ok={health.openAiEnabled} /><SystemRow icon={CreditCard} name="Stripe Billing" detail={health.billingEnabled ? t.configured : t.notConfigured} ok={health.billingEnabled} /></article></div>
+    <div className="account-settings"><article className="surface settings-panel"><SectionTitle title={t.accountProfile} /><form className="auth-form" onSubmit={saveProfile}><label>{t.name}<input required maxLength={80} value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label><label>{t.language}<select value={profile.locale} onChange={(event) => setProfile({ ...profile, locale: event.target.value })}><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><button className="primary-button" type="submit">{t.saveProfile}</button></form></article>
+      <article className="surface settings-panel"><SectionTitle title={t.accountSecurity} /><form className="auth-form" onSubmit={changePassword}><label>{t.currentPassword}<input type="password" required value={credentials.currentPassword} onChange={(event) => setCredentials({ ...credentials, currentPassword: event.target.value })} /></label><label>{t.newPassword}<input type="password" required minLength={10} value={credentials.newPassword} onChange={(event) => setCredentials({ ...credentials, newPassword: event.target.value })} /></label><button className="secondary-button" type="submit">{t.changePassword}</button></form><form className="auth-form compact-form" onSubmit={changeEmail}><label>{t.newEmail}<input type="email" required value={credentials.email} onChange={(event) => setCredentials({ ...credentials, email: event.target.value })} /></label><button className="secondary-button" type="submit">{t.changeEmail}</button></form></article>
+      <article className="surface settings-panel"><SectionTitle title={t.activeSessions} action={sessions.length > 1 ? <button className="text-button" onClick={async () => { await api("/api/account/sessions/others", { method: "DELETE" }); refreshSessions(); }}>{t.revokeOthers}</button> : null} /><div className="account-list">{sessions.map((session) => <div className="account-list-row" key={session.id}><div><strong>{session.current ? t.online : session.userAgent || "Browser"}</strong><small>{formatDate(session.lastSeenAt || session.createdAt, locale)}</small></div><span>{formatDate(session.expiresAt, locale)}</span></div>)}</div></article>
+      <article className="surface settings-panel"><SectionTitle title={t.privacyControls} /><div className="privacy-actions"><button className="secondary-button" onClick={exportData}><DownloadSimple size={17} />{t.exportData}</button><button className="secondary-button danger" disabled={!health.accountDeletionEnabled} onClick={deleteAccount}><Trash size={17} />{t.deleteAccount}</button></div>{!health.accountDeletionEnabled && <p className="account-empty">{t.deletionUnavailable}</p>}</article>
+      <article className="surface system-panel"><SectionTitle title={t.system} /><SystemRow icon={Database} name={t.database} detail={t.online} ok /><SystemRow icon={Sparkle} name="OpenAI Runtime" detail={health.openAiEnabled ? t.configured : t.notConfigured} ok={health.openAiEnabled} /><SystemRow icon={CreditCard} name="Stripe Billing" detail={health.billingEnabled ? t.configured : t.notConfigured} ok={health.billingEnabled} /></article></div></div>
   </div>;
 }
 function SystemRow({ icon: Icon, name, detail, ok }) {
@@ -501,7 +584,7 @@ export function App() {
   const [plans, setPlans] = useState([]);
   const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [] });
   const [query, setQuery] = useState("");
-  const [authOpen, setAuthOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(() => Boolean(new URLSearchParams(location.search).get("resetToken")));
   const [routeSlug, setRouteSlug] = useState(() => location.pathname.match(/^\/tools\/([^/]+)$/)?.[1] || null);
   const [toast, setToast] = useState("");
   const t = dictionary[locale];
@@ -524,6 +607,12 @@ export function App() {
   useEffect(() => { loadPublic(); }, [loadPublic]);
   useEffect(() => { if (session) loadPrivate().catch(() => setToast(t.error)); }, [session, loadPrivate, t.error]);
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem("ost_locale", locale); document.title = "OneShowTools Platform"; }, [locale]);
+  useEffect(() => {
+    const authStatus = new URLSearchParams(location.search).get("auth");
+    if (!authStatus) return;
+    setToast(authStatus === "verified" ? t.verified : authStatus === "email-changed" ? t.verified : t.invalid);
+    history.replaceState({}, "", location.pathname + location.hash);
+  }, [t.invalid, t.verified]);
   useEffect(() => {
     const handler = (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -576,11 +665,12 @@ export function App() {
   const deleteFile = async (id) => { await api(`/api/files/${id}`, { method: "DELETE" }).catch(() => setToast(t.error)); await loadPrivate(); };
   const cancelTask = async (id) => { await api(`/api/tasks/${id}/cancel`, { method: "POST" }).catch(() => setToast(t.error)); await loadPrivate(); };
   const checkout = async (planId) => { try { const result = await api("/api/billing/checkout", jsonOptions("POST", { planId })); location.assign(result.url); } catch { setToast(t.billingUnavailable); } };
+  const openBillingPortal = async () => { try { const result = await api("/api/billing/portal", { method: "POST" }); location.assign(result.url); } catch { setToast(t.billingUnavailable); } };
 
   if (session === undefined) return <Loading locale={locale} />;
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
   if (!session && routeSlug && !routeTool) return <Loading locale={locale} />;
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} googleEnabled={health.googleAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} googleEnabled={health.googleAuthEnabled} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {
@@ -588,10 +678,10 @@ export function App() {
     marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
     runtime: <Runtime data={privateData.runtime} locale={locale} />,
     credits: <Credits data={privateData.credits} locale={locale} />,
-    billing: <Billing plans={plans} status={privateData.billing} locale={locale} onCheckout={checkout} />,
+    billing: <Billing plans={plans} status={privateData.billing} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} />,
     tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
-    account: <Account user={session} health={health} locale={locale} onLogout={logout} />,
+    account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
     tool: routeTool ? <ToolPage tool={routeTool} locale={locale} authenticated onBack={leaveTool} onAuth={() => setAuthOpen(true)} onCompleted={async () => { setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 

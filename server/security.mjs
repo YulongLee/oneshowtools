@@ -19,6 +19,7 @@ export async function verifyPassword(password, encoded) {
 
 export const createSessionToken = () => randomBytes(32).toString("base64url");
 export const hashToken = (token) => createHash("sha256").update(token).digest("hex");
+export const hashIdentifier = (value) => createHash("sha256").update(String(value || "")).digest("hex");
 
 export function parseCookies(header = "") {
   return Object.fromEntries(header.split(";").map((part) => {
@@ -30,4 +31,19 @@ export function parseCookies(header = "") {
 export function sessionCookie(token, maxAge = 60 * 60 * 24 * 14) {
   const secure = process.env.APP_URL?.startsWith("https://") ? "; Secure" : "";
   return `ost_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
+
+export function requestClient(request) {
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return {
+    ipHash: hashIdentifier(forwarded || request.headers.get("cf-connecting-ip") || "local"),
+    userAgent: String(request.headers.get("user-agent") || "").slice(0, 240),
+  };
+}
+
+export function sameOrigin(request, appUrl) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return true;
+  const origin = request.headers.get("origin");
+  if (!origin) return !String(appUrl).startsWith("https://");
+  return origin === new URL(appUrl).origin;
 }

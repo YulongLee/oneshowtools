@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 const migration = await readFile(new URL("../db/migrations/0001_global_auth_and_billing.sql", import.meta.url), "utf8");
+const commercialMigration = await readFile(new URL("../db/migrations/0002_commercial_account_lifecycle.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -17,6 +18,16 @@ for (const required of [
   "ledger_entries_no_update",
 ]) {
   if (!migration.includes(required)) throw new Error(`Migration is missing invariant: ${required}`);
+}
+
+for (const table of [
+  "auth_tokens", "provider_accounts", "security_events", "rate_limits",
+  "export_jobs", "deletion_requests", "webhook_receipts_v2",
+  "account_provider_mappings", "invoices",
+]) {
+  if (!commercialMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`Commercial migration is missing table: ${table}`);
+  }
 }
 
 console.log(`Migration check passed (${requiredTables.length} required tables).`);

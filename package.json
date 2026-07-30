@@ -13,6 +13,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "db:check": "node scripts/check-migrations.mjs",
+    "db:backup": "node scripts/backup-and-check.mjs",
     "openspec:validate": "openspec validate add-global-auth-and-billing --strict"
   },
   "dependencies": {

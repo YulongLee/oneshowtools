@@ -2,7 +2,18 @@ import { randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import { audit, db, uploadDirectory } from "./database.mjs";
-import { createSessionToken, hashPassword, hashToken, parseCookies, sessionCookie, verifyPassword } from "./security.mjs";
+import { getServerConfig, validateServerConfig } from "./config.mjs";
+import { sendAccountEmail } from "./email.mjs";
+import {
+  createSessionToken,
+  hashPassword,
+  hashToken,
+  parseCookies,
+  requestClient,
+  sameOrigin,
+  sessionCookie,
+  verifyPassword,
+} from "./security.mjs";
 import { executeTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
 
@@ -28,6 +39,65 @@ async function body(request) {
   }
 }
 
+function securityEvent(request, action, result, userId = null, metadata = {}) {
+  const client = requestClient(request);
+  db.prepare(`
+    INSERT INTO security_events
+    (id, user_id, action, result, ip_hash, correlation_id, metadata_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(),
+    userId,
+    action,
+    result,
+    client.ipHash,
+    request.headers.get("x-correlation-id") || randomUUID(),
+    JSON.stringify(metadata),
+    Date.now(),
+  );
+}
+
+function rateLimited(request, action, subject, maximum = 5, windowMs = 300000) {
+  const { ipHash } = requestClient(request);
+  const key = hashToken(`${action}:${String(subject || "").toLowerCase()}:${ipHash}`);
+  const timestamp = Date.now();
+  const existing = db.prepare("SELECT * FROM rate_limits WHERE key = ?").get(key);
+  if (!existing || existing.window_started_at + windowMs <= timestamp) {
+    db.prepare(`
+      INSERT INTO rate_limits (key, window_started_at, attempts) VALUES (?, ?, 1)
+      ON CONFLICT(key) DO UPDATE SET window_started_at = excluded.window_started_at, attempts = 1
+    `).run(key, timestamp);
+    return false;
+  }
+  db.prepare("UPDATE rate_limits SET attempts = attempts + 1 WHERE key = ?").run(key);
+  return existing.attempts >= maximum;
+}
+
+async function issueAccountToken(request, user, purpose, email = user.email) {
+  const config = getServerConfig(request.url);
+  const rawToken = createSessionToken();
+  const timestamp = Date.now();
+  db.prepare("UPDATE auth_tokens SET consumed_at = ? WHERE user_id = ? AND purpose = ? AND consumed_at IS NULL")
+    .run(timestamp, user.id, purpose);
+  db.prepare(`
+    INSERT INTO auth_tokens
+    (id, user_id, email, purpose, token_hash, expires_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), user.id, email, purpose, hashToken(rawToken), timestamp + 3600000, timestamp);
+  const routes = {
+    verify: `${config.appUrl}/api/auth/verify?token=${encodeURIComponent(rawToken)}`,
+    reset: `${config.appUrl}/?resetToken=${encodeURIComponent(rawToken)}`,
+    emailChange: `${config.appUrl}/api/auth/confirm-email?token=${encodeURIComponent(rawToken)}`,
+  };
+  await sendAccountEmail({
+    to: email,
+    locale: user.locale === "en" ? "en" : "zh-CN",
+    kind: purpose,
+    url: routes[purpose],
+    config,
+  });
+}
+
 function currentUser(request) {
   const token = parseCookies(request.headers.get("cookie") || "").ost_session;
   if (!token) return null;
@@ -46,6 +116,12 @@ function balance(userId) {
   return Number(db.prepare("SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_ledger WHERE user_id = ?").get(userId)?.balance || 0);
 }
 
+function deletionPending(userId) {
+  return Boolean(db.prepare(`
+    SELECT id FROM deletion_requests WHERE user_id = ? AND status = 'pending'
+  `).get(userId));
+}
+
 function toolSelect() {
   return `SELECT id, slug, name_zh AS nameZh, name_en AS nameEn,
     description_zh AS descriptionZh, description_en AS descriptionEn,
@@ -54,6 +130,8 @@ function toolSelect() {
 }
 
 async function register(request) {
+  const config = getServerConfig(request.url);
+  if (!config.registrationEnabled) return fail("REGISTRATION_UNAVAILABLE", 503);
   const data = await body(request);
   const email = String(data.email || "").trim().toLowerCase();
   const name = String(data.name || "").trim();
@@ -61,41 +139,58 @@ async function register(request) {
   if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return fail("INVALID_EMAIL");
   if (password.length < 10 || password.length > 128) return fail("INVALID_PASSWORD");
   if (!name || name.length > 80) return fail("INVALID_NAME");
-  if (db.prepare("SELECT id FROM users WHERE email = ?").get(email)) return fail("EMAIL_ALREADY_REGISTERED", 409);
-  const id = randomUUID();
-  const timestamp = Date.now();
-  const passwordHash = await hashPassword(password);
-  db.exec("BEGIN IMMEDIATE");
-  try {
+  if (rateLimited(request, "register", email)) {
+    securityEvent(request, "auth.register", "rate_limited");
+    return json({ ok: true, verificationRequired: true }, 202);
+  }
+  let user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+  if (!user) {
+    const id = randomUUID();
+    const timestamp = Date.now();
     db.prepare(`
       INSERT INTO users (id, name, email, password_hash, locale, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, email, passwordHash, data.locale === "en" ? "en" : "zh-CN", timestamp, timestamp);
-    db.prepare(`
-      INSERT INTO credit_ledger
-      (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
-      VALUES (?, ?, 'welcome', 200, '新用户欢迎积分', 'New account welcome credits', 'user', ?, ?)
-    `).run(randomUUID(), id, id, timestamp);
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
+    `).run(
+      id,
+      name,
+      email,
+      await hashPassword(password),
+      data.locale === "en" ? "en" : "zh-CN",
+      timestamp,
+      timestamp,
+    );
+    user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+    audit(id, "user.register", "user", id);
   }
-  audit(id, "user.register", "user", id);
-  return createLoginResponse(id, 201);
+  if (!user.email_verified && user.status === "active") await issueAccountToken(request, user, "verify");
+  securityEvent(request, "auth.register", "accepted", user.id);
+  return json({ ok: true, verificationRequired: true }, 202);
 }
 
-function createLoginResponse(userId, status = 200) {
+function createLoginResponse(userId, request, status = 200) {
   const token = createSessionToken();
   const timestamp = Date.now();
+  const client = requestClient(request);
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(timestamp);
-  db.prepare("INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)")
-    .run(randomUUID(), userId, hashToken(token), timestamp + 14 * 86400000, timestamp);
+  db.prepare(`
+    INSERT INTO sessions
+    (id, user_id, token_hash, expires_at, created_at, last_seen_at, user_agent, ip_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    randomUUID(),
+    userId,
+    hashToken(token),
+    timestamp + 14 * 86400000,
+    timestamp,
+    timestamp,
+    client.userAgent,
+    client.ipHash,
+  );
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
   return json({ user: cleanUser(user) }, status, { "set-cookie": sessionCookie(token) });
 }
 
-const googleConfigured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const googleConfigured = (request) => getServerConfig(request.url).googleEnabled;
 
 function googleRedirectUri(request) {
   const appUrl = process.env.APP_URL || new URL(request.url).origin;
@@ -103,7 +198,7 @@ function googleRedirectUri(request) {
 }
 
 function startGoogleAuth(request) {
-  if (!googleConfigured()) return fail("GOOGLE_AUTH_NOT_CONFIGURED", 503);
+  if (!googleConfigured(request)) return fail("GOOGLE_AUTH_NOT_CONFIGURED", 503);
   const state = createSessionToken();
   const authorization = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authorization.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
@@ -123,7 +218,7 @@ function startGoogleAuth(request) {
 }
 
 async function finishGoogleAuth(request) {
-  if (!googleConfigured()) return fail("GOOGLE_AUTH_NOT_CONFIGURED", 503);
+  if (!googleConfigured(request)) return fail("GOOGLE_AUTH_NOT_CONFIGURED", 503);
   const url = new URL(request.url);
   const cookies = parseCookies(request.headers.get("cookie") || "");
   if (!url.searchParams.get("code") || !url.searchParams.get("state") || cookies.ost_oauth_state !== url.searchParams.get("state")) {
@@ -173,9 +268,19 @@ async function finishGoogleAuth(request) {
     user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
     audit(id, "user.register.google", "user", id);
   } else {
-    db.prepare("UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?").run(Date.now(), user.id);
+    if (!user.email_verified) return fail("GOOGLE_LINK_REQUIRES_VERIFIED_ACCOUNT", 409);
   }
-  const loginResponse = createLoginResponse(user.id);
+  const providerAccountId = String(profile.sub || "");
+  if (!providerAccountId) return fail("GOOGLE_IDENTITY_INVALID", 403);
+  const linked = db.prepare("SELECT user_id FROM provider_accounts WHERE provider = 'google' AND provider_account_id = ?")
+    .get(providerAccountId);
+  if (linked && linked.user_id !== user.id) return fail("GOOGLE_IDENTITY_CONFLICT", 409);
+  db.prepare(`
+    INSERT OR IGNORE INTO provider_accounts
+    (id, user_id, provider, provider_account_id, provider_email, created_at)
+    VALUES (?, ?, 'google', ?, ?, ?)
+  `).run(randomUUID(), user.id, providerAccountId, email, Date.now());
+  const loginResponse = createLoginResponse(user.id, request);
   audit(user.id, "user.login.google", "user", user.id);
   return new Response(null, {
     status: 302,
@@ -189,12 +294,107 @@ async function finishGoogleAuth(request) {
 async function login(request) {
   const data = await body(request);
   const email = String(data.email || "").trim().toLowerCase();
-  const user = db.prepare("SELECT * FROM users WHERE email = ? AND status = 'active'").get(email);
-  if (!user || !(await verifyPassword(String(data.password || ""), user.password_hash))) {
+  if (rateLimited(request, "login", email, 8, 60000)) {
+    securityEvent(request, "auth.login", "rate_limited");
     return fail("INVALID_CREDENTIALS", 401);
   }
+  const user = db.prepare("SELECT * FROM users WHERE email = ? AND status = 'active'").get(email);
+  if (!user || !(await verifyPassword(String(data.password || ""), user.password_hash))) {
+    securityEvent(request, "auth.login", "denied", user?.id || null);
+    return fail("INVALID_CREDENTIALS", 401);
+  }
+  if (!user.email_verified) {
+    securityEvent(request, "auth.login", "email_unverified", user.id);
+    return fail("EMAIL_UNVERIFIED", 403);
+  }
   audit(user.id, "user.login", "user", user.id);
-  return createLoginResponse(user.id);
+  securityEvent(request, "auth.login", "success", user.id);
+  return createLoginResponse(user.id, request);
+}
+
+function validToken(rawToken, purpose) {
+  if (!rawToken) return null;
+  return db.prepare(`
+    SELECT t.*, u.locale, u.status FROM auth_tokens t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.token_hash = ? AND t.purpose = ? AND t.consumed_at IS NULL
+      AND t.expires_at > ? AND u.status = 'active'
+  `).get(hashToken(rawToken), purpose, Date.now()) || null;
+}
+
+async function verifyEmail(request) {
+  const token = validToken(new URL(request.url).searchParams.get("token"), "verify");
+  const config = getServerConfig(request.url);
+  if (!token) return new Response(null, { status: 302, headers: { location: `${config.appUrl}/?auth=verification-invalid` } });
+  const timestamp = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const consumed = db.prepare(`
+      UPDATE auth_tokens SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL
+    `).run(timestamp, token.id);
+    if (!consumed.changes) throw new Error("TOKEN_ALREADY_USED");
+    db.prepare("UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?").run(timestamp, token.user_id);
+    db.prepare(`
+      INSERT OR IGNORE INTO credit_ledger
+      (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+      VALUES (?, ?, 'welcome', 200, '新用户欢迎积分', 'New account welcome credits', 'user', ?, ?)
+    `).run(randomUUID(), token.user_id, token.user_id, timestamp);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  securityEvent(request, "auth.verify", "success", token.user_id);
+  return new Response(null, { status: 302, headers: { location: `${config.appUrl}/?auth=verified` } });
+}
+
+async function resendVerification(request) {
+  const data = await body(request);
+  const email = String(data.email || "").trim().toLowerCase();
+  if (rateLimited(request, "verify-resend", email)) return json({ ok: true }, 202);
+  const user = db.prepare("SELECT * FROM users WHERE email = ? AND status = 'active'").get(email);
+  if (user && !user.email_verified && getServerConfig(request.url).registrationEnabled) {
+    await issueAccountToken(request, user, "verify");
+  }
+  securityEvent(request, "auth.verify.resend", "accepted", user?.id || null);
+  return json({ ok: true }, 202);
+}
+
+async function requestPasswordReset(request) {
+  const data = await body(request);
+  const email = String(data.email || "").trim().toLowerCase();
+  if (rateLimited(request, "password-reset-request", email)) return json({ ok: true }, 202);
+  const user = db.prepare("SELECT * FROM users WHERE email = ? AND status = 'active' AND email_verified = 1").get(email);
+  const config = getServerConfig(request.url);
+  if (user && (config.emailConfigured || config.developmentEmail)) {
+    await issueAccountToken(request, user, "reset");
+  }
+  securityEvent(request, "auth.password.reset.request", "accepted", user?.id || null);
+  return json({ ok: true }, 202);
+}
+
+async function resetPassword(request) {
+  const data = await body(request);
+  const password = String(data.password || "");
+  if (password.length < 10 || password.length > 128) return fail("INVALID_PASSWORD");
+  const token = validToken(String(data.token || ""), "reset");
+  if (!token) return fail("RESET_TOKEN_INVALID", 400);
+  const timestamp = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const consumed = db.prepare("UPDATE auth_tokens SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL")
+      .run(timestamp, token.id);
+    if (!consumed.changes) throw new Error("TOKEN_ALREADY_USED");
+    db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+      .run(await hashPassword(password), timestamp, token.user_id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(token.user_id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  securityEvent(request, "auth.password.reset", "success", token.user_id);
+  return json({ ok: true });
 }
 
 function dashboard(userId) {
@@ -254,6 +454,7 @@ async function uploadFile(request, user) {
 }
 
 async function createTask(request, user) {
+  if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
   const data = await body(request);
   const tool = db.prepare(`${toolSelect()} WHERE id = ? AND active = 1`).get(String(data.toolId || ""));
   if (!tool) return fail("TOOL_NOT_FOUND", 404);
@@ -310,8 +511,151 @@ function listTasks(userId) {
   }));
 }
 
+function currentSession(request) {
+  const token = parseCookies(request.headers.get("cookie") || "").ost_session;
+  if (!token) return null;
+  return db.prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?").get(hashToken(token), Date.now()) || null;
+}
+
+async function updateProfile(request, user) {
+  const data = await body(request);
+  const name = String(data.name || "").trim();
+  const locale = data.locale === "en" ? "en" : data.locale === "zh-CN" ? "zh-CN" : null;
+  if (!name || name.length > 80 || !locale) return fail("INVALID_PROFILE");
+  db.prepare("UPDATE users SET name = ?, locale = ?, updated_at = ? WHERE id = ?")
+    .run(name, locale, Date.now(), user.id);
+  audit(user.id, "account.profile.update", "user", user.id);
+  return json({ user: cleanUser(db.prepare("SELECT * FROM users WHERE id = ?").get(user.id)) });
+}
+
+async function changePassword(request, user) {
+  const data = await body(request);
+  const currentPassword = String(data.currentPassword || "");
+  const newPassword = String(data.newPassword || "");
+  if (!(await verifyPassword(currentPassword, user.password_hash))) return fail("INVALID_CREDENTIALS", 401);
+  if (newPassword.length < 10 || newPassword.length > 128) return fail("INVALID_PASSWORD");
+  const session = currentSession(request);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?")
+      .run(await hashPassword(newPassword), Date.now(), user.id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ? AND id <> ?").run(user.id, session?.id || "");
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  securityEvent(request, "account.password.change", "success", user.id);
+  return json({ ok: true });
+}
+
+async function requestEmailChange(request, user) {
+  const data = await body(request);
+  const password = String(data.password || "");
+  const email = String(data.email || "").trim().toLowerCase();
+  if (!(await verifyPassword(password, user.password_hash))) return fail("INVALID_CREDENTIALS", 401);
+  if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return fail("INVALID_EMAIL");
+  if (db.prepare("SELECT id FROM users WHERE email = ? AND id <> ?").get(email, user.id)) return fail("EMAIL_UNAVAILABLE", 409);
+  await issueAccountToken(request, user, "emailChange", email);
+  securityEvent(request, "account.email.change.request", "accepted", user.id);
+  return json({ ok: true }, 202);
+}
+
+async function confirmEmailChange(request) {
+  const token = validToken(new URL(request.url).searchParams.get("token"), "emailChange");
+  const config = getServerConfig(request.url);
+  if (!token) return new Response(null, { status: 302, headers: { location: `${config.appUrl}/?auth=email-change-invalid` } });
+  const timestamp = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const conflict = db.prepare("SELECT id FROM users WHERE email = ? AND id <> ?").get(token.email, token.user_id);
+    if (conflict) throw Object.assign(new Error("EMAIL_UNAVAILABLE"), { status: 409 });
+    const consumed = db.prepare("UPDATE auth_tokens SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL")
+      .run(timestamp, token.id);
+    if (!consumed.changes) throw new Error("TOKEN_ALREADY_USED");
+    db.prepare("UPDATE users SET email = ?, email_verified = 1, updated_at = ? WHERE id = ?")
+      .run(token.email, timestamp, token.user_id);
+    db.prepare("DELETE FROM sessions WHERE user_id = ?").run(token.user_id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    if (error.status === 409) return new Response(null, { status: 302, headers: { location: `${config.appUrl}/?auth=email-change-invalid` } });
+    throw error;
+  }
+  securityEvent(request, "account.email.change", "success", token.user_id);
+  return new Response(null, { status: 302, headers: { location: `${config.appUrl}/?auth=email-changed` } });
+}
+
+function listSessions(request, user) {
+  const current = currentSession(request);
+  return json({
+    sessions: db.prepare(`
+      SELECT id, expires_at AS expiresAt, created_at AS createdAt, last_seen_at AS lastSeenAt,
+        user_agent AS userAgent FROM sessions WHERE user_id = ? AND expires_at > ?
+      ORDER BY last_seen_at DESC, created_at DESC
+    `).all(user.id, Date.now()).map((session) => ({ ...session, current: session.id === current?.id })),
+  });
+}
+
+function revokeSessions(request, user, target) {
+  const current = currentSession(request);
+  if (target === "others") {
+    db.prepare("DELETE FROM sessions WHERE user_id = ? AND id <> ?").run(user.id, current?.id || "");
+  } else {
+    const session = db.prepare("SELECT id FROM sessions WHERE id = ? AND user_id = ?").get(target, user.id);
+    if (!session) return fail("SESSION_NOT_FOUND", 404);
+    db.prepare("DELETE FROM sessions WHERE id = ?").run(target);
+  }
+  securityEvent(request, "account.sessions.revoke", "success", user.id, { target: target === "others" ? "others" : "selected" });
+  return json({ ok: true });
+}
+
+function createExport(user) {
+  const id = randomUUID();
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    account: cleanUser(user),
+    subscriptions: db.prepare("SELECT * FROM subscriptions WHERE user_id = ? ORDER BY created_at").all(user.id),
+    credits: db.prepare(`
+      SELECT type, amount, description_zh AS descriptionZh, description_en AS descriptionEn,
+        reference_type AS referenceType, reference_id AS referenceId, created_at AS createdAt
+      FROM credit_ledger WHERE user_id = ? ORDER BY created_at
+    `).all(user.id),
+    tasks: db.prepare("SELECT id, tool_id AS toolId, status, credit_cost AS creditCost, created_at AS createdAt FROM tasks WHERE user_id = ? ORDER BY created_at").all(user.id),
+    files: db.prepare("SELECT id, name, mime_type AS mimeType, size_bytes AS sizeBytes, created_at AS createdAt FROM files WHERE user_id = ? ORDER BY created_at").all(user.id),
+  };
+  db.prepare(`
+    INSERT INTO export_jobs (id, user_id, status, payload_json, expires_at, created_at)
+    VALUES (?, ?, 'completed', ?, ?, ?)
+  `).run(id, user.id, JSON.stringify(payload), Date.now() + 86400000, Date.now());
+  audit(user.id, "account.export.create", "export", id);
+  return json({ export: { id, status: "completed", expiresAt: Date.now() + 86400000 } }, 201);
+}
+
+async function requestDeletion(request, user) {
+  const config = getServerConfig(request.url);
+  if (!config.accountDeletionEnabled) return fail("ACCOUNT_DELETION_UNAVAILABLE", 503);
+  const data = await body(request);
+  if (!(await verifyPassword(String(data.password || ""), user.password_hash))) return fail("INVALID_CREDENTIALS", 401);
+  const id = randomUUID();
+  const timestamp = Date.now();
+  db.prepare(`
+    INSERT INTO deletion_requests (id, user_id, status, execute_after, created_at)
+    VALUES (?, ?, 'pending', ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET status = 'pending', execute_after = excluded.execute_after,
+      created_at = excluded.created_at, cancelled_at = NULL
+  `).run(id, user.id, timestamp + 7 * 86400000, timestamp);
+  const session = currentSession(request);
+  db.prepare("DELETE FROM sessions WHERE user_id = ? AND id <> ?").run(user.id, session?.id || "");
+  securityEvent(request, "account.deletion.request", "accepted", user.id);
+  return json({ ok: true, executeAfter: timestamp + 7 * 86400000 }, 202);
+}
+
 async function billingCheckout(request, user) {
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_PRO_PRICE_ID) return fail("BILLING_NOT_CONFIGURED", 503);
+  const config = getServerConfig(request.url);
+  if (!config.billingEnabled) return fail("BILLING_NOT_CONFIGURED", 503);
+  if (!user.email_verified) return fail("EMAIL_UNVERIFIED", 403);
+  if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
   const data = await body(request);
   if (data.planId !== "plan_pro") return fail("PLAN_NOT_FOUND", 404);
   const Stripe = (await import("stripe")).default;
@@ -329,20 +673,184 @@ async function billingCheckout(request, user) {
   return json({ url: checkout.url });
 }
 
+async function billingPortal(request, user) {
+  const config = getServerConfig(request.url);
+  if (!config.billingEnabled) return fail("BILLING_NOT_CONFIGURED", 503);
+  const mapping = db.prepare(`
+    SELECT provider_object_id FROM provider_mappings
+    WHERE user_id = ? AND provider = 'stripe' AND kind = 'customer'
+    ORDER BY created_at DESC LIMIT 1
+  `).get(user.id);
+  if (!mapping) return fail("BILLING_PROFILE_NOT_FOUND", 404);
+  const Stripe = (await import("stripe")).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const portal = await stripe.billingPortal.sessions.create({
+    customer: mapping.provider_object_id,
+    return_url: `${config.appUrl}/?view=billing`,
+  });
+  return json({ url: portal.url });
+}
+
+function userForStripeCustomer(customerId) {
+  return db.prepare(`
+    SELECT u.* FROM provider_mappings m JOIN users u ON u.id = m.user_id
+    WHERE m.provider = 'stripe' AND m.kind = 'customer' AND m.provider_object_id = ?
+  `).get(String(customerId || "")) || null;
+}
+
+function mapStripeCustomer(userId, customerId) {
+  if (!userId || !customerId) return;
+  db.prepare(`
+    INSERT OR IGNORE INTO provider_mappings
+    (id, user_id, provider, kind, provider_object_id, created_at)
+    VALUES (?, ?, 'stripe', 'customer', ?, ?)
+  `).run(randomUUID(), userId, String(customerId), Date.now());
+}
+
+function reconcileStripeEvent(event) {
+  const object = event.data.object;
+  const timestamp = Date.now();
+  if (event.type === "checkout.session.completed") {
+    const userId = String(object.client_reference_id || object.metadata?.userId || "");
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
+    if (!user) return;
+    mapStripeCustomer(user.id, object.customer);
+    if (object.mode === "subscription" && object.subscription) {
+      db.prepare(`
+        INSERT INTO subscriptions
+        (id, user_id, plan_id, provider, provider_subscription_id, status, created_at, updated_at)
+        VALUES (?, ?, 'plan_pro', 'stripe', ?, 'pending', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
+      `).run(`stripe:${object.subscription}`, user.id, String(object.subscription), timestamp, timestamp);
+    }
+    if (object.mode === "payment" && Number(object.metadata?.credits) > 0) {
+      db.prepare(`
+        INSERT OR IGNORE INTO credit_ledger
+        (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+        VALUES (?, ?, 'purchase', ?, '积分充值', 'Credit top-up', 'stripe_checkout', ?, ?)
+      `).run(randomUUID(), user.id, Number(object.metadata.credits), object.id, timestamp);
+    }
+    return;
+  }
+
+  if (event.type.startsWith("customer.subscription.")) {
+    const user = userForStripeCustomer(object.customer);
+    if (!user) return;
+    const status = event.type === "customer.subscription.deleted" ? "cancelled" : String(object.status || "unknown");
+    db.prepare(`
+      INSERT INTO subscriptions
+      (id, user_id, plan_id, provider, provider_subscription_id, status, current_period_end, created_at, updated_at)
+      VALUES (?, ?, 'plan_pro', 'stripe', ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET status = excluded.status,
+        current_period_end = excluded.current_period_end, updated_at = excluded.updated_at
+    `).run(
+      `stripe:${object.id}`,
+      user.id,
+      object.id,
+      status,
+      object.current_period_end ? object.current_period_end * 1000 : null,
+      timestamp,
+      timestamp,
+    );
+    return;
+  }
+
+  if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+    const user = userForStripeCustomer(object.customer);
+    if (!user) return;
+    const status = event.type === "invoice.paid" ? "paid" : "payment_failed";
+    db.prepare(`
+      INSERT INTO invoices
+      (id, user_id, provider, provider_invoice_id, status, amount_paid, currency, hosted_url, created_at)
+      VALUES (?, ?, 'stripe', ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(provider_invoice_id) DO UPDATE SET status = excluded.status,
+        amount_paid = excluded.amount_paid, hosted_url = excluded.hosted_url
+    `).run(
+      `stripe:${object.id}`,
+      user.id,
+      object.id,
+      status,
+      Number(object.amount_paid || 0),
+      String(object.currency || "usd").toUpperCase(),
+      object.hosted_invoice_url || null,
+      timestamp,
+    );
+    if (event.type === "invoice.paid") {
+      db.prepare(`
+        INSERT OR IGNORE INTO credit_ledger
+        (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+        VALUES (?, ?, 'subscription_grant', 2000, '专业版月度积分', 'Pro monthly credits', 'stripe_invoice', ?, ?)
+      `).run(randomUUID(), user.id, object.id, timestamp);
+    }
+  }
+}
+
+async function stripeWebhook(request) {
+  if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.STRIPE_SECRET_KEY) return fail("BILLING_NOT_CONFIGURED", 503);
+  const signature = request.headers.get("stripe-signature");
+  if (!signature) return fail("WEBHOOK_SIGNATURE_REQUIRED", 400);
+  const rawBody = await request.text();
+  const Stripe = (await import("stripe")).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  let event;
+  try {
+    event = await stripe.webhooks.constructEventAsync(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch {
+    securityEvent(request, "billing.webhook", "signature_invalid");
+    return fail("WEBHOOK_SIGNATURE_INVALID", 400);
+  }
+  const inserted = db.prepare(`
+    INSERT OR IGNORE INTO webhook_receipts
+    (id, provider, provider_event_id, event_type, status, created_at)
+    VALUES (?, 'stripe', ?, ?, 'received', ?)
+  `).run(randomUUID(), event.id, event.type, Date.now());
+  if (!inserted.changes) return json({ received: true, duplicate: true });
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    reconcileStripeEvent(event);
+    db.prepare(`
+      UPDATE webhook_receipts SET status = 'processed', processed_at = ?
+      WHERE provider = 'stripe' AND provider_event_id = ?
+    `).run(Date.now(), event.id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    db.prepare(`
+      UPDATE webhook_receipts SET status = 'failed', error_code = ?, processed_at = ?
+      WHERE provider = 'stripe' AND provider_event_id = ?
+    `).run("RECONCILIATION_FAILED", Date.now(), event.id);
+    throw error;
+  }
+  return json({ received: true });
+}
+
 export async function handleApi(request) {
   const url = new URL(request.url);
   const path = url.pathname;
+  const config = getServerConfig(request.url);
+  const configurationErrors = validateServerConfig(config);
   if (path === "/api/health" && request.method === "GET") return json({
     ok: true,
     database: "sqlite",
-    registrationEnabled: true,
-    googleAuthEnabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-    billingEnabled: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRO_PRICE_ID),
+    registrationEnabled: config.registrationEnabled,
+    googleAuthEnabled: config.googleEnabled,
+    billingEnabled: config.billingEnabled,
+    accountDeletionEnabled: config.accountDeletionEnabled,
+    emailEnabled: config.emailConfigured,
+    configurationReady: configurationErrors.length === 0,
+    configurationErrors,
     openAiEnabled: Boolean(process.env.OPENAI_API_KEY),
     externalRuntimeEnabled: Boolean(process.env.TOOL_RUNTIME_BASE_URL),
   });
+  if (path === "/api/billing/webhook" && request.method === "POST") return stripeWebhook(request);
+  if (path === "/api/auth/verify" && request.method === "GET") return verifyEmail(request);
+  if (path === "/api/auth/confirm-email" && request.method === "GET") return confirmEmailChange(request);
+  if (!sameOrigin(request, config.appUrl)) return fail("ORIGIN_NOT_ALLOWED", 403);
   if (path === "/api/auth/register" && request.method === "POST") return register(request);
   if (path === "/api/auth/login" && request.method === "POST") return login(request);
+  if (path === "/api/auth/resend-verification" && request.method === "POST") return resendVerification(request);
+  if (path === "/api/auth/forgot-password" && request.method === "POST") return requestPasswordReset(request);
+  if (path === "/api/auth/reset-password" && request.method === "POST") return resetPassword(request);
   if (path === "/api/auth/google/start" && request.method === "GET") return startGoogleAuth(request);
   if (path === "/api/auth/google/callback" && request.method === "GET") return finishGoogleAuth(request);
   if (path === "/api/auth/logout" && request.method === "POST") {
@@ -370,9 +878,42 @@ export async function handleApi(request) {
   const user = auth.user;
 
   if (path === "/api/dashboard" && request.method === "GET") return json(dashboard(user.id));
+  if (path === "/api/account/profile" && request.method === "PATCH") return updateProfile(request, user);
+  if (path === "/api/account/password" && request.method === "POST") return changePassword(request, user);
+  if (path === "/api/account/email" && request.method === "POST") return requestEmailChange(request, user);
+  if (path === "/api/account/sessions" && request.method === "GET") return listSessions(request, user);
+  if (path === "/api/account/sessions/others" && request.method === "DELETE") return revokeSessions(request, user, "others");
+  if (path.match(/^\/api\/account\/sessions\/[^/]+$/) && request.method === "DELETE") {
+    return revokeSessions(request, user, path.split("/")[4]);
+  }
+  if (path === "/api/account/export" && request.method === "POST") return createExport(user);
+  if (path.match(/^\/api\/account\/exports\/[^/]+\/download$/) && request.method === "GET") {
+    const id = path.split("/")[4];
+    const job = db.prepare(`
+      SELECT * FROM export_jobs WHERE id = ? AND user_id = ? AND status = 'completed' AND expires_at > ?
+    `).get(id, user.id, Date.now());
+    if (!job) return fail("EXPORT_NOT_FOUND", 404);
+    return new Response(job.payload_json, {
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="oneshowtools-export-${id}.json"`,
+      },
+    });
+  }
+  if (path === "/api/account/deletion" && request.method === "POST") return requestDeletion(request, user);
+  if (path === "/api/account/deletion" && request.method === "DELETE") {
+    const result = db.prepare(`
+      UPDATE deletion_requests SET status = 'cancelled', cancelled_at = ?
+      WHERE user_id = ? AND status = 'pending'
+    `).run(Date.now(), user.id);
+    if (!result.changes) return fail("DELETION_REQUEST_NOT_FOUND", 404);
+    securityEvent(request, "account.deletion.cancel", "success", user.id);
+    return json({ ok: true });
+  }
   if (path === "/api/tasks" && request.method === "GET") return json({ tasks: listTasks(user.id) });
   if (path === "/api/tasks" && request.method === "POST") return createTask(request, user);
   if (path.match(/^\/api\/tool-actions\/[^/]+$/) && request.method === "POST") {
+    if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     const slug = path.split("/")[3];
     const tool = db.prepare(`${toolSelect()} WHERE slug = ? AND active = 1`).get(slug);
     if (!tool) return fail("TOOL_NOT_FOUND", 404);
@@ -432,9 +973,14 @@ export async function handleApi(request) {
       FROM subscriptions s JOIN plans p ON p.id = s.plan_id
       WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 1
     `).get(user.id) || null;
-    return json({ configured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRO_PRICE_ID), subscription });
+    const invoices = db.prepare(`
+      SELECT id, status, amount_paid AS amountPaid, currency, hosted_url AS hostedUrl, created_at AS createdAt
+      FROM invoices WHERE user_id = ? ORDER BY created_at DESC LIMIT 20
+    `).all(user.id);
+    return json({ configured: config.billingEnabled, subscription, invoices });
   }
   if (path === "/api/billing/checkout" && request.method === "POST") return billingCheckout(request, user);
+  if (path === "/api/billing/portal" && request.method === "POST") return billingPortal(request, user);
   if (path === "/api/runtime/status" && request.method === "GET") {
     return json({
       providers: [

@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS invoices;
+DROP TABLE IF EXISTS account_provider_mappings;
+DROP TABLE IF EXISTS webhook_receipts_v2;
+DROP TABLE IF EXISTS deletion_requests;
+DROP TABLE IF EXISTS export_jobs;
+DROP TABLE IF EXISTS rate_limits;
+DROP TABLE IF EXISTS security_events;
+DROP TABLE IF EXISTS provider_accounts;
+DROP TABLE IF EXISTS auth_tokens;

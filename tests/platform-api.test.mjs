@@ -6,7 +6,11 @@ import test from "node:test";
 
 const testDataDirectory = await mkdtemp(join(tmpdir(), "oneshowtools-api-"));
 process.env.DATA_DIR = testDataDirectory;
+process.env.APP_URL = "http://localhost";
+process.env.REGISTRATION_ENABLED = "true";
+process.env.ALLOW_DEV_EMAIL_DELIVERY = "true";
 const { handleApi } = await import(`../server/api.mjs?test=${Date.now()}`);
+const { db } = await import("../server/database.mjs");
 
 const request = (path, options = {}) => new Request(`http://localhost${path}`, options);
 const authenticated = (path, cookie, options = {}) => request(path, {
@@ -25,8 +29,19 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
       locale: "zh-CN",
     }),
   }));
-  assert.equal(register.status, 201);
-  const cookie = register.headers.get("set-cookie").split(";")[0];
+  assert.equal(register.status, 202);
+  assert.equal(register.headers.get("set-cookie"), null);
+  const verification = db.prepare("SELECT text FROM email_outbox WHERE kind = 'verify' ORDER BY created_at DESC LIMIT 1").get();
+  const token = new URL(verification.text.match(/https?:\/\/\S+/)[0]).searchParams.get("token");
+  const verified = await handleApi(request(`/api/auth/verify?token=${encodeURIComponent(token)}`));
+  assert.equal(verified.status, 302);
+  const login = await handleApi(request("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: db.prepare("SELECT email FROM users ORDER BY created_at DESC LIMIT 1").get().email, password: "StrongPass123!" }),
+  }));
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get("set-cookie").split(";")[0];
 
   const dashboard = await (await handleApi(authenticated("/api/dashboard", cookie))).json();
   assert.equal(dashboard.metrics.credits, 200);
