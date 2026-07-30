@@ -9,6 +9,8 @@ process.env.DATA_DIR = testDataDirectory;
 process.env.APP_URL = "http://localhost";
 process.env.REGISTRATION_ENABLED = "true";
 process.env.ALLOW_DEV_EMAIL_DELIVERY = "true";
+process.env.ONESHOW_MODEL_EXECUTION_ENABLED = "false";
+process.env.MODEL_CONNECTIONS_ENABLED = "false";
 const { handleApi } = await import(`../server/api.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 

@@ -1,6 +1,6 @@
 import { db } from "./database.mjs";
 import { randomUUID } from "node:crypto";
-import { invokeModel } from "./model-gateway.mjs";
+import { gatewayFlags, invokeModel } from "./model-gateway.mjs";
 
 const prompts = {
   "copy-polish": {
@@ -23,6 +23,11 @@ async function runModelTask(task, tool, input) {
   }
   const text = String(input.text || "").trim();
   if (!text) return { status: "failed", errorCode: "TEXT_REQUIRED" };
+  const flags = gatewayFlags();
+  if ((!input.modelConnectionId || input.modelConnectionId === "managed")
+    && (!flags.managedConfigured || !flags.managedExecutionEnabled)) {
+    return { status: "waiting_for_runtime", errorCode: "ONESH​OW_MODEL_UNAVAILABLE".replace("\u200b", "") };
+  }
   const result = await invokeModel({
     userId: task.user_id,
     taskId: task.id,
