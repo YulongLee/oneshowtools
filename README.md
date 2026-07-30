@@ -13,6 +13,7 @@ task, and file layer for AI tools published by OneShow AI Lab.
 6. Task Center — persistent task input, output, runtime state, and credit cost.
 7. File Center — authenticated upload, download, listing, and deletion.
 8. Dashboard — live account, task, file, credit, and subscription metrics.
+9. Admin Console — protected user management, credit adjustments, task visibility, and audit records.
 
 No visitor metrics, balances, tasks, files, or billing state are mocked. Optional
 providers are shown as unconfigured until their environment variables are present.
@@ -50,6 +51,16 @@ use. The platform runs without provider keys, but AI tasks remain in
 - `OPENAI_API_KEY` enables OpenAI-backed tools.
 - `TOOL_RUNTIME_BASE_URL` connects independent tool runtimes.
 - `STRIPE_SECRET_KEY` and `STRIPE_PRO_PRICE_ID` enable real subscription checkout.
+- `ADMIN_EMAILS` is a comma-separated allowlist of verified accounts that may access `/admin`.
+
+## Admin console
+
+The standalone admin console is available at `/admin`. It uses the same verified
+email/password account system as the customer app, followed by a server-side
+administrator allowlist check. Admins can search users, suspend or restore
+accounts, make reasoned credit adjustments, review platform tasks, and inspect
+an immutable audit trail. Suspending a user immediately revokes that user's
+sessions. Password hashes and session tokens are never returned by admin APIs.
 
 ## Verification
 

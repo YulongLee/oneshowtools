@@ -112,6 +112,18 @@ function requireUser(request) {
   return user ? { user } : { response: fail("UNAUTHENTICATED", 401) };
 }
 
+function requireAdmin(request) {
+  const auth = requireUser(request);
+  if (auth.response) return auth;
+  const allowed = new Set(String(process.env.ADMIN_EMAILS || "")
+    .split(",").map((email) => email.trim().toLowerCase()).filter(Boolean));
+  if (!allowed.has(auth.user.email.toLowerCase())) {
+    securityEvent(request, "admin.access", "denied", auth.user.id);
+    return { response: fail("ADMIN_FORBIDDEN", 403) };
+  }
+  return auth;
+}
+
 function balance(userId) {
   return Number(db.prepare("SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_ledger WHERE user_id = ?").get(userId)?.balance || 0);
 }
@@ -127,6 +139,95 @@ function toolSelect() {
     description_zh AS descriptionZh, description_en AS descriptionEn,
     category, icon, credit_cost AS creditCost, runtime_kind AS runtimeKind,
     runtime_status AS runtimeStatus, active FROM tools`;
+}
+
+async function handleAdmin(request, path) {
+  const auth = requireAdmin(request);
+  if (auth.response) return auth.response;
+  const admin = auth.user;
+  if (path === "/api/admin/overview" && request.method === "GET") {
+    return json({
+      metrics: {
+        users: db.prepare("SELECT COUNT(*) AS count FROM users").get().count,
+        verifiedUsers: db.prepare("SELECT COUNT(*) AS count FROM users WHERE email_verified = 1").get().count,
+        suspendedUsers: db.prepare("SELECT COUNT(*) AS count FROM users WHERE status = 'suspended'").get().count,
+        tasks: db.prepare("SELECT COUNT(*) AS count FROM tasks").get().count,
+        files: db.prepare("SELECT COUNT(*) AS count FROM files").get().count,
+        credits: db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM credit_ledger").get().total,
+      },
+      admin: cleanUser(admin),
+    });
+  }
+  if (path === "/api/admin/users" && request.method === "GET") {
+    const url = new URL(request.url);
+    const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+    const status = String(url.searchParams.get("status") || "");
+    const params = [`%${query}%`, `%${query}%`];
+    let where = "WHERE (u.email LIKE ? OR u.name LIKE ?)";
+    if (["active", "suspended"].includes(status)) {
+      where += " AND u.status = ?";
+      params.push(status);
+    }
+    const users = db.prepare(`
+      SELECT u.id, u.name, u.email, u.locale, u.email_verified AS emailVerified,
+        u.status, u.created_at AS createdAt,
+        COALESCE((SELECT SUM(amount) FROM credit_ledger WHERE user_id = u.id), 0) AS credits,
+        (SELECT COUNT(*) FROM tasks WHERE user_id = u.id) AS tasks,
+        (SELECT COUNT(*) FROM files WHERE user_id = u.id) AS files
+      FROM users u ${where} ORDER BY u.created_at DESC LIMIT 100
+    `).all(...params).map((user) => ({ ...user, emailVerified: Boolean(user.emailVerified) }));
+    return json({ users });
+  }
+  if (path === "/api/admin/tasks" && request.method === "GET") {
+    return json({ tasks: db.prepare(`
+      SELECT t.id, t.status, t.credit_cost AS creditCost, t.created_at AS createdAt,
+        u.email, u.name, tools.name_zh AS toolNameZh, tools.name_en AS toolNameEn
+      FROM tasks t JOIN users u ON u.id = t.user_id JOIN tools ON tools.id = t.tool_id
+      ORDER BY t.created_at DESC LIMIT 100
+    `).all() });
+  }
+  if (path === "/api/admin/audit" && request.method === "GET") {
+    return json({ events: db.prepare(`
+      SELECT a.id, a.action, a.target_type AS targetType, a.target_id AS targetId,
+        a.metadata_json AS metadataJson, a.created_at AS createdAt, u.email AS actorEmail
+      FROM audit_events a LEFT JOIN users u ON u.id = a.user_id
+      ORDER BY a.created_at DESC LIMIT 100
+    `).all() });
+  }
+  const statusMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/status$/);
+  if (statusMatch && request.method === "PATCH") {
+    const targetId = statusMatch[1];
+    const data = await body(request);
+    const status = String(data.status || "");
+    if (!["active", "suspended"].includes(status)) return fail("INVALID_STATUS");
+    if (targetId === admin.id && status === "suspended") return fail("CANNOT_SUSPEND_SELF", 409);
+    const result = db.prepare("UPDATE users SET status = ?, updated_at = ? WHERE id = ?")
+      .run(status, Date.now(), targetId);
+    if (!result.changes) return fail("USER_NOT_FOUND", 404);
+    if (status === "suspended") db.prepare("DELETE FROM sessions WHERE user_id = ?").run(targetId);
+    audit(admin.id, "admin.user.status", "user", targetId, { status });
+    return json({ ok: true });
+  }
+  const creditMatch = path.match(/^\/api\/admin\/users\/([^/]+)\/credits$/);
+  if (creditMatch && request.method === "POST") {
+    const targetId = creditMatch[1];
+    const data = await body(request);
+    const amount = Number(data.amount);
+    const note = String(data.note || "").trim().slice(0, 160);
+    if (!Number.isInteger(amount) || amount === 0 || Math.abs(amount) > 100000 || !note) {
+      return fail("INVALID_CREDIT_ADJUSTMENT");
+    }
+    if (!db.prepare("SELECT id FROM users WHERE id = ?").get(targetId)) return fail("USER_NOT_FOUND", 404);
+    const id = randomUUID();
+    db.prepare(`
+      INSERT INTO credit_ledger
+      (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+      VALUES (?, ?, 'admin_adjustment', ?, ?, ?, 'admin', ?, ?)
+    `).run(id, targetId, amount, note, note, id, Date.now());
+    audit(admin.id, "admin.credits.adjust", "user", targetId, { amount, note });
+    return json({ ok: true, balance: balance(targetId) }, 201);
+  }
+  return fail("NOT_FOUND", 404);
 }
 
 async function register(request) {
@@ -769,6 +870,7 @@ export async function handleApi(request) {
     `).all();
     return json({ plans });
   }
+  if (path.startsWith("/api/admin/")) return handleAdmin(request, path);
 
   const auth = requireUser(request);
   if (auth.response) return auth.response;

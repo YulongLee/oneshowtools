@@ -140,6 +140,50 @@ test("commercial account lifecycle verifies ownership and resists enumeration", 
   }));
   assert.equal(newLogin.status, 200);
   const newCookie = newLogin.headers.get("set-cookie").split(";")[0];
+
+  assert.equal(
+    (await handleApi(authenticated("/api/admin/overview", otherCookie))).status,
+    403,
+  );
+  process.env.ADMIN_EMAILS = email;
+  const overview = await handleApi(authenticated("/api/admin/overview", newCookie));
+  assert.equal(overview.status, 200);
+  assert.equal((await overview.json()).metrics.users, 2);
+  const adminUsersResponse = await handleApi(authenticated("/api/admin/users", newCookie));
+  const adminUsersBody = await adminUsersResponse.json();
+  assert.equal(adminUsersResponse.status, 200);
+  assert.equal(adminUsersBody.users.length, 2);
+  assert.equal(JSON.stringify(adminUsersBody).includes("password_hash"), false);
+
+  const otherId = db.prepare("SELECT id FROM users WHERE email = ?").get(otherEmail).id;
+  const creditAdjustment = await handleApi(authenticated(`/api/admin/users/${otherId}/credits`, newCookie, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ amount: 25, note: "Customer support adjustment" }),
+  }));
+  assert.equal(creditAdjustment.status, 201);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'admin.credits.adjust'").get().count,
+    1,
+  );
+  assert.equal(
+    (await handleApi(authenticated(`/api/admin/users/${db.prepare("SELECT id FROM users WHERE email = ?").get(email).id}/status`, newCookie, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "suspended" }),
+    }))).status,
+    409,
+  );
+  assert.equal(
+    (await handleApi(authenticated(`/api/admin/users/${otherId}/status`, newCookie, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "suspended" }),
+    }))).status,
+    200,
+  );
+  assert.equal((await handleApi(authenticated("/api/dashboard", otherCookie))).status, 401);
+
   assert.equal(
     (await handleApi(authenticated("/api/account/deletion", newCookie, {
       method: "POST",
@@ -170,6 +214,7 @@ test("commercial account lifecycle verifies ownership and resists enumeration", 
   );
   assert.equal((await handleApi(authenticated("/api/dashboard", newCookie))).status, 200);
   process.env.ACCOUNT_DELETION_ENABLED = "false";
+  delete process.env.ADMIN_EMAILS;
 });
 
 test("production cookie mutations reject cross-origin requests", async () => {
