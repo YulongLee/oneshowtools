@@ -262,6 +262,9 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .runtime-tool-copy { min-width: 0; }
 .runtime-tool-copy select { width: min(100%,260px); min-height: 30px; padding: 0 28px 0 8px; border: 1px solid #dce4ef; border-radius: 7px; color: #53637a; background: #f9fbfe; font-size: 9px; outline: none; }
 .runtime-tool-copy select:focus { border-color: #71a4ed; box-shadow: 0 0 0 3px rgba(31,111,229,.1); }
+.runtime-tool-actions { display: flex; align-items: center; gap: 7px; }
+.runtime-tool-actions > button { min-height: 30px; padding: 0 9px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dce4ef; border-radius: 7px; color: #53637a; background: #fff; font-size: 9px; white-space: nowrap; }
+.runtime-tool-actions > button:hover { color: var(--blue); border-color: #a9c5ed; background: #f7faff; }
 .runtime-dialog-backdrop { position: fixed; inset: 0; z-index: 100; padding: 24px; display: grid; place-items: center; background: rgba(19,31,50,.42); backdrop-filter: blur(4px); animation: fadeIn .16s ease-out; }
 .runtime-dialog { width: min(600px,100%); padding: 0; overflow: hidden; border-color: #d6dfeb; box-shadow: 0 28px 70px rgba(19,39,70,.24); }
 .runtime-dialog > header { padding: 20px 21px; display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; border-bottom: 1px solid #edf0f5; background: #fbfcfe; }
@@ -278,6 +281,16 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .connection-test-result.error { color: #a4464e; border-color: #f0cbd0; background: #fff4f5; }
 .connection-test-result small { margin-left: auto; opacity: .75; }
 .connection-form footer { grid-column: 1 / -1; padding-top: 4px; display: flex; justify-content: flex-end; gap: 8px; }
+.tool-settings-dialog { width: min(520px,100%); }
+.tool-settings-form { padding: 22px; display: grid; gap: 16px; }
+.tool-settings-form label { display: grid; gap: 7px; color: #68758a; font-size: 10px; }
+.tool-settings-form select { min-height: 43px; padding: 0 11px; border: 1px solid #dbe2ec; border-radius: 8px; color: var(--navy); background: #fff; font: inherit; outline: none; }
+.tool-settings-form select:focus { border-color: #71a4ed; box-shadow: 0 0 0 3px rgba(31,111,229,.1); }
+.tool-settings-default { padding: 14px; display: flex; align-items: center; gap: 11px; border: 1px solid #deebfb; border-radius: 10px; color: #2872de; background: #f5f9ff; }
+.tool-settings-default strong, .tool-settings-default small { display: block; }
+.tool-settings-default strong { margin-bottom: 3px; color: #27405f; font-size: 11px; }
+.tool-settings-default small { color: #718198; font-size: 9px; line-height: 1.5; }
+.tool-settings-form footer { display: flex; justify-content: flex-end; gap: 8px; }
 .model-select-field { margin-top: 13px; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .runtime-table, .data-table, .files-table { overflow: hidden; }
@@ -460,6 +473,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .runtime-identity { grid-column: 1 / -1; }
   .runtime-health { padding-left: 0; border-left: 0; }
   .runtime-tool-grid { grid-template-columns: 1fr; }
+  .runtime-tool-actions { flex-wrap: wrap; justify-content: flex-end; }
   .guest-header nav { display: none; }
   .guest-header { grid-template-columns: 1fr auto; padding: 0 20px; }
   .guest-hero { grid-template-columns: 1fr; padding: 52px 24px 30px; }
@@ -491,6 +505,8 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .empty-connection .secondary-button { grid-column: 1 / -1; width: 100%; }
   .connection-card { grid-template-columns: auto 1fr; }
   .connection-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .runtime-tool-card.configurable { grid-template-columns: auto 1fr; }
+  .runtime-tool-card.configurable .runtime-tool-actions { grid-column: 1 / -1; justify-content: flex-start; }
   .runtime-dialog-backdrop { padding: 12px; }
   .connection-form { grid-template-columns: 1fr; }
   .connection-form footer { grid-column: auto; }

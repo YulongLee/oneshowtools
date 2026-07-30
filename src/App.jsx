@@ -5,7 +5,7 @@ import {
   House, ImageSquare, ListChecks, LockKey, MagicWand, MagnifyingGlass, Microphone,
   ArrowLeft, Copy, DownloadSimple, Play, RocketLaunch, SignOut, Sparkle, SpinnerGap,
   SquaresFour, StopCircle, Translate, Trash, User, UserCircle, Warning, Wrench, X,
-  Plus, PlugsConnected, ShieldCheck,
+  GearSix, Plus, PlugsConnected, ShieldCheck,
 } from "@phosphor-icons/react";
 
 const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone };
@@ -42,7 +42,7 @@ const dictionary = {
     billingPortal: "管理付款与发票", invoices: "发票记录", noInvoices: "暂无发票记录", pendingConfirmation: "付款完成后需要等待安全回调确认。",
     managedModel: "平台托管模型", personalModels: "我的模型连接", addModel: "添加模型连接", connectionName: "连接名称", providerTemplate: "接口类型", apiKey: "API Key", saveConnection: "安全保存",
     keyPrivacy: "API Key 会加密保存，提交后仅显示末四位，平台和管理员都无法再次查看明文。", noConnections: "尚未添加个人模型连接", testConnection: "测试", setDefault: "设为默认", disable: "停用", enable: "启用", rotateKey: "更换 Key", deleteConnection: "删除",
-    selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用", testBeforeSave: "测试连接", testingConnection: "正在测试", testPassed: "连接测试成功", testFailed: "连接测试失败", testRequired: "请先测试连接，成功后再保存。", modelRouteSaved: "工具模型配置已保存", localTool: "本地工具，无需配置模型",
+    selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用", testBeforeSave: "测试连接", testingConnection: "正在测试", testPassed: "连接测试成功", testFailed: "连接测试失败", testRequired: "请先测试连接，成功后再保存。", modelRouteSaved: "工具模型配置已保存", localTool: "本地工具，无需配置模型", toolSettings: "工具设置", toolSettingsHint: "选择这个工具运行时使用的平台模型或个人模型连接。", saveSettings: "保存设置", currentModel: "当前模型",
     runtimeReady: "模型服务运行正常", managedDescription: "无需配置 API Key，登录后即可在支持的工具中使用。", connectionCount: "个人连接", enabledTools: "可用工具", addFirstConnection: "添加第一个连接", connectionsHint: "接入你自己的模型账户，并自由设置工具的运行来源。", toolRouting: "工具运行方式", toolRoutingHint: "每个工具都明确显示当前处理方式。", close: "关闭",
   },
   en: {
@@ -76,7 +76,7 @@ const dictionary = {
     billingPortal: "Manage payments and invoices", invoices: "Invoices", noInvoices: "No invoices yet", pendingConfirmation: "Payment access updates only after secure provider confirmation.",
     managedModel: "Managed model", personalModels: "My model connections", addModel: "Add model connection", connectionName: "Connection name", providerTemplate: "API type", apiKey: "API Key", saveConnection: "Save securely",
     keyPrivacy: "API keys are encrypted and cannot be displayed again. Only the last four characters remain visible.", noConnections: "No personal model connections yet", testConnection: "Test", setDefault: "Set default", disable: "Disable", enable: "Enable", rotateKey: "Rotate key", deleteConnection: "Delete",
-    selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready", testBeforeSave: "Test connection", testingConnection: "Testing", testPassed: "Connection test passed", testFailed: "Connection test failed", testRequired: "Test the connection successfully before saving.", modelRouteSaved: "Tool model setting saved", localTool: "Local tool · no model setup needed",
+    selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready", testBeforeSave: "Test connection", testingConnection: "Testing", testPassed: "Connection test passed", testFailed: "Connection test failed", testRequired: "Test the connection successfully before saving.", modelRouteSaved: "Tool model setting saved", localTool: "Local tool · no model setup needed", toolSettings: "Tool settings", toolSettingsHint: "Choose the managed model or a personal connection for this tool.", saveSettings: "Save settings", currentModel: "Current model",
     runtimeReady: "Model service operational", managedDescription: "No API key setup required. Use it immediately in supported tools.", connectionCount: "Personal connections", enabledTools: "Available tools", addFirstConnection: "Add your first connection", connectionsHint: "Connect your own model account and choose how supported tools run.", toolRouting: "Tool routing", toolRoutingHint: "See the processing route for every tool at a glance.", close: "Close",
   },
 };
@@ -387,12 +387,18 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [settingsTool, setSettingsTool] = useState(null);
+  const [toolModelDraft, setToolModelDraft] = useState("managed");
   useEffect(() => {
-    if (!showForm) return undefined;
-    const closeOnEscape = (event) => { if (event.key === "Escape") setShowForm(false); };
+    if (!showForm && !settingsTool) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setShowForm(false);
+      setSettingsTool(null);
+    };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [showForm]);
+  }, [showForm, settingsTool]);
   if (!data) return <Loading locale={locale} />;
   const mutate = async (path, options, success) => {
     setBusy(true);
@@ -448,14 +454,26 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
       setBusy(false);
     }
   };
+  const openToolSettings = (tool) => {
+    setSettingsTool(tool);
+    setToolModelDraft(tool.modelConnectionId || "managed");
+  };
+  const saveToolSettings = async (event) => {
+    event.preventDefault();
+    const saved = await mutate(`/api/tools/${settingsTool.id}/model`, jsonOptions("PATCH", {
+      modelConnectionId: toolModelDraft,
+    }), t.modelRouteSaved);
+    if (saved) setSettingsTool(null);
+  };
   return <div className="page-stack runtime-page"><PageHeading title={t.runtime} subtitle={t.runtimeSub} action={data.byokEnabled ? <button className="primary-button" onClick={() => setShowForm(true)}><Plus size={18} />{t.addModel}</button> : null} />
     <article className="runtime-hero surface"><div className="runtime-identity"><span className="runtime-hero-icon"><Sparkle size={27} weight="fill" /></span><div><span className="runtime-kicker">{t.managedModel}</span><h2>{data.managed.name}</h2><p>{t.managedDescription}</p></div></div><div className="runtime-health"><span className={`runtime-live-dot ${data.managed.configured ? "on" : ""}`} /><div><strong>{data.managed.configured ? t.runtimeReady : t.notConfigured}</strong><small>{data.managed.configured ? t.online : t.runtimeNote}</small></div></div><div className="runtime-stats"><div><strong>{data.connections.length}</strong><span>{t.connectionCount}</span></div><div><strong>{data.tools.length}</strong><span>{t.enabledTools}</span></div></div></article>
     <div className="runtime-security-note"><ShieldCheck size={18} weight="fill" /><span>{t.keyPrivacy}</span></div>
     <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.personalModels}</h2><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addModel}</button>}</div>
       <div className="connection-list">{data.connections.length ? data.connections.map((connection) => <article className="connection-card surface" key={connection.id}><span className="connection-icon"><PlugsConnected size={21} /></span><div className="connection-copy"><h3>{connection.name}</h3><p>{connection.modelId} · {connection.keyHint}</p><small><span className={`connection-state ${connection.lastTestStatus === "healthy" ? "active" : connection.status}`} />{modelTestLabel(connection.lastTestStatus, locale)}{connection.lastTestLatencyMs ? ` · ${connection.lastTestLatencyMs}ms` : ""}</small></div><div className="connection-actions"><button disabled={busy} onClick={() => testSavedConnection(connection)}>{t.testConnection}</button><button disabled={busy} onClick={() => { const apiKey = window.prompt(t.apiKey); if (apiKey) mutate(`/api/model-connections/${connection.id}/rotate`, jsonOptions("POST", { apiKey }), t.configured); }}>{t.rotateKey}</button><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { status: connection.status === "active" ? "disabled" : "active" }), t.configured)}>{connection.status === "active" ? t.disable : t.enable}</button><button className="danger-link" disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, { method: "DELETE" }, t.deleteConnection)}>{t.deleteConnection}</button></div></article>) : <div className="surface empty-connection"><span><PlugsConnected size={25} /></span><div><h3>{t.noConnections}</h3><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addFirstConnection}</button>}</div>}</div>
     </section>
-    <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.toolRouting}</h2><p>{t.toolRoutingHint}</p></div></div><div className="runtime-tool-grid">{data.tools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const toolName = locale === "en" ? tool.nameEn : tool.nameZh; return <article className={`runtime-tool-card surface ${tool.modelConfigurable ? "configurable" : ""}`} key={tool.id}><span className={`tool-icon compact ${tool.category}`}><Icon size={20} /></span><div className="runtime-tool-copy"><strong>{toolName}</strong>{tool.modelConfigurable ? <select aria-label={`${toolName} ${t.selectModel}`} value={tool.modelConnectionId || "managed"} disabled={busy} onChange={(event) => mutate(`/api/tools/${tool.id}/model`, jsonOptions("PATCH", { modelConnectionId: event.target.value }), t.modelRouteSaved)}><option value="managed">{t.useManaged}</option>{data.connections.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select> : <small>{t.localTool}</small>}</div><StatusPill status={tool.runtimeStatus} locale={locale} /></article>; })}</div></section>
+    <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.toolRouting}</h2><p>{t.toolRoutingHint}</p></div></div><div className="runtime-tool-grid">{data.tools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const toolName = locale === "en" ? tool.nameEn : tool.nameZh; const selectedConnection = data.connections.find((item) => item.id === tool.modelConnectionId); return <article className={`runtime-tool-card surface ${tool.modelConfigurable ? "configurable" : ""}`} key={tool.id}><span className={`tool-icon compact ${tool.category}`}><Icon size={20} /></span><div className="runtime-tool-copy"><strong>{toolName}</strong><small>{tool.modelConfigurable ? `${t.currentModel}：${selectedConnection?.name || "OneShowModel"}` : t.localTool}</small></div>{tool.modelConfigurable ? <div className="runtime-tool-actions"><span className="status-pill ready"><CheckCircle size={14} weight="fill" />{t.configured}</span><button onClick={() => openToolSettings(tool)}><GearSix size={15} />{t.toolSettings}</button></div> : <StatusPill status={tool.runtimeStatus} locale={locale} />}</article>; })}</div></section>
     {showForm && <div className="runtime-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false); }}><div className="runtime-dialog surface" role="dialog" aria-modal="true" aria-labelledby="runtime-dialog-title"><header><div><span className="runtime-dialog-icon"><PlugsConnected size={21} /></span><div><h2 id="runtime-dialog-title">{t.addModel}</h2><p>{t.keyPrivacy}</p></div></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label={t.close}><X size={19} /></button></header><form className="connection-form" onSubmit={submit}><label><span>{t.connectionName}</span><input autoFocus required maxLength={80} value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></label><label><span>{t.providerTemplate}</span><select value={form.providerTemplate} onChange={(event) => updateForm("providerTemplate", event.target.value)}>{data.supportedTemplates.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>{t.model}</span><input required value={form.modelId} onChange={(event) => updateForm("modelId", event.target.value)} /></label><label><span>{t.apiKey}</span><input required type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => updateForm("apiKey", event.target.value)} /></label>{testResult && <div className={`connection-test-result ${testResult.status === "healthy" ? "success" : "error"}`}><span>{testResult.status === "healthy" ? <CheckCircle size={17} weight="fill" /> : <Warning size={17} weight="fill" />}</span><strong>{modelTestLabel(testResult.status, locale)}</strong>{testResult.latencyMs ? <small>{testResult.latencyMs}ms</small> : null}</div>}<footer><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>{t.close}</button><button type="button" className="secondary-button" disabled={busy || !form.name || !form.modelId || !form.apiKey} onClick={testDraftConnection}>{busy ? <SpinnerGap className="spin" size={17} /> : <PlugsConnected size={17} />}{busy ? t.testingConnection : t.testBeforeSave}</button><button className="primary-button" disabled={busy || testResult?.status !== "healthy"}>{busy ? <SpinnerGap className="spin" size={18} /> : <LockKey size={18} />}{t.saveConnection}</button></footer></form></div></div>}
+    {settingsTool && <div className="runtime-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSettingsTool(null); }}><div className="runtime-dialog tool-settings-dialog surface" role="dialog" aria-modal="true" aria-labelledby="tool-settings-title"><header><div><span className="runtime-dialog-icon"><GearSix size={21} /></span><div><h2 id="tool-settings-title">{locale === "en" ? settingsTool.nameEn : settingsTool.nameZh} · {t.toolSettings}</h2><p>{t.toolSettingsHint}</p></div></div><button className="icon-button" onClick={() => setSettingsTool(null)} aria-label={t.close}><X size={19} /></button></header><form className="tool-settings-form" onSubmit={saveToolSettings}><label><span>{t.selectModel}</span><select autoFocus value={toolModelDraft} onChange={(event) => setToolModelDraft(event.target.value)}><option value="managed">{t.useManaged}</option>{data.connections.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label><div className="tool-settings-default"><Sparkle size={19} weight="fill" /><div><strong>OneShowModel</strong><small>{t.managedDescription}</small></div></div><footer><button type="button" className="secondary-button" onClick={() => setSettingsTool(null)}>{t.close}</button><button className="primary-button" disabled={busy}><Check size={17} />{t.saveSettings}</button></footer></form></div></div>}
   </div>;
 }
 
