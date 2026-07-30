@@ -7,7 +7,7 @@ required provider configuration are present:
 
 | Capability | Flag | Required configuration |
 | --- | --- | --- |
-| Email registration | `REGISTRATION_ENABLED=true` | `EMAIL_API_KEY`, `EMAIL_FROM`, HTTPS `APP_URL` |
+| Email registration | `REGISTRATION_ENABLED=true` | configured SMTP or Resend provider, `EMAIL_FROM`, HTTPS `APP_URL` |
 | Google sign-in | `GOOGLE_AUTH_ENABLED=true` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Stripe billing | `BILLING_ENABLED=true` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID` |
 | Account deletion | `ACCOUNT_DELETION_ENABLED=true` | approved retention and deletion policy |
@@ -18,10 +18,17 @@ commercial features are disabled.
 ## Email
 
 1. Verify the sending domain with the selected transactional email provider.
-2. Configure the API URL, key, and From address in the server-only environment.
-3. Test Chinese and English verification and reset messages.
-4. Monitor delivery failures and bounces without logging tokens.
-5. Rotate the provider key if it is exposed and invalidate active account tokens.
+2. For Alibaba Cloud DirectMail in Hangzhou, configure
+   `EMAIL_PROVIDER=smtp`, `EMAIL_SMTP_HOST=smtpdm.aliyun.com`,
+   `EMAIL_SMTP_PORT=465`, `EMAIL_SMTP_SECURE=true`, the verified sender as
+   `EMAIL_SMTP_USER`, its dedicated SMTP password as
+   `EMAIL_SMTP_PASSWORD`, and the branded From address as `EMAIL_FROM`.
+3. Keep SMTP passwords in the root-owned production environment file. Never
+   commit or paste them into logs, tickets, screenshots, or source control.
+4. Test Chinese and English verification and reset messages.
+5. Monitor delivery failures and bounces without logging tokens.
+6. Rotate the provider credential if it is exposed and invalidate active
+   account tokens.
 
 `ALLOW_DEV_EMAIL_DELIVERY=true` writes messages to the local database outbox and
 must never be enabled with an HTTPS production `APP_URL`.

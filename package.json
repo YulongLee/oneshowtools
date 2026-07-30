@@ -21,6 +21,7 @@
     "@vitejs/plugin-react": "5.0.4",
     "better-auth": "^1.6.25",
     "drizzle-orm": "^0.45.2",
+    "nodemailer": "^9.0.3",
     "pdf-parse": "^2.4.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",

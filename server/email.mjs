@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import nodemailer from "nodemailer";
 import { db } from "./database.mjs";
 
 const copy = {
@@ -23,6 +24,40 @@ export async function sendAccountEmail({ to, locale = "zh-CN", kind, url, config
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(randomUUID(), to, kind, subject, text, Date.now());
     return;
+  }
+  if (config.emailProvider === "smtp") {
+    const host = process.env.EMAIL_SMTP_HOST;
+    const port = Number(process.env.EMAIL_SMTP_PORT || 465);
+    const secure = process.env.EMAIL_SMTP_SECURE !== "false";
+    const transport = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: {
+        user: process.env.EMAIL_SMTP_USER,
+        pass: process.env.EMAIL_SMTP_PASSWORD,
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
+      tls: {
+        minVersion: "TLSv1.2",
+        servername: host,
+      },
+    });
+    try {
+      await transport.sendMail({
+        from: process.env.EMAIL_FROM,
+        to,
+        subject,
+        text,
+      });
+      return;
+    } catch {
+      throw Object.assign(new Error("EMAIL_DELIVERY_FAILED"), { status: 502 });
+    } finally {
+      transport.close();
+    }
   }
   const response = await fetch(process.env.EMAIL_API_URL || "https://api.resend.com/emails", {
     method: "POST",
