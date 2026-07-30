@@ -65,7 +65,7 @@
 - [ ] 8.1 Run unit and integration suites for enumeration resistance, verification, recovery, session expiry/revocation, account states, CSRF/origin checks, rate limits, OAuth, ownership, webhooks, ledger, export, and deletion
 - [ ] 8.2 Run bilingual browser acceptance for registration through verification, sign-in, recovery, profile/security management, subscription checkout, top-up, portal, invoices, export, and deletion
 - [ ] 8.3 Run contract tests proving every AI tool receives only minimal versioned identity/entitlement context and cannot access payment credentials or unrelated user data
-- [ ] 8.4 Deploy migrations and code with all new commercial flags disabled, then verify public discovery, existing login, tools, tasks, files, and balances remain backward compatible
+- [x] 8.4 Deploy migrations and code with all new commercial flags disabled, then verify public discovery, existing login, tools, tasks, files, and balances remain backward compatible
 - [ ] 8.5 Configure providers in staging/test mode and run production-domain smoke tests with synthetic accounts and Stripe test transactions
-- [ ] 8.6 Record database backup, migration invariants, health checks, monitoring signals, feature-flag state, and rollback evidence
+- [x] 8.6 Record database backup, migration invariants, health checks, monitoring signals, feature-flag state, and rollback evidence
 - [ ] 8.7 Enable each approved commercial capability independently and verify the live domain before declaring commercial readiness
