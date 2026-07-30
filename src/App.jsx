@@ -42,7 +42,7 @@ const dictionary = {
     billingPortal: "管理付款与发票", invoices: "发票记录", noInvoices: "暂无发票记录", pendingConfirmation: "付款完成后需要等待安全回调确认。",
     managedModel: "平台托管模型", personalModels: "我的模型连接", addModel: "添加模型连接", connectionName: "连接名称", providerTemplate: "接口类型", apiKey: "API Key", saveConnection: "安全保存",
     keyPrivacy: "API Key 会加密保存，提交后仅显示末四位，平台和管理员都无法再次查看明文。", noConnections: "尚未添加个人模型连接", testConnection: "测试", setDefault: "设为默认", disable: "停用", enable: "启用", rotateKey: "更换 Key", deleteConnection: "删除",
-    selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用",
+    selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用", testBeforeSave: "测试连接", testingConnection: "正在测试", testPassed: "连接测试成功", testFailed: "连接测试失败", testRequired: "请先测试连接，成功后再保存。", modelRouteSaved: "工具模型配置已保存", localTool: "本地工具，无需配置模型",
     runtimeReady: "模型服务运行正常", managedDescription: "无需配置 API Key，登录后即可在支持的工具中使用。", connectionCount: "个人连接", enabledTools: "可用工具", addFirstConnection: "添加第一个连接", connectionsHint: "接入你自己的模型账户，并自由设置工具的运行来源。", toolRouting: "工具运行方式", toolRoutingHint: "每个工具都明确显示当前处理方式。", close: "关闭",
   },
   en: {
@@ -76,7 +76,7 @@ const dictionary = {
     billingPortal: "Manage payments and invoices", invoices: "Invoices", noInvoices: "No invoices yet", pendingConfirmation: "Payment access updates only after secure provider confirmation.",
     managedModel: "Managed model", personalModels: "My model connections", addModel: "Add model connection", connectionName: "Connection name", providerTemplate: "API type", apiKey: "API Key", saveConnection: "Save securely",
     keyPrivacy: "API keys are encrypted and cannot be displayed again. Only the last four characters remain visible.", noConnections: "No personal model connections yet", testConnection: "Test", setDefault: "Set default", disable: "Disable", enable: "Enable", rotateKey: "Rotate key", deleteConnection: "Delete",
-    selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready",
+    selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready", testBeforeSave: "Test connection", testingConnection: "Testing", testPassed: "Connection test passed", testFailed: "Connection test failed", testRequired: "Test the connection successfully before saving.", modelRouteSaved: "Tool model setting saved", localTool: "Local tool · no model setup needed",
     runtimeReady: "Model service operational", managedDescription: "No API key setup required. Use it immediately in supported tools.", connectionCount: "Personal connections", enabledTools: "Available tools", addFirstConnection: "Add your first connection", connectionsHint: "Connect your own model account and choose how supported tools run.", toolRouting: "Tool routing", toolRoutingHint: "See the processing route for every tool at a glance.", close: "Close",
   },
 };
@@ -99,6 +99,13 @@ const statusLabel = (status, locale) => ({
   completed: locale === "en" ? "Completed" : "已完成", failed: locale === "en" ? "Failed" : "失败",
   waiting_for_runtime: locale === "en" ? "Runtime required" : "等待运行服务", cancelled: locale === "en" ? "Cancelled" : "已取消",
 })[status] || status;
+const modelTestLabel = (status, locale) => ({
+  healthy: locale === "en" ? "Connection ready" : "连接正常",
+  model_auth_failed: locale === "en" ? "Authentication failed" : "密钥认证失败",
+  model_rate_limited: locale === "en" ? "Rate limited" : "调用频率受限",
+  model_timeout: locale === "en" ? "Timed out" : "连接超时",
+  unavailable: locale === "en" ? "Model unavailable" : "模型暂不可用",
+})[status] || (locale === "en" ? "Not tested" : "尚未测试");
 
 function Brand() {
   return <div className="brand-lockup"><span className="brand-mark"><GridFour weight="fill" size={18} /></span><span><strong>OneShowTools</strong><small>Platform</small></span></div>;
@@ -207,7 +214,7 @@ function RunToolDialog({ tool, files, locale, onClose, onCreated }) {
   </section></div>;
 }
 
-function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onCompleted }) {
+function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
   const t = dictionary[locale];
   const Icon = iconMap[tool.icon] || Wrench;
   const [file, setFile] = useState(null);
@@ -227,8 +234,12 @@ function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onComp
   const isFile = isImage || tool.slug === "pdf-summary";
   const isText = tool.slug === "copy-polish";
   const isSpeech = tool.slug === "speech-to-text";
+  const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
 
   useEffect(() => () => recognitionRef.current?.stop?.(), []);
+  useEffect(() => {
+    setModelConnectionId(runtimeTool?.modelConnectionId || "managed");
+  }, [runtimeTool?.modelConnectionId, tool.id]);
 
   const run = async () => {
     if (!authenticated) return onAuth();
@@ -289,6 +300,16 @@ function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onComp
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+  const changeModel = async (value) => {
+    const previous = modelConnectionId;
+    setModelConnectionId(value);
+    try {
+      await onModelChange?.(tool.id, value);
+    } catch {
+      setModelConnectionId(previous);
+      setError(t.error);
+    }
+  };
 
   return <div className="tool-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{t.backToMarket}</button>
@@ -299,7 +320,7 @@ function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onComp
         {isFile && <label className={`tool-dropzone ${file ? "selected" : ""}`}><input type="file" accept={isImage ? "image/*" : "application/pdf"} onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{file ? formatBytes(file.size) : isImage ? "PNG · JPG · WEBP" : "PDF"}</span></label>}
         {isText && <textarea className="tool-textarea" rows={12} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} />}
         {isSpeech && <><div className={`speech-pad ${recording ? "recording" : ""}`}><button onClick={toggleSpeech}>{recording ? <StopCircle size={28} weight="fill" /> : <Microphone size={28} weight="fill" />}<span>{recording ? t.stopSpeech : t.startSpeech}</span></button></div><textarea className="tool-textarea" rows={7} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} /></>}
-        {authenticated && ["copy-polish", "pdf-summary"].includes(tool.slug) && <label className="model-select-field"><span>{t.selectModel}</span><select value={modelConnectionId} onChange={(event) => setModelConnectionId(event.target.value)}><option value="managed">{t.useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}
+        {authenticated && tool.runtimeKind === "openai" && <label className="model-select-field"><span>{t.selectModel}</span><select value={modelConnectionId} onChange={(event) => changeModel(event.target.value)}><option value="managed">{t.useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}
         {tool.slug === "background-remover" && <label className="range-field"><span>{t.imageTolerance}<strong>{tolerance}</strong></span><input type="range" min="12" max="120" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>}
         {tool.slug === "image-compressor" && <label className="range-field"><span>{t.imageQuality}<strong>{quality}%</strong></span><input type="range" min="30" max="95" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></label>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{t.loginToUse}</span><button onClick={onAuth}>{t.signInAction}</button></div>}
@@ -365,6 +386,7 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
   const [form, setForm] = useState({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [testResult, setTestResult] = useState(null);
   useEffect(() => {
     if (!showForm) return undefined;
     const closeOnEscape = (event) => { if (event.key === "Escape") setShowForm(false); };
@@ -388,20 +410,52 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
   };
   const submit = async (event) => {
     event.preventDefault();
+    if (testResult?.status !== "healthy") return onNotice(t.testRequired);
     const saved = await mutate("/api/model-connections", jsonOptions("POST", form), t.configured);
     if (saved) {
       setForm({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
+      setTestResult(null);
       setShowForm(false);
+    }
+  };
+  const updateForm = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setTestResult(null);
+  };
+  const testDraftConnection = async () => {
+    setBusy(true);
+    setTestResult(null);
+    try {
+      const result = await api("/api/model-connections/validate", jsonOptions("POST", form));
+      setTestResult(result);
+      onNotice(result.status === "healthy" ? t.testPassed : `${t.testFailed}：${modelTestLabel(result.status, locale)}`);
+    } catch {
+      setTestResult({ status: "unavailable" });
+      onNotice(t.testFailed);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const testSavedConnection = async (connection) => {
+    setBusy(true);
+    try {
+      const result = await api(`/api/model-connections/${connection.id}/test`, { method: "POST" });
+      await onRefresh();
+      onNotice(result.status === "healthy" ? t.testPassed : `${t.testFailed}：${modelTestLabel(result.status, locale)}`);
+    } catch {
+      onNotice(t.testFailed);
+    } finally {
+      setBusy(false);
     }
   };
   return <div className="page-stack runtime-page"><PageHeading title={t.runtime} subtitle={t.runtimeSub} action={data.byokEnabled ? <button className="primary-button" onClick={() => setShowForm(true)}><Plus size={18} />{t.addModel}</button> : null} />
     <article className="runtime-hero surface"><div className="runtime-identity"><span className="runtime-hero-icon"><Sparkle size={27} weight="fill" /></span><div><span className="runtime-kicker">{t.managedModel}</span><h2>{data.managed.name}</h2><p>{t.managedDescription}</p></div></div><div className="runtime-health"><span className={`runtime-live-dot ${data.managed.configured ? "on" : ""}`} /><div><strong>{data.managed.configured ? t.runtimeReady : t.notConfigured}</strong><small>{data.managed.configured ? t.online : t.runtimeNote}</small></div></div><div className="runtime-stats"><div><strong>{data.connections.length}</strong><span>{t.connectionCount}</span></div><div><strong>{data.tools.length}</strong><span>{t.enabledTools}</span></div></div></article>
     <div className="runtime-security-note"><ShieldCheck size={18} weight="fill" /><span>{t.keyPrivacy}</span></div>
     <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.personalModels}</h2><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addModel}</button>}</div>
-      <div className="connection-list">{data.connections.length ? data.connections.map((connection) => <article className="connection-card surface" key={connection.id}><span className="connection-icon"><PlugsConnected size={21} /></span><div className="connection-copy"><h3>{connection.name}{connection.isDefault && <span className="default-badge">{locale === "en" ? "Default" : "默认"}</span>}</h3><p>{connection.modelId} · {connection.keyHint}</p><small><span className={`connection-state ${connection.status}`} />{connection.lastTestStatus || (locale === "en" ? "Not tested" : "尚未测试")}</small></div><div className="connection-actions"><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}/test`, { method: "POST" }, t.connectionHealthy)}>{t.testConnection}</button>{!connection.isDefault && connection.status === "active" && <button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { isDefault: true }), t.configured)}>{t.setDefault}</button>}<button disabled={busy} onClick={() => { const apiKey = window.prompt(t.apiKey); if (apiKey) mutate(`/api/model-connections/${connection.id}/rotate`, jsonOptions("POST", { apiKey }), t.configured); }}>{t.rotateKey}</button><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { status: connection.status === "active" ? "disabled" : "active" }), t.configured)}>{connection.status === "active" ? t.disable : t.enable}</button><button className="danger-link" disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, { method: "DELETE" }, t.deleteConnection)}>{t.deleteConnection}</button></div></article>) : <div className="surface empty-connection"><span><PlugsConnected size={25} /></span><div><h3>{t.noConnections}</h3><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addFirstConnection}</button>}</div>}</div>
+      <div className="connection-list">{data.connections.length ? data.connections.map((connection) => <article className="connection-card surface" key={connection.id}><span className="connection-icon"><PlugsConnected size={21} /></span><div className="connection-copy"><h3>{connection.name}</h3><p>{connection.modelId} · {connection.keyHint}</p><small><span className={`connection-state ${connection.lastTestStatus === "healthy" ? "active" : connection.status}`} />{modelTestLabel(connection.lastTestStatus, locale)}{connection.lastTestLatencyMs ? ` · ${connection.lastTestLatencyMs}ms` : ""}</small></div><div className="connection-actions"><button disabled={busy} onClick={() => testSavedConnection(connection)}>{t.testConnection}</button><button disabled={busy} onClick={() => { const apiKey = window.prompt(t.apiKey); if (apiKey) mutate(`/api/model-connections/${connection.id}/rotate`, jsonOptions("POST", { apiKey }), t.configured); }}>{t.rotateKey}</button><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { status: connection.status === "active" ? "disabled" : "active" }), t.configured)}>{connection.status === "active" ? t.disable : t.enable}</button><button className="danger-link" disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, { method: "DELETE" }, t.deleteConnection)}>{t.deleteConnection}</button></div></article>) : <div className="surface empty-connection"><span><PlugsConnected size={25} /></span><div><h3>{t.noConnections}</h3><p>{t.connectionsHint}</p></div>{data.byokEnabled && <button className="secondary-button" onClick={() => setShowForm(true)}><Plus size={17} />{t.addFirstConnection}</button>}</div>}</div>
     </section>
-    <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.toolRouting}</h2><p>{t.toolRoutingHint}</p></div></div><div className="runtime-tool-grid">{data.tools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const managed = ["copy-polish", "pdf-summary"].includes(tool.slug); return <article className="runtime-tool-card surface" key={tool.id}><span className={`tool-icon compact ${tool.category}`}><Icon size={20} /></span><div><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><small>{managed ? "OneShowModel" : t.localMode}</small></div><StatusPill status={tool.runtimeStatus} locale={locale} /></article>; })}</div></section>
-    {showForm && <div className="runtime-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false); }}><div className="runtime-dialog surface" role="dialog" aria-modal="true" aria-labelledby="runtime-dialog-title"><header><div><span className="runtime-dialog-icon"><PlugsConnected size={21} /></span><div><h2 id="runtime-dialog-title">{t.addModel}</h2><p>{t.keyPrivacy}</p></div></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label={t.close}><X size={19} /></button></header><form className="connection-form" onSubmit={submit}><label><span>{t.connectionName}</span><input autoFocus required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label><span>{t.providerTemplate}</span><select value={form.providerTemplate} onChange={(event) => setForm({ ...form, providerTemplate: event.target.value })}>{data.supportedTemplates.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>{t.model}</span><input required value={form.modelId} onChange={(event) => setForm({ ...form, modelId: event.target.value })} /></label><label><span>{t.apiKey}</span><input required type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></label><footer><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>{t.close}</button><button className="primary-button" disabled={busy}>{busy ? <SpinnerGap className="spin" size={18} /> : <LockKey size={18} />}{t.saveConnection}</button></footer></form></div></div>}
+    <section className="runtime-section"><div className="runtime-section-heading"><div><h2>{t.toolRouting}</h2><p>{t.toolRoutingHint}</p></div></div><div className="runtime-tool-grid">{data.tools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const toolName = locale === "en" ? tool.nameEn : tool.nameZh; return <article className={`runtime-tool-card surface ${tool.modelConfigurable ? "configurable" : ""}`} key={tool.id}><span className={`tool-icon compact ${tool.category}`}><Icon size={20} /></span><div className="runtime-tool-copy"><strong>{toolName}</strong>{tool.modelConfigurable ? <select aria-label={`${toolName} ${t.selectModel}`} value={tool.modelConnectionId || "managed"} disabled={busy} onChange={(event) => mutate(`/api/tools/${tool.id}/model`, jsonOptions("PATCH", { modelConnectionId: event.target.value }), t.modelRouteSaved)}><option value="managed">{t.useManaged}</option>{data.connections.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select> : <small>{t.localTool}</small>}</div><StatusPill status={tool.runtimeStatus} locale={locale} /></article>; })}</div></section>
+    {showForm && <div className="runtime-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false); }}><div className="runtime-dialog surface" role="dialog" aria-modal="true" aria-labelledby="runtime-dialog-title"><header><div><span className="runtime-dialog-icon"><PlugsConnected size={21} /></span><div><h2 id="runtime-dialog-title">{t.addModel}</h2><p>{t.keyPrivacy}</p></div></div><button className="icon-button" onClick={() => setShowForm(false)} aria-label={t.close}><X size={19} /></button></header><form className="connection-form" onSubmit={submit}><label><span>{t.connectionName}</span><input autoFocus required maxLength={80} value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></label><label><span>{t.providerTemplate}</span><select value={form.providerTemplate} onChange={(event) => updateForm("providerTemplate", event.target.value)}>{data.supportedTemplates.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>{t.model}</span><input required value={form.modelId} onChange={(event) => updateForm("modelId", event.target.value)} /></label><label><span>{t.apiKey}</span><input required type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => updateForm("apiKey", event.target.value)} /></label>{testResult && <div className={`connection-test-result ${testResult.status === "healthy" ? "success" : "error"}`}><span>{testResult.status === "healthy" ? <CheckCircle size={17} weight="fill" /> : <Warning size={17} weight="fill" />}</span><strong>{modelTestLabel(testResult.status, locale)}</strong>{testResult.latencyMs ? <small>{testResult.latencyMs}ms</small> : null}</div>}<footer><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>{t.close}</button><button type="button" className="secondary-button" disabled={busy || !form.name || !form.modelId || !form.apiKey} onClick={testDraftConnection}>{busy ? <SpinnerGap className="spin" size={17} /> : <PlugsConnected size={17} />}{busy ? t.testingConnection : t.testBeforeSave}</button><button className="primary-button" disabled={busy || testResult?.status !== "healthy"}>{busy ? <SpinnerGap className="spin" size={18} /> : <LockKey size={18} />}{t.saveConnection}</button></footer></form></div></div>}
   </div>;
 }
 
@@ -728,7 +782,7 @@ export function App() {
     tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
     account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
-    tool: routeTool ? <ToolPage tool={routeTool} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onCompleted={async () => { setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
+    tool: routeTool ? <ToolPage tool={routeTool} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 
   return <div className="platform-shell"><aside className="sidebar"><Brand /><nav>{navItems.map(([key, Icon]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={20} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span></button>)}</nav><div className="sidebar-footer"><div className="mini-profile"><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{session.email}</small></div></div></div></aside>

@@ -12,8 +12,14 @@ export const MANAGED_MODEL_ALIAS = "OneShowModel";
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const endpointPolicies = Object.freeze({
-  openai: { label: "OpenAI compatible", baseUrl: "https://api.openai.com/v1" },
-  dashscope: { label: "DashScope compatible", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  openai: {
+    label: "OpenAI compatible",
+    baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL || "https://api.openai.com/v1",
+  },
+  dashscope: {
+    label: "DashScope compatible",
+    baseUrl: process.env.DASHSCOPE_COMPATIBLE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
 });
 
 const gatewayError = (code, status = 502, retryable = false) =>
@@ -141,9 +147,7 @@ export function createModelConnection(userId, data) {
   const version = 1;
   const encrypted = encryptCredential(input.apiKey, userId, id, version);
   const timestamp = Date.now();
-  const isDefault = data.isDefault || !db.prepare(
-    "SELECT id FROM user_model_connections WHERE user_id = ? AND status = 'active'",
-  ).get(userId);
+  const isDefault = Boolean(data.isDefault);
   db.exec("BEGIN IMMEDIATE");
   try {
     if (isDefault) db.prepare("UPDATE user_model_connections SET is_default = 0 WHERE user_id = ?").run(userId);
@@ -235,6 +239,11 @@ export function deleteModelConnection(userId, connectionId) {
       INSERT OR IGNORE INTO model_credential_versions (id, connection_id, version, event, key_hint, created_at)
       VALUES (?, ?, ?, 'revoked', ?, ?)
     `).run(randomUUID(), connectionId, row.credential_version, row.key_hint, timestamp);
+    db.prepare(`
+      UPDATE user_tool_model_preferences
+      SET route_kind = 'managed', model_connection_id = NULL, updated_at = ?
+      WHERE user_id = ? AND model_connection_id = ?
+    `).run(timestamp, userId, connectionId);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -339,20 +348,6 @@ function resolveRoute(userId, connectionId) {
       modelId: row.model_id,
     };
   }
-  const preferred = connectionId === "managed" ? null : db.prepare(`
-    SELECT * FROM user_model_connections
-    WHERE user_id = ? AND status = 'active' AND is_default = 1
-  `).get(userId);
-  if (preferred) {
-    const policy = endpointPolicies[preferred.provider_template];
-    return {
-      routeKind: "user_connection",
-      connectionId: preferred.id,
-      baseUrl: policy.baseUrl,
-      apiKey: decryptCredential(preferred),
-      modelId: preferred.model_id,
-    };
-  }
   const flags = gatewayFlags();
   if (!flags.managedConfigured || !flags.managedExecutionEnabled) {
     throw gatewayError("ONESH​OW_MODEL_UNAVAILABLE".replace("\u200b", ""), 503, true);
@@ -422,6 +417,75 @@ export async function testModelConnection(userId, connectionId) {
       last_tested_at = ?, updated_at = ? WHERE id = ? AND user_id = ?
   `).run(status, latency, Date.now(), Date.now(), connectionId, userId);
   return { status, latencyMs: latency };
+}
+
+export async function validateModelConnection(data) {
+  if (!gatewayFlags().byokEnabled) throw gatewayError("MODEL_CONNECTIONS_UNAVAILABLE", 503);
+  const input = validConnectionInput(data);
+  const startedAt = Date.now();
+  try {
+    await requestModel({
+      baseUrl: endpointPolicies[input.providerTemplate].baseUrl,
+      apiKey: input.apiKey,
+      modelId: input.modelId,
+      instruction: "Return only the word OK.",
+      text: "Health check",
+    });
+    return { status: "healthy", latencyMs: Date.now() - startedAt };
+  } catch (error) {
+    return {
+      status: ["MODEL_AUTH_FAILED", "MODEL_RATE_LIMITED", "MODEL_TIMEOUT"].includes(error.code)
+        ? error.code.toLowerCase()
+        : "unavailable",
+      latencyMs: Date.now() - startedAt,
+    };
+  }
+}
+
+export function listToolModelPreferences(userId) {
+  const rows = db.prepare(`
+    SELECT tool_id, route_kind, model_connection_id
+    FROM user_tool_model_preferences WHERE user_id = ?
+  `).all(userId);
+  return Object.fromEntries(rows.map((row) => [
+    row.tool_id,
+    row.route_kind === "user_connection" && row.model_connection_id
+      ? row.model_connection_id
+      : "managed",
+  ]));
+}
+
+export function setToolModelPreference(userId, toolId, modelConnectionId) {
+  const tool = db.prepare("SELECT id, runtime_kind FROM tools WHERE id = ? AND active = 1").get(toolId);
+  if (!tool) throw gatewayError("TOOL_NOT_FOUND", 404);
+  if (tool.runtime_kind !== "openai") throw gatewayError("TOOL_MODEL_NOT_CONFIGURABLE", 422);
+  const selection = String(modelConnectionId || "managed");
+  if (selection !== "managed") ownedConnection(userId, selection, true);
+  db.prepare(`
+    INSERT INTO user_tool_model_preferences
+      (user_id, tool_id, route_kind, model_connection_id, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, tool_id) DO UPDATE SET
+      route_kind = excluded.route_kind,
+      model_connection_id = excluded.model_connection_id,
+      updated_at = excluded.updated_at
+  `).run(
+    userId,
+    toolId,
+    selection === "managed" ? "managed" : "user_connection",
+    selection === "managed" ? null : selection,
+    Date.now(),
+  );
+  return { toolId, modelConnectionId: selection };
+}
+
+export function toolModelSelection(userId, toolId, requested = null) {
+  if (requested) {
+    const selection = String(requested);
+    if (selection !== "managed") ownedConnection(userId, selection, true);
+    return selection;
+  }
+  return listToolModelPreferences(userId)[toolId] || "managed";
 }
 
 export function runtimeSummary(userId) {

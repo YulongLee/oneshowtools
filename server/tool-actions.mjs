@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import sharp from "sharp";
 import { PDFParse } from "pdf-parse";
 import { audit, db, uploadDirectory } from "./database.mjs";
-import { invokeModel } from "./model-gateway.mjs";
+import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -217,7 +217,10 @@ export async function runToolAction(request, user, tool) {
   if (request.headers.get("content-type")?.includes("multipart/form-data")) {
     const form = await request.formData();
     const file = form.get("file");
-    const modelConnectionId = String(form.get("modelConnectionId") || "") || null;
+    const requestedModelConnectionId = String(form.get("modelConnectionId") || "") || null;
+    const modelConnectionId = tool.runtimeKind === "openai"
+      ? toolModelSelection(user.id, tool.id, requestedModelConnectionId)
+      : null;
     input = { fileName: file?.name || null, fileSize: file?.size || 0, modelConnectionId };
     if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
@@ -227,8 +230,11 @@ export async function runToolAction(request, user, tool) {
     const payload = await request.json().catch(() => ({}));
     input = {
       text: String(payload.text || "").slice(0, 50000),
-      modelConnectionId: payload.modelConnectionId ? String(payload.modelConnectionId) : null,
+      modelConnectionId: tool.runtimeKind === "openai"
+        ? toolModelSelection(user.id, tool.id, payload.modelConnectionId)
+        : null,
     };
+    payload.modelConnectionId = input.modelConnectionId;
     processed = await processText(tool.slug, payload, user.locale, user);
   }
 

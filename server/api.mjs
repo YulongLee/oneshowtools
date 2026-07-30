@@ -22,10 +22,14 @@ import {
   createModelConnection,
   deleteModelConnection,
   gatewayFlags,
+  listToolModelPreferences,
   rotateModelCredential,
   runtimeSummary,
+  setToolModelPreference,
   testModelConnection,
+  toolModelSelection,
   updateModelConnection,
+  validateModelConnection,
 } from "./model-gateway.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -485,7 +489,9 @@ async function createTask(request, user) {
     `).run(id, user.id, tool.id, JSON.stringify({
       text: String(data.text || "").slice(0, 50000),
       locale: data.locale === "en" ? "en" : "zh-CN",
-      modelConnectionId: data.modelConnectionId ? String(data.modelConnectionId) : null,
+      modelConnectionId: tool.runtimeKind === "openai"
+        ? toolModelSelection(user.id, tool.id, data.modelConnectionId)
+        : null,
     }), tool.creditCost, timestamp, timestamp);
     if (tool.creditCost > 0) {
       db.prepare(`
@@ -933,6 +939,18 @@ export async function handleApi(request) {
   }
   if (path === "/api/tasks" && request.method === "GET") return json({ tasks: listTasks(user.id) });
   if (path === "/api/tasks" && request.method === "POST") return createTask(request, user);
+  if (path === "/api/model-connections/validate" && request.method === "POST") {
+    if (rateLimited(request, "model-connection-validate", user.id, 8, 60000)) {
+      return fail("MODEL_TEST_RATE_LIMITED", 429);
+    }
+    try {
+      const result = await validateModelConnection(await body(request));
+      audit(user.id, "model.connection.validate", "model_connection", null, { status: result.status });
+      return json(result);
+    } catch (error) {
+      return fail(error.code || "MODEL_TEST_FAILED", error.status || 500);
+    }
+  }
   if (path === "/api/model-connections" && request.method === "POST") {
     try {
       const connection = createModelConnection(user.id, await body(request));
@@ -992,6 +1010,19 @@ export async function handleApi(request) {
       return json(await runToolAction(request, user, tool), 201);
     } catch (error) {
       return fail(error.code || error.message || "TOOL_ACTION_FAILED", error.status || 500);
+    }
+  }
+  const toolModelMatch = path.match(/^\/api\/tools\/([^/]+)\/model$/);
+  if (toolModelMatch && request.method === "PATCH") {
+    try {
+      const data = await body(request);
+      const preference = setToolModelPreference(user.id, toolModelMatch[1], data.modelConnectionId);
+      audit(user.id, "tool.model.update", "tool", toolModelMatch[1], {
+        route: preference.modelConnectionId === "managed" ? "managed" : "user_connection",
+      });
+      return json({ preference });
+    } catch (error) {
+      return fail(error.code || "TOOL_MODEL_UPDATE_FAILED", error.status || 500);
     }
   }
   if (path.match(/^\/api\/tasks\/[^/]+\/cancel$/) && request.method === "POST") {
@@ -1056,9 +1087,15 @@ export async function handleApi(request) {
   if (path === "/api/billing/checkout" && request.method === "POST") return billingCheckout(request, user);
   if (path === "/api/billing/portal" && request.method === "POST") return billingPortal(request, user);
   if (path === "/api/runtime/status" && request.method === "GET") {
+    const preferences = listToolModelPreferences(user.id);
     return json({
       ...runtimeSummary(user.id),
-      tools: db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY category, name_en`).all(),
+      tools: db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY category, name_en`).all()
+        .map((tool) => ({
+          ...tool,
+          modelConfigurable: tool.runtimeKind === "openai",
+          modelConnectionId: preferences[tool.id] || "managed",
+        })),
     });
   }
   return fail("NOT_FOUND", 404);

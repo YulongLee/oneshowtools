@@ -245,6 +245,7 @@ export function initializeDatabase() {
 
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0003_commercial_admin_console.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0004_oneshow_model_runtime.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0005_tool_model_preferences.sql"), "utf8"));
 
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");
@@ -254,8 +255,8 @@ export function initializeDatabase() {
   const timestamp = now();
   const tools = [
     ["tool_background", "background-remover", "图片背景移除", "Background Remover", "智能识别主体并移除纯色背景，支持透明 PNG 导出。", "Detect a solid-color background and export a transparent PNG.", "image", "MagicWand", 8, "builtin-image"],
-    ["tool_polish", "copy-polish", "文案润色", "Copy Polisher", "优化语句表达，让内容更清晰、专业和自然。", "Refine wording so content reads clearly and naturally.", "writing", "Sparkle", 3, "builtin-text"],
-    ["tool_pdf", "pdf-summary", "PDF 摘要", "PDF Summarizer", "提取 PDF 文本并生成结构化摘要。", "Extract PDF text into a structured summary.", "document", "FilePdf", 12, "builtin-document"],
+    ["tool_polish", "copy-polish", "文案润色", "Copy Polisher", "优化语句表达，让内容更清晰、专业和自然。", "Refine wording so content reads clearly and naturally.", "writing", "Sparkle", 3, "openai"],
+    ["tool_pdf", "pdf-summary", "PDF 摘要", "PDF Summarizer", "提取 PDF 文本并生成结构化摘要。", "Extract PDF text into a structured summary.", "document", "FilePdf", 12, "openai"],
     ["tool_compress", "image-compressor", "图片压缩", "Image Compressor", "转换为 WebP 以减小图片体积，同时保持清晰度。", "Convert to WebP to reduce size while preserving clarity.", "image", "ImageSquare", 2, "builtin-image"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
   ];

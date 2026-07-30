@@ -29,14 +29,19 @@ const address = provider.address();
 process.env.ONESHOW_MODEL_API_KEY = "managed-secret-key";
 process.env.ONESHOW_MODEL_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
 process.env.ONESHOW_MODEL_ID = "internal-model-id";
+process.env.DASHSCOPE_COMPATIBLE_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
 
 const {
   createModelConnection,
   decryptCredential,
   invokeModel,
   listModelConnections,
+  listToolModelPreferences,
   runtimeSummary,
+  setToolModelPreference,
+  toolModelSelection,
   updateModelConnection,
+  validateModelConnection,
 } = await import("../server/model-gateway.mjs");
 const { db } = await import("../server/database.mjs");
 const { refundTask } = await import("../server/runtime.mjs");
@@ -92,6 +97,61 @@ test("customer credentials are encrypted, masked, owner-scoped, and tamper evide
   const tampered = db.prepare("SELECT * FROM user_model_connections WHERE id = ?").get(connection.id);
   assert.throws(() => decryptCredential(tampered), /MODEL_CREDENTIAL_INVALID/);
   assert.equal(listModelConnections(otherId).length, 0);
+});
+
+test("draft credentials can be tested without being persisted", async () => {
+  const userId = addUser("draft-test@example.com");
+  const result = await validateModelConnection({
+    name: "Draft connection",
+    providerTemplate: "dashscope",
+    modelId: "qwen-plus",
+    apiKey: "draft-secret-key-1234",
+  });
+  assert.equal(result.status, "healthy");
+  assert.equal(listModelConnections(userId).length, 0);
+  assert.doesNotMatch(JSON.stringify(runtimeSummary(userId)), /draft-secret-key/);
+});
+
+test("managed model remains the default when personal connections exist", async () => {
+  const userId = addUser("managed-default@example.com");
+  createModelConnection(userId, {
+    name: "Personal model",
+    providerTemplate: "dashscope",
+    modelId: "qwen-plus",
+    apiKey: "personal-secret-key-1234",
+    isDefault: true,
+  });
+  const result = await invokeModel({
+    userId,
+    instruction: "Test",
+    text: "Hello",
+  });
+  assert.equal(result.route, "managed");
+  assert.equal(result.text, "ok:internal-model-id");
+});
+
+test("each model-backed tool stores an owner-scoped model preference", () => {
+  const ownerId = addUser("tool-model-owner@example.com");
+  const otherId = addUser("tool-model-other@example.com");
+  const connection = createModelConnection(ownerId, {
+    name: "Tool model",
+    providerTemplate: "dashscope",
+    modelId: "qwen-plus",
+    apiKey: "tool-secret-key-1234",
+  });
+  const preference = setToolModelPreference(ownerId, "tool_polish", connection.id);
+  assert.equal(preference.modelConnectionId, connection.id);
+  assert.equal(toolModelSelection(ownerId, "tool_polish"), connection.id);
+  assert.equal(listToolModelPreferences(ownerId).tool_polish, connection.id);
+  assert.equal(toolModelSelection(otherId, "tool_polish"), "managed");
+  assert.throws(
+    () => setToolModelPreference(otherId, "tool_polish", connection.id),
+    /MODEL_CONNECTION_NOT_FOUND/,
+  );
+  assert.throws(
+    () => setToolModelPreference(ownerId, "tool_compress", connection.id),
+    /TOOL_MODEL_NOT_CONFIGURABLE/,
+  );
 });
 
 test("task refund settlement is idempotent", () => {
