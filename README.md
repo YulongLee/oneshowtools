@@ -7,7 +7,7 @@ task, and file layer for AI tools published by OneShow AI Lab.
 
 1. User System — email registration, password login, secure cookie sessions, and account status.
 2. Tool Marketplace — database-backed bilingual tool catalog and search.
-3. AI Runtime — provider readiness, external runtime routing, and optional OpenAI execution.
+3. AI Runtime — the managed OneShowModel gateway plus encrypted user-owned model connections.
 4. Credits — append-only grants, consumption, refunds, and a computed balance.
 5. Billing — database-backed plans and optional Stripe Checkout.
 6. Task Center — persistent task input, output, runtime state, and credit cost.
@@ -23,8 +23,8 @@ providers are shown as unconfigured until their environment variables are presen
 Marketplace cards and search results open stable, directly addressable routes:
 
 - `/tools/background-remover` — solid-color background removal with transparent PNG output.
-- `/tools/copy-polish` — local copy cleanup, upgraded to AI polishing when OpenAI is configured.
-- `/tools/pdf-summary` — PDF text extraction and local extractive summary, upgraded to an AI summary when OpenAI is configured.
+- `/tools/copy-polish` — local copy cleanup, upgraded through OneShowModel or a selected personal connection.
+- `/tools/pdf-summary` — PDF text extraction and local summary, upgraded through OneShowModel or a selected personal connection.
 - `/tools/image-compressor` — real WebP image compression with quality controls and size statistics.
 - `/tools/speech-to-text` — browser speech recognition with an editable transcript.
 
@@ -48,7 +48,9 @@ Copy `.env.example` to `.env` and configure only the providers you are ready to
 use. The platform runs without provider keys, but AI tasks remain in
 `waiting_for_runtime` and their reserved credits are refunded.
 
-- `OPENAI_API_KEY` enables OpenAI-backed tools.
+- `ONESHOW_MODEL_API_KEY`, `ONESHOW_MODEL_BASE_URL`, and `ONESHOW_MODEL_ID` configure the private managed adapter. They are never returned to the browser.
+- `MODEL_CREDENTIAL_ENCRYPTION_KEY` encrypts personal API keys with AES-256-GCM; `MODEL_CONNECTIONS_ENABLED` gates the feature.
+- `DURABLE_WORKER_ENABLED` runs persisted, leased jobs that recover after a process restart.
 - `TOOL_RUNTIME_BASE_URL` connects independent tool runtimes.
 - `STRIPE_SECRET_KEY` and `STRIPE_PRO_PRICE_ID` enable real subscription checkout.
 - `ADMIN_EMAILS` is a comma-separated allowlist of verified accounts that may access `/admin`.

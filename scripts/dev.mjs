@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 
 const forwarded = process.argv.slice(2);
 const viteArgs = ["vite", ...(forwarded.length ? forwarded : ["--host", "0.0.0.0", "--port", "5173"])];
-const api = spawn(process.execPath, ["server/index.mjs"], { stdio: "inherit", env: process.env });
+const developmentEnv = { ...process.env, APP_URL: process.env.APP_URL || "http://localhost:5173" };
+const api = spawn(process.execPath, ["server/index.mjs"], { stdio: "inherit", env: developmentEnv });
 const web = spawn(process.platform === "win32" ? "npx.cmd" : "npx", viteArgs, { stdio: "inherit", env: process.env });
 
 let closing = false;

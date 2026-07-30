@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { handleApi } from "./api.mjs";
 import { getServerConfig, validateServerConfig } from "./config.mjs";
+import { startWorker, stopWorker } from "./jobs.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(projectRoot, "dist/client");
@@ -79,5 +80,13 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, host, () => {
+  startWorker();
   console.log(`OneShowTools API listening on http://${host}:${port}`);
 });
+
+for (const signal of ["SIGTERM", "SIGINT"]) {
+  process.once(signal, () => {
+    stopWorker();
+    server.close(() => process.exit(0));
+  });
+}

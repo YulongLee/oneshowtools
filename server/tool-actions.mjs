@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import sharp from "sharp";
 import { PDFParse } from "pdf-parse";
 import { audit, db, uploadDirectory } from "./database.mjs";
+import { invokeModel } from "./model-gateway.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -27,21 +28,20 @@ function extractiveSummary(value, locale) {
   return `# ${title}\n\n${selected[0]}\n\n## ${keyPoints}\n\n${selected.slice(1).map((sentence) => `- ${sentence}`).join("\n") || `- ${selected[0]}`}`;
 }
 
-async function openAiText(instruction, text) {
-  if (!process.env.OPENAI_API_KEY) return null;
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      input: `${instruction}\n\n${text}`,
-    }),
-  });
-  if (!response.ok) throw toolError(`OPENAI_${response.status}`, 502);
-  return (await response.json()).output_text || "";
+async function modelText(user, instruction, text, connectionId = null, capability = "text") {
+  try {
+    const result = await invokeModel({
+      userId: user.id,
+      capability,
+      connectionId: connectionId || null,
+      instruction,
+      text,
+    });
+    return { text: result.text, route: result.route };
+  } catch (error) {
+    if (error.code === "ONESH​OW_MODEL_UNAVAILABLE".replace("\u200b", "")) return null;
+    throw toolError(error.code || "MODEL_REQUEST_FAILED", error.status || 502);
+  }
 }
 
 async function processBackground(file, form) {
@@ -105,7 +105,7 @@ async function processCompression(file, form) {
   };
 }
 
-async function processPdf(file, locale) {
+async function processPdf(file, locale, user, connectionId) {
   if (!file?.size || file.type !== "application/pdf") throw toolError("PDF_REQUIRED");
   const parser = new PDFParse({ data: new Uint8Array(await file.arrayBuffer()) });
   let result;
@@ -115,33 +115,46 @@ async function processPdf(file, locale) {
     await parser.destroy();
   }
   const text = result.text?.slice(0, 120000) || "";
-  const aiSummary = await openAiText(
+  const aiSummary = await modelText(
+    user,
     locale === "en"
       ? "Summarize this document with a short overview and clear bullet-point key ideas."
       : "请将这份文档整理为简洁摘要，包含概述和清晰的核心要点。",
     text,
+    connectionId,
+    "pdf-summary",
   );
   return {
     output: {
-      text: aiSummary || extractiveSummary(text, locale),
+      text: aiSummary?.text || extractiveSummary(text, locale),
       pages: result.total || result.pages?.length || null,
       characters: text.length,
       mode: aiSummary ? "ai" : "local-extractive",
+      ...(aiSummary ? { route: aiSummary.route } : {}),
     },
   };
 }
 
-async function processText(slug, payload, locale) {
+async function processText(slug, payload, locale, user) {
   const text = String(payload.text || "").trim();
   if (!text) throw toolError("TEXT_REQUIRED");
   if (slug === "copy-polish") {
-    const aiText = await openAiText(
+    const aiText = await modelText(
+      user,
       locale === "en"
         ? "Polish the following copy. Preserve its meaning and return only the improved copy."
         : "润色下面的文案，保留原意，只输出改进后的文案。",
       text,
+      payload.modelConnectionId,
+      "copy-polish",
     );
-    return { output: { text: aiText || localPolish(text), mode: aiText ? "ai" : "local-rules" } };
+    return {
+      output: {
+        text: aiText?.text || localPolish(text),
+        mode: aiText ? "ai" : "local-rules",
+        ...(aiText ? { route: aiText.route } : {}),
+      },
+    };
   }
   if (slug === "speech-to-text") {
     return { output: { text, mode: "browser-speech-recognition" } };
@@ -204,15 +217,19 @@ export async function runToolAction(request, user, tool) {
   if (request.headers.get("content-type")?.includes("multipart/form-data")) {
     const form = await request.formData();
     const file = form.get("file");
-    input = { fileName: file?.name || null, fileSize: file?.size || 0 };
+    const modelConnectionId = String(form.get("modelConnectionId") || "") || null;
+    input = { fileName: file?.name || null, fileSize: file?.size || 0, modelConnectionId };
     if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
-    else if (tool.slug === "pdf-summary") processed = await processPdf(file, user.locale);
+    else if (tool.slug === "pdf-summary") processed = await processPdf(file, user.locale, user, modelConnectionId);
     else throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
   } else {
     const payload = await request.json().catch(() => ({}));
-    input = { text: String(payload.text || "").slice(0, 50000) };
-    processed = await processText(tool.slug, payload, user.locale);
+    input = {
+      text: String(payload.text || "").slice(0, 50000),
+      modelConnectionId: payload.modelConnectionId ? String(payload.modelConnectionId) : null,
+    };
+    processed = await processText(tool.slug, payload, user.locale, user);
   }
 
   let resultFile = null;

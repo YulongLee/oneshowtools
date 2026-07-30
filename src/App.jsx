@@ -39,6 +39,9 @@ const dictionary = {
     accountProfile: "账户资料", saveProfile: "保存资料", accountSecurity: "账户安全", currentPassword: "当前密码", changePassword: "修改密码", newEmail: "新邮箱", changeEmail: "验证新邮箱",
     activeSessions: "登录设备", revokeOthers: "退出其他设备", privacyControls: "隐私与数据", exportData: "导出账户数据", deleteAccount: "删除账户", deletionUnavailable: "账户删除需完成政策配置后开放。",
     billingPortal: "管理付款与发票", invoices: "发票记录", noInvoices: "暂无发票记录", pendingConfirmation: "付款完成后需要等待安全回调确认。",
+    managedModel: "平台托管模型", personalModels: "我的模型连接", addModel: "添加模型连接", connectionName: "连接名称", providerTemplate: "接口类型", apiKey: "API Key", saveConnection: "安全保存",
+    keyPrivacy: "API Key 会加密保存，提交后仅显示末四位，平台和管理员都无法再次查看明文。", noConnections: "尚未添加个人模型连接", testConnection: "测试", setDefault: "设为默认", disable: "停用", enable: "启用", rotateKey: "更换 Key", deleteConnection: "删除",
+    selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用",
   },
   en: {
     nav: { dashboard: "Dashboard", marketplace: "Tool Marketplace", runtime: "AI Runtime", credits: "Credits", billing: "Billing", tasks: "Task Center", files: "File Center", account: "Account" },
@@ -69,6 +72,9 @@ const dictionary = {
     accountProfile: "Profile", saveProfile: "Save profile", accountSecurity: "Account security", currentPassword: "Current password", changePassword: "Change password", newEmail: "New email", changeEmail: "Verify new email",
     activeSessions: "Signed-in devices", revokeOthers: "Sign out other devices", privacyControls: "Privacy and data", exportData: "Export account data", deleteAccount: "Delete account", deletionUnavailable: "Account deletion opens after the retention policy is configured.",
     billingPortal: "Manage payments and invoices", invoices: "Invoices", noInvoices: "No invoices yet", pendingConfirmation: "Payment access updates only after secure provider confirmation.",
+    managedModel: "Managed model", personalModels: "My model connections", addModel: "Add model connection", connectionName: "Connection name", providerTemplate: "API type", apiKey: "API Key", saveConnection: "Save securely",
+    keyPrivacy: "API keys are encrypted and cannot be displayed again. Only the last four characters remain visible.", noConnections: "No personal model connections yet", testConnection: "Test", setDefault: "Set default", disable: "Disable", enable: "Enable", rotateKey: "Rotate key", deleteConnection: "Delete",
+    selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready",
   },
 };
 
@@ -198,7 +204,7 @@ function RunToolDialog({ tool, files, locale, onClose, onCreated }) {
   </section></div>;
 }
 
-function ToolPage({ tool, locale, authenticated, onBack, onAuth, onCompleted }) {
+function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onCompleted }) {
   const t = dictionary[locale];
   const Icon = iconMap[tool.icon] || Wrench;
   const [file, setFile] = useState(null);
@@ -210,6 +216,7 @@ function ToolPage({ tool, locale, authenticated, onBack, onAuth, onCompleted }) 
   const [result, setResult] = useState(null);
   const [recording, setRecording] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [modelConnectionId, setModelConnectionId] = useState("managed");
   const recognitionRef = useRef(null);
   const name = locale === "en" ? tool.nameEn : tool.nameZh;
   const description = locale === "en" ? tool.descriptionEn : tool.descriptionZh;
@@ -231,11 +238,12 @@ function ToolPage({ tool, locale, authenticated, onBack, onAuth, onCompleted }) 
       if (isFile) {
         const form = new FormData();
         form.append("file", file);
+        if (modelConnectionId) form.append("modelConnectionId", modelConnectionId);
         if (tool.slug === "background-remover") form.append("tolerance", String(tolerance));
         if (tool.slug === "image-compressor") form.append("quality", String(quality));
         options = { method: "POST", body: form };
       } else {
-        options = jsonOptions("POST", { text });
+        options = jsonOptions("POST", { text, modelConnectionId });
       }
       const response = await api(`/api/tool-actions/${tool.slug}`, options);
       setResult(response);
@@ -288,6 +296,7 @@ function ToolPage({ tool, locale, authenticated, onBack, onAuth, onCompleted }) 
         {isFile && <label className={`tool-dropzone ${file ? "selected" : ""}`}><input type="file" accept={isImage ? "image/*" : "application/pdf"} onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{file ? formatBytes(file.size) : isImage ? "PNG · JPG · WEBP" : "PDF"}</span></label>}
         {isText && <textarea className="tool-textarea" rows={12} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} />}
         {isSpeech && <><div className={`speech-pad ${recording ? "recording" : ""}`}><button onClick={toggleSpeech}>{recording ? <StopCircle size={28} weight="fill" /> : <Microphone size={28} weight="fill" />}<span>{recording ? t.stopSpeech : t.startSpeech}</span></button></div><textarea className="tool-textarea" rows={7} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} /></>}
+        {authenticated && ["copy-polish", "pdf-summary"].includes(tool.slug) && <label className="model-select-field"><span>{t.selectModel}</span><select value={modelConnectionId} onChange={(event) => setModelConnectionId(event.target.value)}><option value="managed">{t.useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}
         {tool.slug === "background-remover" && <label className="range-field"><span>{t.imageTolerance}<strong>{tolerance}</strong></span><input type="range" min="12" max="120" value={tolerance} onChange={(event) => setTolerance(Number(event.target.value))} /></label>}
         {tool.slug === "image-compressor" && <label className="range-field"><span>{t.imageQuality}<strong>{quality}%</strong></span><input type="range" min="30" max="95" value={quality} onChange={(event) => setQuality(Number(event.target.value))} /></label>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{t.loginToUse}</span><button onClick={onAuth}>{t.signInAction}</button></div>}
@@ -348,12 +357,33 @@ function Marketplace({ tools, locale, query, onQuery, onRun }) {
   </div>;
 }
 
-function Runtime({ data, locale }) {
+function Runtime({ data, locale, onRefresh, onNotice }) {
   const t = dictionary[locale];
+  const [form, setForm] = useState({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
+  const [busy, setBusy] = useState(false);
   if (!data) return <Loading locale={locale} />;
-  return <div className="page-stack"><PageHeading title={t.runtime} subtitle={t.runtimeSub} /><div className="notice-card"><LockKey size={21} /><p>{t.runtimeNote}</p></div>
-    <section><SectionTitle title={t.provider} /><div className="provider-grid">{data.providers.map((provider) => <article className="provider-card surface" key={provider.id}><span className="provider-logo">{provider.id === "openai" ? <Sparkle size={23} /> : <RocketLaunch size={23} />}</span><div><h3>{provider.name}</h3><p>{provider.model || provider.endpoint || "—"}</p></div><span className={`config-status ${provider.configured ? "on" : ""}`}>{provider.configured ? <Check size={15} /> : <Warning size={15} />}{provider.configured ? t.configured : t.notConfigured}</span></article>)}</div></section>
-    <section><SectionTitle title={t.marketplace} /><div className="surface runtime-table"><div className="table-head"><span>{t.marketplace}</span><span>{t.provider}</span><span>{t.status}</span></div>{data.tools.map((tool) => <div className="table-row" key={tool.id}><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><span>{tool.runtimeKind === "openai" ? "OpenAI" : "Tool Runtime"}</span><StatusPill status={tool.runtimeStatus} locale={locale} /></div>)}</div></section>
+  const mutate = async (path, options, success) => {
+    setBusy(true);
+    try {
+      await api(path, options);
+      await onRefresh();
+      onNotice(success);
+    } catch {
+      onNotice(t.error);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const submit = async (event) => {
+    event.preventDefault();
+    await mutate("/api/model-connections", jsonOptions("POST", form), t.configured);
+    setForm({ name: "", providerTemplate: "dashscope", modelId: "", apiKey: "" });
+  };
+  return <div className="page-stack"><PageHeading title={t.runtime} subtitle={t.runtimeSub} /><div className="notice-card"><LockKey size={21} /><p>{t.keyPrivacy}</p></div>
+    <section><SectionTitle title={t.managedModel} /><div className="provider-grid single"><article className="provider-card surface"><span className="provider-logo"><Sparkle size={23} /></span><div><h3>{data.managed.name}</h3><p>{t.managedModel}</p></div><span className={`config-status ${data.managed.configured ? "on" : ""}`}>{data.managed.configured ? <Check size={15} /> : <Warning size={15} />}{data.managed.configured ? t.configured : t.notConfigured}</span></article></div></section>
+    <section><SectionTitle title={t.personalModels} /><div className="model-connections-layout"><div className="connection-list">{data.connections.length ? data.connections.map((connection) => <article className="connection-card surface" key={connection.id}><div><h3>{connection.name}{connection.isDefault && <span className="default-badge">{locale === "en" ? "Default" : "默认"}</span>}</h3><p>{connection.modelId} · {connection.keyHint}</p><small>{connection.lastTestStatus || (locale === "en" ? "Not tested" : "尚未测试")}</small></div><div className="connection-actions"><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}/test`, { method: "POST" }, t.connectionHealthy)}>{t.testConnection}</button>{!connection.isDefault && connection.status === "active" && <button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { isDefault: true }), t.configured)}>{t.setDefault}</button>}<button disabled={busy} onClick={() => { const apiKey = window.prompt(t.apiKey); if (apiKey) mutate(`/api/model-connections/${connection.id}/rotate`, jsonOptions("POST", { apiKey }), t.configured); }}>{t.rotateKey}</button><button disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, jsonOptions("PATCH", { status: connection.status === "active" ? "disabled" : "active" }), t.configured)}>{connection.status === "active" ? t.disable : t.enable}</button><button className="danger-link" disabled={busy} onClick={() => mutate(`/api/model-connections/${connection.id}`, { method: "DELETE" }, t.deleteConnection)}>{t.deleteConnection}</button></div></article>) : <div className="surface empty-connection">{t.noConnections}</div>}</div>
+      {data.byokEnabled && <form className="surface connection-form" onSubmit={submit}><h3>{t.addModel}</h3><label><span>{t.connectionName}</span><input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label><span>{t.providerTemplate}</span><select value={form.providerTemplate} onChange={(event) => setForm({ ...form, providerTemplate: event.target.value })}>{data.supportedTemplates.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label><span>{t.model}</span><input required value={form.modelId} onChange={(event) => setForm({ ...form, modelId: event.target.value })} /></label><label><span>{t.apiKey}</span><input required type="password" autoComplete="new-password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></label><button className="primary-button" disabled={busy}>{busy ? <SpinnerGap className="spin" size={18} /> : <LockKey size={18} />}{t.saveConnection}</button></form>}</div></section>
+    <section><SectionTitle title={t.marketplace} /><div className="surface runtime-table"><div className="table-head"><span>{t.marketplace}</span><span>{t.provider}</span><span>{t.status}</span></div>{data.tools.map((tool) => <div className="table-row" key={tool.id}><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><span>{["copy-polish", "pdf-summary"].includes(tool.slug) ? "OneShowModel" : t.localMode}</span><StatusPill status={tool.runtimeStatus} locale={locale} /></div>)}</div></section>
   </div>;
 }
 
@@ -443,7 +473,7 @@ function Account({ user, health, locale, onLogout, onUserChange, onLocaleChange,
       <article className="surface settings-panel"><SectionTitle title={t.accountSecurity} /><form className="auth-form" onSubmit={changePassword}><label>{t.currentPassword}<input type="password" required value={credentials.currentPassword} onChange={(event) => setCredentials({ ...credentials, currentPassword: event.target.value })} /></label><label>{t.newPassword}<input type="password" required minLength={10} value={credentials.newPassword} onChange={(event) => setCredentials({ ...credentials, newPassword: event.target.value })} /></label><button className="secondary-button" type="submit">{t.changePassword}</button></form><form className="auth-form compact-form" onSubmit={changeEmail}><label>{t.newEmail}<input type="email" required value={credentials.email} onChange={(event) => setCredentials({ ...credentials, email: event.target.value })} /></label><button className="secondary-button" type="submit">{t.changeEmail}</button></form></article>
       <article className="surface settings-panel"><SectionTitle title={t.activeSessions} action={sessions.length > 1 ? <button className="text-button" onClick={async () => { await api("/api/account/sessions/others", { method: "DELETE" }); refreshSessions(); }}>{t.revokeOthers}</button> : null} /><div className="account-list">{sessions.map((session) => <div className="account-list-row" key={session.id}><div><strong>{session.current ? t.online : session.userAgent || "Browser"}</strong><small>{formatDate(session.lastSeenAt || session.createdAt, locale)}</small></div><span>{formatDate(session.expiresAt, locale)}</span></div>)}</div></article>
       <article className="surface settings-panel"><SectionTitle title={t.privacyControls} /><div className="privacy-actions"><button className="secondary-button" onClick={exportData}><DownloadSimple size={17} />{t.exportData}</button><button className="secondary-button danger" disabled={!health.accountDeletionEnabled} onClick={deleteAccount}><Trash size={17} />{t.deleteAccount}</button></div>{!health.accountDeletionEnabled && <p className="account-empty">{t.deletionUnavailable}</p>}</article>
-      <article className="surface system-panel"><SectionTitle title={t.system} /><SystemRow icon={Database} name={t.database} detail={t.online} ok /><SystemRow icon={Sparkle} name="OpenAI Runtime" detail={health.openAiEnabled ? t.configured : t.notConfigured} ok={health.openAiEnabled} /><SystemRow icon={CreditCard} name="Stripe Billing" detail={health.billingEnabled ? t.configured : t.notConfigured} ok={health.billingEnabled} /></article></div></div>
+      <article className="surface system-panel"><SectionTitle title={t.system} /><SystemRow icon={Database} name={t.database} detail={t.online} ok /><SystemRow icon={Sparkle} name="OneShowModel" detail={health.oneShowModelEnabled ? t.configured : t.notConfigured} ok={health.oneShowModelEnabled} /><SystemRow icon={CreditCard} name="Billing" detail={health.billingEnabled ? t.configured : t.notConfigured} ok={health.billingEnabled} /></article></div></div>
   </div>;
 }
 function SystemRow({ icon: Icon, name, detail, ok }) {
@@ -674,13 +704,13 @@ export function App() {
   const content = {
     dashboard: <Dashboard data={privateData.dashboard} tools={tools} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} />,
     marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
-    runtime: <Runtime data={privateData.runtime} locale={locale} />,
+    runtime: <Runtime data={privateData.runtime} locale={locale} onRefresh={loadPrivate} onNotice={setToast} />,
     credits: <Credits data={privateData.credits} locale={locale} />,
     billing: <Billing plans={plans} status={privateData.billing} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} />,
     tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
     account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
-    tool: routeTool ? <ToolPage tool={routeTool} locale={locale} authenticated onBack={leaveTool} onAuth={() => setAuthOpen(true)} onCompleted={async () => { setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
+    tool: routeTool ? <ToolPage tool={routeTool} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onCompleted={async () => { setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 
   return <div className="platform-shell"><aside className="sidebar"><Brand /><nav>{navItems.map(([key, Icon]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={20} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span></button>)}</nav><div className="sidebar-footer"><div className="mini-profile"><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{session.email}</small></div></div></div></aside>

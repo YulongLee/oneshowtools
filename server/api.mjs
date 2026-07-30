@@ -14,9 +14,19 @@ import {
   sessionCookie,
   verifyPassword,
 } from "./security.mjs";
-import { executeTask } from "./runtime.mjs";
+import { refundTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
 import { createAdminHandler } from "./admin.mjs";
+import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
+import {
+  createModelConnection,
+  deleteModelConnection,
+  gatewayFlags,
+  rotateModelCredential,
+  runtimeSummary,
+  testModelConnection,
+  updateModelConnection,
+} from "./model-gateway.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -475,6 +485,7 @@ async function createTask(request, user) {
     `).run(id, user.id, tool.id, JSON.stringify({
       text: String(data.text || "").slice(0, 50000),
       locale: data.locale === "en" ? "en" : "zh-CN",
+      modelConnectionId: data.modelConnectionId ? String(data.modelConnectionId) : null,
     }), tool.creditCost, timestamp, timestamp);
     if (tool.creditCost > 0) {
       db.prepare(`
@@ -482,16 +493,21 @@ async function createTask(request, user) {
         (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
         VALUES (?, ?, 'consumption', ?, ?, ?, 'task', ?, ?)
       `).run(randomUUID(), user.id, -tool.creditCost, `使用${tool.nameZh}`, `Used ${tool.nameEn}`, id, timestamp);
+      db.prepare(`
+        INSERT OR IGNORE INTO task_settlements (id, task_id, kind, amount, created_at)
+        VALUES (?, ?, 'reserve', ?, ?)
+      `).run(randomUUID(), id, tool.creditCost, timestamp);
     }
     const link = db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)");
     for (const fileId of fileIds) link.run(id, fileId);
+    enqueueTask(id, timestamp);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
   audit(user.id, "task.create", "task", id, { toolId: tool.id });
-  setTimeout(() => executeTask(id), 20);
+  runNextJob().catch(() => {});
   return json({ task: db.prepare("SELECT id, status, credit_cost AS creditCost, created_at AS createdAt FROM tasks WHERE id = ?").get(id) }, 201);
 }
 
@@ -841,7 +857,7 @@ export async function handleApi(request) {
     emailEnabled: config.emailConfigured,
     configurationReady: configurationErrors.length === 0,
     configurationErrors,
-    openAiEnabled: Boolean(process.env.OPENAI_API_KEY),
+    oneShowModelEnabled: gatewayFlags().managedConfigured && gatewayFlags().managedExecutionEnabled,
     externalRuntimeEnabled: Boolean(process.env.TOOL_RUNTIME_BASE_URL),
     adminConsoleVersion: "v1",
     adminMfaEnforced: config.adminMfaEnforced,
@@ -917,6 +933,56 @@ export async function handleApi(request) {
   }
   if (path === "/api/tasks" && request.method === "GET") return json({ tasks: listTasks(user.id) });
   if (path === "/api/tasks" && request.method === "POST") return createTask(request, user);
+  if (path === "/api/model-connections" && request.method === "POST") {
+    try {
+      const connection = createModelConnection(user.id, await body(request));
+      audit(user.id, "model.connection.create", "model_connection", connection.id);
+      return json({ connection }, 201);
+    } catch (error) {
+      return fail(error.code || "MODEL_CONNECTION_FAILED", error.status || 500);
+    }
+  }
+  const connectionMatch = path.match(/^\/api\/model-connections\/([^/]+)$/);
+  if (connectionMatch && request.method === "PATCH") {
+    try {
+      const connection = updateModelConnection(user.id, connectionMatch[1], await body(request));
+      audit(user.id, "model.connection.update", "model_connection", connection.id);
+      return json({ connection });
+    } catch (error) {
+      return fail(error.code || "MODEL_CONNECTION_FAILED", error.status || 500);
+    }
+  }
+  if (connectionMatch && request.method === "DELETE") {
+    try {
+      deleteModelConnection(user.id, connectionMatch[1]);
+      audit(user.id, "model.connection.delete", "model_connection", connectionMatch[1]);
+      return json({ ok: true });
+    } catch (error) {
+      return fail(error.code || "MODEL_CONNECTION_FAILED", error.status || 500);
+    }
+  }
+  const connectionRotate = path.match(/^\/api\/model-connections\/([^/]+)\/rotate$/);
+  if (connectionRotate && request.method === "POST") {
+    try {
+      const data = await body(request);
+      const connection = rotateModelCredential(user.id, connectionRotate[1], data.apiKey);
+      audit(user.id, "model.connection.rotate", "model_connection", connection.id);
+      return json({ connection });
+    } catch (error) {
+      return fail(error.code || "MODEL_CONNECTION_FAILED", error.status || 500);
+    }
+  }
+  const connectionTest = path.match(/^\/api\/model-connections\/([^/]+)\/test$/);
+  if (connectionTest && request.method === "POST") {
+    if (rateLimited(request, "model-connection-test", user.id, 8, 60000)) {
+      return fail("MODEL_TEST_RATE_LIMITED", 429);
+    }
+    try {
+      return json(await testModelConnection(user.id, connectionTest[1]));
+    } catch (error) {
+      return fail(error.code || "MODEL_TEST_FAILED", error.status || 500);
+    }
+  }
   if (path.match(/^\/api\/tool-actions\/[^/]+$/) && request.method === "POST") {
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     const slug = path.split("/")[3];
@@ -934,7 +1000,10 @@ export async function handleApi(request) {
       UPDATE tasks SET status = 'cancelled', updated_at = ?, completed_at = ?
       WHERE id = ? AND user_id = ? AND status IN ('queued','waiting_for_runtime')
     `).run(Date.now(), Date.now(), id, user.id);
-    return result.changes ? json({ ok: true }) : fail("TASK_NOT_CANCELLABLE", 409);
+    if (!result.changes) return fail("TASK_NOT_CANCELLABLE", 409);
+    cancelExecutionJob(id);
+    refundTask(db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?").get(id, user.id));
+    return json({ ok: true });
   }
   if (path === "/api/files" && request.method === "GET") {
     return json({ files: db.prepare(`
@@ -988,10 +1057,7 @@ export async function handleApi(request) {
   if (path === "/api/billing/portal" && request.method === "POST") return billingPortal(request, user);
   if (path === "/api/runtime/status" && request.method === "GET") {
     return json({
-      providers: [
-        { id: "openai", name: "OpenAI", configured: Boolean(process.env.OPENAI_API_KEY), model: process.env.OPENAI_MODEL || "gpt-4.1-mini" },
-        { id: "external", name: "Tool Runtime", configured: Boolean(process.env.TOOL_RUNTIME_BASE_URL), endpoint: process.env.TOOL_RUNTIME_BASE_URL || null },
-      ],
+      ...runtimeSummary(user.id),
       tools: db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY category, name_en`).all(),
     });
   }

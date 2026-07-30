@@ -721,6 +721,25 @@ function commerce() {
 
 function operations() {
   return {
+    modelRuntime: {
+      alias: "OneShowModel",
+      queuedJobs: db.prepare(`
+        SELECT COUNT(*) AS count FROM execution_jobs WHERE status IN ('queued','retrying','running')
+      `).get().count,
+      failedJobs: db.prepare(`
+        SELECT COUNT(*) AS count FROM execution_jobs WHERE status IN ('failed','quarantined')
+      `).get().count,
+      invocations24h: db.prepare(`
+        SELECT COUNT(*) AS count FROM model_invocations WHERE started_at >= ?
+      `).get(Date.now() - 86400000).count,
+      failures24h: db.prepare(`
+        SELECT COUNT(*) AS count FROM model_invocations WHERE started_at >= ? AND status = 'failed'
+      `).get(Date.now() - 86400000).count,
+      averageLatencyMs: Math.round(Number(db.prepare(`
+        SELECT COALESCE(AVG(latency_ms), 0) AS value FROM model_invocations
+        WHERE started_at >= ? AND status = 'completed'
+      `).get(Date.now() - 86400000).value)),
+    },
     jobs: db.prepare(`
       SELECT id, kind, target_type AS targetType, target_id AS targetId, status, attempts,
         max_attempts AS maxAttempts, next_attempt_at AS nextAttemptAt, correlation_id AS correlationId,

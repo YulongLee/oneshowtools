@@ -26,6 +26,11 @@ const orphanChecks = [
   ["support notes", "SELECT COUNT(*) AS count FROM support_notes n LEFT JOIN users u ON u.id = n.user_id WHERE u.id IS NULL"],
   ["commercial orders", "SELECT COUNT(*) AS count FROM commercial_orders o LEFT JOIN users u ON u.id = o.user_id WHERE u.id IS NULL"],
   ["tool versions", "SELECT COUNT(*) AS count FROM tool_versions v LEFT JOIN tools t ON t.id = v.tool_id WHERE t.id IS NULL"],
+  ["model connections", "SELECT COUNT(*) AS count FROM user_model_connections c LEFT JOIN users u ON u.id = c.user_id WHERE u.id IS NULL"],
+  ["model invocations", "SELECT COUNT(*) AS count FROM model_invocations i LEFT JOIN users u ON u.id = i.user_id WHERE u.id IS NULL"],
+  ["execution jobs", "SELECT COUNT(*) AS count FROM execution_jobs j LEFT JOIN tasks t ON t.id = j.task_id WHERE t.id IS NULL"],
+  ["execution attempts", "SELECT COUNT(*) AS count FROM execution_attempts a LEFT JOIN execution_jobs j ON j.id = a.job_id WHERE j.id IS NULL"],
+  ["task settlements", "SELECT COUNT(*) AS count FROM task_settlements s LEFT JOIN tasks t ON t.id = s.task_id WHERE t.id IS NULL"],
 ];
 for (const [name, sql] of orphanChecks) {
   const count = Number(db.prepare(sql).get().count);
@@ -42,6 +47,9 @@ const summary = {
   adminAuditEvents: Number(db.prepare("SELECT COUNT(*) AS count FROM admin_audit_events").get().count),
   commercialOrders: Number(db.prepare("SELECT COUNT(*) AS count FROM commercial_orders").get().count),
   openOperationalAlerts: Number(db.prepare("SELECT COUNT(*) AS count FROM operational_alerts WHERE status = 'open'").get().count),
+  encryptedModelConnections: Number(db.prepare("SELECT COUNT(*) AS count FROM user_model_connections WHERE status != 'deleted'").get().count),
+  pendingExecutionJobs: Number(db.prepare("SELECT COUNT(*) AS count FROM execution_jobs WHERE status IN ('queued','retrying','running')").get().count),
+  modelInvocations: Number(db.prepare("SELECT COUNT(*) AS count FROM model_invocations").get().count),
 };
 db.close();
 await copyFile(databasePath, backupPath);

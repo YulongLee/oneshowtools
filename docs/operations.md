@@ -19,7 +19,7 @@ enabled.
 ## Database
 
 Apply migrations in numeric order through
-`db/migrations/0003_commercial_admin_console.sql`, then `db/seed.sql`.
+`db/migrations/0004_oneshow_model_runtime.sql`, then `db/seed.sql`.
 Run `npm run db:check` before release. The matching `.down.sql` is for local or
 pre-release rollback only; never erase production financial history. A
 production rollback disables registration, billing checkout, and new tool
@@ -99,3 +99,23 @@ super administrator is protected from removal.
 High-risk operations require a reason, immutable audit record, and—above the
 configured `ADMIN_CREDIT_APPROVAL_THRESHOLD`—a distinct finance approver.
 Balances are never edited directly; corrections append ledger entries.
+
+## OneShowModel and personal model connections
+
+Production stores the managed API key, private endpoint, internal model ID, and
+the separate 32-byte credential-encryption key only in the service environment.
+Public and administrator responses use the `OneShowModel` alias and must never
+include upstream identities, URLs, headers, raw provider errors, ciphertext,
+nonces, or authentication tags.
+
+Enable changes in this order: apply the additive migration, start the durable
+worker with model execution off, configure secrets, run a private canary, enable
+managed execution, and enable personal connections only after security tests
+pass. Emergency shutdown is `ONESHOW_MODEL_EXECUTION_ENABLED=false` and
+`MODEL_CONNECTIONS_ENABLED=false`; persisted jobs, tasks, ledger entries, and
+encrypted connection rows remain available for recovery.
+
+Rotating a personal key creates a credential-version event and replaces the
+encrypted value. Rotating the managed key happens only in the upstream account
+and service secret store. Never place either key in source control, deployment
+archives, logs, support tickets, exports, database backups, or audit metadata.

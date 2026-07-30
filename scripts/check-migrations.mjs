@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 const migration = await readFile(new URL("../db/migrations/0001_global_auth_and_billing.sql", import.meta.url), "utf8");
 const commercialMigration = await readFile(new URL("../db/migrations/0002_commercial_account_lifecycle.sql", import.meta.url), "utf8");
 const adminMigration = await readFile(new URL("../db/migrations/0003_commercial_admin_console.sql", import.meta.url), "utf8");
+const modelMigration = await readFile(new URL("../db/migrations/0004_oneshow_model_runtime.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -28,6 +29,23 @@ for (const table of [
 ]) {
   if (!commercialMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
     throw new Error(`Commercial migration is missing table: ${table}`);
+  }
+}
+
+for (const table of [
+  "model_endpoint_policies", "user_model_connections", "model_credential_versions",
+  "model_invocations", "execution_jobs", "execution_attempts", "task_settlements",
+]) {
+  if (!modelMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`Model runtime migration is missing table: ${table}`);
+  }
+}
+
+for (const invariant of [
+  "user_model_connections_one_default", "execution_jobs_claim_idx", "UNIQUE(task_id, kind)",
+]) {
+  if (!modelMigration.includes(invariant)) {
+    throw new Error(`Model runtime migration is missing invariant: ${invariant}`);
   }
 }
 

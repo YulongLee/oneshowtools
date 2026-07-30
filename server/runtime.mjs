@@ -1,4 +1,6 @@
 import { db } from "./database.mjs";
+import { randomUUID } from "node:crypto";
+import { invokeModel } from "./model-gateway.mjs";
 
 const prompts = {
   "copy-polish": {
@@ -15,29 +17,21 @@ const prompts = {
   },
 };
 
-async function runOpenAiTask(task, tool, input) {
-  if (!process.env.OPENAI_API_KEY) {
-    return { status: "waiting_for_runtime", errorCode: "OPENAI_NOT_CONFIGURED" };
-  }
+async function runModelTask(task, tool, input) {
   if (tool.slug === "speech-to-text") {
     return { status: "waiting_for_runtime", errorCode: "AUDIO_RUNTIME_NOT_CONFIGURED" };
   }
   const text = String(input.text || "").trim();
   if (!text) return { status: "failed", errorCode: "TEXT_REQUIRED" };
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      input: `${prompts[tool.slug]?.[input.locale === "en" ? "en" : "zh"]}\n\n${text}`,
-    }),
+  const result = await invokeModel({
+    userId: task.user_id,
+    taskId: task.id,
+    capability: tool.slug,
+    connectionId: input.modelConnectionId || null,
+    instruction: prompts[tool.slug]?.[input.locale === "en" ? "en" : "zh"],
+    text,
   });
-  if (!response.ok) return { status: "failed", errorCode: `OPENAI_${response.status}` };
-  const payload = await response.json();
-  return { status: "completed", output: { text: payload.output_text || "" } };
+  return { status: "completed", output: { text: result.text, route: result.route } };
 }
 
 async function runExternalTask(task, tool, input) {
@@ -56,6 +50,37 @@ async function runExternalTask(task, tool, input) {
   return { status: "completed", output: await response.json() };
 }
 
+export function refundTask(task) {
+  if (!task || task.credit_cost <= 0) return;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const settlement = db.prepare(`
+      INSERT OR IGNORE INTO task_settlements (id, task_id, kind, amount, created_at)
+      VALUES (?, ?, 'refund', ?, ?)
+    `).run(randomUUID(), task.id, task.credit_cost, Date.now());
+    if (settlement.changes) {
+      db.prepare(`
+        INSERT OR IGNORE INTO credit_ledger
+        (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+        VALUES (?, ?, 'refund', ?, '任务未执行，积分已退回', 'Task did not run; credits refunded', 'task', ?, ?)
+      `).run(randomUUID(), task.user_id, task.credit_cost, task.id, Date.now());
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function failTaskExecution(taskId, errorCode = "TASK_EXECUTION_FAILED") {
+  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
+  if (!task || ["completed", "failed", "cancelled"].includes(task.status)) return;
+  db.prepare(`
+    UPDATE tasks SET status = 'failed', error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
+  `).run(errorCode, Date.now(), Date.now(), taskId);
+  refundTask(task);
+}
+
 export async function executeTask(taskId) {
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(taskId);
   if (!task || task.status !== "queued") return;
@@ -64,22 +89,18 @@ export async function executeTask(taskId) {
   db.prepare("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ?").run(Date.now(), taskId);
   let result;
   try {
-    result = tool.runtime_kind === "openai"
-      ? await runOpenAiTask(task, tool, input)
+    result = ["copy-polish", "pdf-summary"].includes(tool.slug) || tool.runtime_kind === "openai"
+      ? await runModelTask(task, tool, input)
       : await runExternalTask(task, tool, input);
-  } catch {
-    result = { status: "failed", errorCode: "RUNTIME_REQUEST_FAILED" };
+  } catch (error) {
+    if (error?.retryable) throw error;
+    result = { status: "failed", errorCode: error?.code || "RUNTIME_REQUEST_FAILED" };
   }
   const completedAt = result.status === "completed" || result.status === "failed" ? Date.now() : null;
   db.prepare(`
     UPDATE tasks SET status = ?, output_json = ?, error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
   `).run(result.status, result.output ? JSON.stringify(result.output) : null, result.errorCode || null, Date.now(), completedAt, taskId);
 
-  if (result.status !== "completed" && task.credit_cost > 0) {
-    db.prepare(`
-      INSERT OR IGNORE INTO credit_ledger
-      (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
-      VALUES (?, ?, 'refund', ?, '任务未执行，积分已退回', 'Task did not run; credits refunded', 'task', ?, ?)
-    `).run(crypto.randomUUID(), task.user_id, task.credit_cost, task.id, Date.now());
-  }
+  if (result.status !== "completed") refundTask(task);
+  return result;
 }

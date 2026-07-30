@@ -48,6 +48,14 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
     adminToolGovernanceEnabled: enabled("ADMIN_TOOL_GOVERNANCE_ENABLED", true),
     adminPrivacyOperationsEnabled: enabled("ADMIN_PRIVACY_OPERATIONS_ENABLED", true),
     adminObservabilityEnabled: enabled("ADMIN_OBSERVABILITY_ENABLED", true),
+    oneShowModelConfigured: Boolean(
+      process.env.ONESHOW_MODEL_API_KEY
+      && process.env.ONESHOW_MODEL_BASE_URL
+      && process.env.ONESHOW_MODEL_ID,
+    ),
+    oneShowModelExecutionEnabled: enabled("ONESHOW_MODEL_EXECUTION_ENABLED", false),
+    modelConnectionsEnabled: enabled("MODEL_CONNECTIONS_ENABLED", false),
+    durableWorkerEnabled: enabled("DURABLE_WORKER_ENABLED", true),
   });
 }
 
@@ -58,5 +66,7 @@ export function validateServerConfig(config) {
   if (process.env.REGISTRATION_ENABLED === "true" && !config.registrationEnabled) errors.push("EMAIL_PROVIDER_REQUIRED");
   if (process.env.BILLING_ENABLED === "true" && !config.billingEnabled) errors.push("STRIPE_CONFIGURATION_REQUIRED");
   if (config.adminMfaEnforced && !process.env.ADMIN_MFA_ENCRYPTION_KEY) errors.push("ADMIN_MFA_ENCRYPTION_KEY_REQUIRED");
+  if (config.oneShowModelExecutionEnabled && !config.oneShowModelConfigured) errors.push("ONESHOW_MODEL_CONFIGURATION_REQUIRED");
+  if (config.modelConnectionsEnabled && !process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY) errors.push("MODEL_CREDENTIAL_ENCRYPTION_KEY_REQUIRED");
   return errors;
 }
