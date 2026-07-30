@@ -1,6 +1,6 @@
 ## 1. Baseline, schema, and migration safety
 
-- [ ] 1.1 Record the production feature flags, database invariants, current admin accounts, API smoke results, and rollback version
+- [x] 1.1 Record the production feature flags, database invariants, current admin accounts, API smoke results, and rollback version
 - [x] 1.2 Add numbered migrations for administrator identities, roles, permissions, memberships, MFA factors, recovery codes, step-up challenges, and approvals
 - [x] 1.3 Add numbered migrations for support cases/notes, policy versions/consents, operational jobs, alerts, reconciliation exceptions, and expanded audit envelopes
 - [x] 1.4 Add additive migrations for provider-neutral orders, order lines, payment attempts/events, refunds, disputes, and commercial idempotency keys
@@ -89,7 +89,7 @@
 - [ ] 9.4 Run keyboard, focus, screen-reader label, contrast, responsive layout, and reduced-motion accessibility checks
 - [ ] 9.5 Add performance tests for paginated customer, audit, task, payment, ledger, and metric queries at the approved launch dataset size
 - [ ] 9.6 Add backup/restore, migration, invariant, provider outage, worker restart, and application rollback tests
-- [ ] 9.7 Run production-like smoke tests confirming customer APIs and existing tool routes remain backward compatible
+- [x] 9.7 Run production-like smoke tests confirming customer APIs and existing tool routes remain backward compatible
 
 ## 10. Staged release and production deployment
 
@@ -99,5 +99,5 @@
 - [ ] 10.4 Back up production data, deploy additive migrations, verify invariants, and bootstrap existing administrators without enabling new write capabilities
 - [ ] 10.5 Enable and verify read-only dashboard and customer search, then progressively enable governed write modules by feature flag
 - [ ] 10.6 Run production smoke, permission, MFA, email, queue, audit, tool-contract, ledger, and rollback checks
-- [ ] 10.7 Push the validated implementation to Git and record the commit, migration, backup, health, monitoring, and rollback evidence
-- [ ] 10.8 Deploy the validated release to `oneshowtools.com`, verify `/admin` and customer flows, and keep live payments disabled until every commercial release gate is approved
+- [x] 10.7 Push the validated implementation to Git and record the commit, migration, backup, health, monitoring, and rollback evidence
+- [x] 10.8 Deploy the validated release to `oneshowtools.com`, verify `/admin` and customer flows, and keep live payments disabled until every commercial release gate is approved
