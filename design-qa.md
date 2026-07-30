@@ -155,6 +155,20 @@ The browser's retained log still contains the two pre-fix messages timestamped
   the same geometry with no horizontal overflow.
 - Browser console: no application errors or warnings were emitted.
 
+### Iteration 7
+
+- Audited the animated hero after reviewing the visitor screenshot at
+  1440 × 1024. The four inbound task streams created a second visual system on
+  top of the orbital network, producing arbitrary crossings and abrupt gaps
+  beside the platform core.
+- Removed the inbound Bézier streams and their extra moving dots. The hero now
+  uses one consistent metaphor: three concentric capability orbits with packets
+  moving on their exact paths.
+- Side-by-side comparison shows the OneShowTools core has a cleaner silhouette,
+  the three status cards remain legible, and the right-hand illustration no
+  longer competes with the search and primary actions.
+- Browser console: no application errors or warnings were emitted.
+
 ## Follow-up polish
 
 - P3: a future iteration may reduce English labels in the Chinese locale for a

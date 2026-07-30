@@ -435,56 +435,6 @@ function CapabilityNetwork({ locale }) {
 
       context.globalAlpha = 1;
       context.setLineDash([]);
-      const streams = [
-        {
-          start: [width * 0.06, centerY - height * 0.17],
-          controlA: [width * 0.22, centerY - height * 0.22],
-          controlB: [centerX - width * 0.18, centerY - height * 0.1],
-          end: [centerX - 54, centerY - 20],
-        },
-        {
-          start: [width * 0.07, centerY + height * 0.2],
-          controlA: [width * 0.24, centerY + height * 0.24],
-          controlB: [centerX - width * 0.18, centerY + height * 0.1],
-          end: [centerX - 54, centerY + 20],
-        },
-        {
-          start: [width * 0.94, centerY - height * 0.19],
-          controlA: [width * 0.8, centerY - height * 0.24],
-          controlB: [centerX + width * 0.18, centerY - height * 0.1],
-          end: [centerX + 54, centerY - 20],
-        },
-        {
-          start: [width * 0.93, centerY + height * 0.18],
-          controlA: [width * 0.78, centerY + height * 0.23],
-          controlB: [centerX + width * 0.18, centerY + height * 0.1],
-          end: [centerX + 54, centerY + 20],
-        },
-      ];
-      const pointOnCurve = ({ start, controlA, controlB, end }, progress) => {
-        const inverse = 1 - progress;
-        return [
-          inverse ** 3 * start[0] + 3 * inverse ** 2 * progress * controlA[0]
-            + 3 * inverse * progress ** 2 * controlB[0] + progress ** 3 * end[0],
-          inverse ** 3 * start[1] + 3 * inverse ** 2 * progress * controlA[1]
-            + 3 * inverse * progress ** 2 * controlB[1] + progress ** 3 * end[1],
-        ];
-      };
-      streams.forEach((stream, index) => {
-        context.strokeStyle = "rgba(23, 105, 232, 0.34)";
-        context.lineWidth = 1.35;
-        context.beginPath();
-        context.moveTo(...stream.start);
-        context.bezierCurveTo(...stream.controlA, ...stream.controlB, ...stream.end);
-        context.stroke();
-
-        const progress = reducedMotion ? 0.68 : (motionTime * (1.25 + index * 0.08) + index * 0.21) % 1;
-        const [x, y] = pointOnCurve(stream, progress);
-        context.fillStyle = "#1769e8";
-        context.beginPath();
-        context.arc(x, y, 3.2, 0, Math.PI * 2);
-        context.fill();
-      });
 
       if (!reducedMotion) frame = requestAnimationFrame(draw);
     };
