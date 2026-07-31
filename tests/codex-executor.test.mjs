@@ -116,6 +116,31 @@ test("Codex analysis mode is read-only and can run outside a Git checkout", asyn
   assert.equal(options.skipGitRepoCheck, true);
 });
 
+test("Codex analysis supports providers with Chat Completions only", async () => {
+  let request;
+  const executor = createCodexExecutor({
+    CodexClass: class {},
+    env: { ...baseEnv, CODEX_ANALYSIS_TRANSPORT: "chat-completions" },
+    fetchImpl: async (url, options) => {
+      request = { url, options, payload: JSON.parse(options.body) };
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: '{"ok":true}' } }],
+        usage: { prompt_tokens: 8, completion_tokens: 4 },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  const result = await executor.run({
+    prompt: "Analyze", mode: "analysis", model: "kimi/kimi-k3",
+    outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
+  });
+  assert.match(request.url, /\/chat\/completions$/);
+  assert.equal(request.payload.model, "kimi/kimi-k3");
+  assert.equal(request.options.headers.authorization, "Bearer server-only-test-key");
+  assert.equal(result.finalResponse, '{"ok":true}');
+  assert.deepEqual(result.changedFiles, []);
+  assert.doesNotMatch(JSON.stringify(result), /server-only-test-key/);
+});
+
 test("Codex executor stays unavailable until explicitly enabled and configured", async () => {
   const disabled = createCodexExecutor({
     CodexClass: class {},
