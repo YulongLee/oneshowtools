@@ -13,12 +13,29 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const endpointPolicies = Object.freeze({
   openai: {
-    label: "OpenAI compatible",
+    label: "OpenAI",
     baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL || "https://api.openai.com/v1",
+    displayUrl: "https://api.openai.com/v1",
+  },
+  deepseek: {
+    label: "DeepSeek",
+    baseUrl: process.env.DEEPSEEK_COMPATIBLE_BASE_URL || "https://api.deepseek.com/v1",
+    displayUrl: "https://api.deepseek.com/v1",
   },
   dashscope: {
     label: "DashScope compatible",
     baseUrl: process.env.DASHSCOPE_COMPATIBLE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    displayUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  openrouter: {
+    label: "OpenRouter",
+    baseUrl: process.env.OPENROUTER_COMPATIBLE_BASE_URL || "https://openrouter.ai/api/v1",
+    displayUrl: "https://openrouter.ai/api/v1",
+  },
+  custom: {
+    label: "Custom OpenAI-compatible endpoint",
+    baseUrl: null,
+    requiresBaseUrl: true,
   },
 });
 
@@ -95,6 +112,7 @@ function serializeConnection(row) {
     id: row.id,
     name: row.name,
     providerTemplate: row.provider_template,
+    baseUrl: row.endpoint_url || endpointPolicies[row.provider_template]?.displayUrl || null,
     modelId: row.model_id,
     keyHint: row.key_hint,
     status: row.status,
@@ -114,10 +132,28 @@ function seedPolicies() {
   `);
   const timestamp = Date.now();
   for (const [code, policy] of Object.entries(endpointPolicies)) {
-    insert.run(code, policy.label, policy.baseUrl, timestamp);
+    insert.run(code, policy.label, policy.baseUrl || "user-defined", timestamp);
   }
 }
 seedPolicies();
+
+function normalizeCustomBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw || raw.length > 500) throw gatewayError("INVALID_MODEL_ENDPOINT", 400);
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw gatewayError("INVALID_MODEL_ENDPOINT", 400);
+  }
+  const testHttp = process.env.NODE_ENV === "test" && process.env.ALLOW_TEST_MODEL_ENDPOINTS === "true";
+  if ((url.protocol !== "https:" && !(testHttp && url.protocol === "http:"))
+    || url.username || url.password || url.search || url.hash) {
+    throw gatewayError("INVALID_MODEL_ENDPOINT", 400);
+  }
+  url.pathname = url.pathname.replace(/\/$/, "");
+  return url.href.replace(/\/$/, "");
+}
 
 function validConnectionInput(data, requireKey = true) {
   const name = String(data.name || "").trim();
@@ -130,13 +166,17 @@ function validConnectionInput(data, requireKey = true) {
     throw gatewayError("INVALID_MODEL_ID", 400);
   }
   if (requireKey && (apiKey.length < 8 || apiKey.length > 2048)) throw gatewayError("INVALID_API_KEY", 400);
-  return { name, providerTemplate, modelId, apiKey };
+  const baseUrl = providerTemplate === "custom" ? normalizeCustomBaseUrl(data.baseUrl) : null;
+  return { name, providerTemplate, modelId, apiKey, baseUrl };
 }
 
 export function listModelConnections(userId) {
   return db.prepare(`
-    SELECT * FROM user_model_connections
-    WHERE user_id = ? AND status != 'deleted' ORDER BY is_default DESC, created_at DESC
+    SELECT connections.*, endpoints.base_url AS endpoint_url
+    FROM user_model_connections AS connections
+    LEFT JOIN user_model_connection_endpoints AS endpoints ON endpoints.connection_id = connections.id
+    WHERE connections.user_id = ? AND connections.status != 'deleted'
+    ORDER BY connections.is_default DESC, connections.created_at DESC
   `).all(userId).map(serializeConnection);
 }
 
@@ -161,6 +201,12 @@ export function createModelConnection(userId, data) {
       encrypted.iv, encrypted.tag, keyHint(input.apiKey), version, isDefault ? 1 : 0,
       timestamp, timestamp,
     );
+    if (input.baseUrl) {
+      db.prepare(`
+        INSERT INTO user_model_connection_endpoints (connection_id, base_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(id, input.baseUrl, timestamp, timestamp);
+    }
     db.prepare(`
       INSERT INTO model_credential_versions (id, connection_id, version, event, key_hint, created_at)
       VALUES (?, ?, ?, 'created', ?, ?)
@@ -170,7 +216,7 @@ export function createModelConnection(userId, data) {
     db.exec("ROLLBACK");
     throw error;
   }
-  return serializeConnection(db.prepare("SELECT * FROM user_model_connections WHERE id = ?").get(id));
+  return serializeConnection(ownedConnection(userId, id));
 }
 
 export function updateModelConnection(userId, connectionId, data) {
@@ -195,7 +241,7 @@ export function updateModelConnection(userId, connectionId, data) {
     db.exec("ROLLBACK");
     throw error;
   }
-  return serializeConnection(db.prepare("SELECT * FROM user_model_connections WHERE id = ?").get(connectionId));
+  return serializeConnection(ownedConnection(userId, connectionId));
 }
 
 export function rotateModelCredential(userId, connectionId, apiKey) {
@@ -222,7 +268,7 @@ export function rotateModelCredential(userId, connectionId, apiKey) {
     db.exec("ROLLBACK");
     throw error;
   }
-  return serializeConnection(db.prepare("SELECT * FROM user_model_connections WHERE id = ?").get(connectionId));
+  return serializeConnection(ownedConnection(userId, connectionId));
 }
 
 export function deleteModelConnection(userId, connectionId) {
@@ -253,8 +299,11 @@ export function deleteModelConnection(userId, connectionId) {
 
 function ownedConnection(userId, connectionId, activeOnly = false) {
   const row = db.prepare(`
-    SELECT * FROM user_model_connections WHERE id = ? AND user_id = ?
-      AND status ${activeOnly ? "= 'active'" : "!= 'deleted'"}
+    SELECT connections.*, endpoints.base_url AS endpoint_url
+    FROM user_model_connections AS connections
+    LEFT JOIN user_model_connection_endpoints AS endpoints ON endpoints.connection_id = connections.id
+    WHERE connections.id = ? AND connections.user_id = ?
+      AND connections.status ${activeOnly ? "= 'active'" : "!= 'deleted'"}
   `).get(connectionId, userId);
   if (!row) throw gatewayError("MODEL_CONNECTION_NOT_FOUND", 404);
   return row;
@@ -264,6 +313,7 @@ function blockedAddress(address) {
   const normalized = address.toLowerCase();
   if (normalized === "::1" || normalized === "0.0.0.0" || normalized.startsWith("fe80:")
     || normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  if (normalized.startsWith("::ffff:")) return blockedAddress(normalized.slice(7));
   if (isIP(normalized) === 4) {
     const [a, b] = normalized.split(".").map(Number);
     return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254)
@@ -274,7 +324,12 @@ function blockedAddress(address) {
 }
 
 async function assertSafeEndpoint(rawUrl) {
-  const url = new URL(rawUrl);
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw gatewayError("INVALID_MODEL_ENDPOINT", 400);
+  }
   const testEndpoint = process.env.NODE_ENV === "test" && process.env.ALLOW_TEST_MODEL_ENDPOINTS === "true";
   if (url.username || url.password || (!testEndpoint && ![443].includes(Number(url.port || 443)))) throw gatewayError("MODEL_ENDPOINT_BLOCKED", 400);
   if (url.protocol !== "https:" && !(testEndpoint && url.protocol === "http:")) throw gatewayError("MODEL_ENDPOINT_BLOCKED", 400);
@@ -299,12 +354,12 @@ function normalizePayload(payload) {
 }
 
 async function requestModel({ baseUrl, apiKey, modelId, instruction, text, signal }) {
-  const safeBase = await assertSafeEndpoint(baseUrl);
-  const endpoint = new URL(`${safeBase.href.replace(/\/$/, "")}/chat/completions`);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(process.env.MODEL_REQUEST_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
+    const safeBase = await assertSafeEndpoint(baseUrl);
+    const endpoint = new URL(`${safeBase.href.replace(/\/$/, "")}/chat/completions`);
     const response = await fetch(endpoint, {
       method: "POST",
       redirect: "manual",
@@ -318,6 +373,8 @@ async function requestModel({ baseUrl, apiKey, modelId, instruction, text, signa
     if (response.status >= 300 && response.status < 400) throw gatewayError("MODEL_REDIRECT_BLOCKED", 502);
     if (!response.ok) {
       if ([401, 403].includes(response.status)) throw gatewayError("MODEL_AUTH_FAILED", 422);
+      if ([400, 404].includes(response.status)) throw gatewayError("MODEL_OR_ENDPOINT_INVALID", 422);
+      if ([402].includes(response.status)) throw gatewayError("MODEL_QUOTA_EXCEEDED", 422);
       if (response.status === 429) throw gatewayError("MODEL_RATE_LIMITED", 429, true);
       throw gatewayError("MODEL_UPSTREAM_UNAVAILABLE", 502, response.status >= 500);
     }
@@ -343,7 +400,7 @@ function resolveRoute(userId, connectionId) {
     return {
       routeKind: "user_connection",
       connectionId: row.id,
-      baseUrl: policy.baseUrl,
+      baseUrl: row.endpoint_url || policy.baseUrl,
       apiKey: decryptCredential(row),
       modelId: row.model_id,
     };
@@ -400,14 +457,14 @@ export async function testModelConnection(userId, connectionId) {
   let status = "healthy";
   try {
     await requestModel({
-      baseUrl: endpointPolicies[row.provider_template].baseUrl,
+      baseUrl: row.endpoint_url || endpointPolicies[row.provider_template].baseUrl,
       apiKey: decryptCredential(row),
       modelId: row.model_id,
       instruction: "Return only the word OK.",
       text: "Health check",
     });
   } catch (error) {
-    status = ["MODEL_AUTH_FAILED", "MODEL_RATE_LIMITED", "MODEL_TIMEOUT"].includes(error.code)
+    status = ["MODEL_AUTH_FAILED", "MODEL_RATE_LIMITED", "MODEL_TIMEOUT", "MODEL_OR_ENDPOINT_INVALID", "MODEL_QUOTA_EXCEEDED", "MODEL_ENDPOINT_BLOCKED", "INVALID_MODEL_ENDPOINT"].includes(error.code)
       ? error.code.toLowerCase()
       : "unavailable";
   }
@@ -425,7 +482,7 @@ export async function validateModelConnection(data) {
   const startedAt = Date.now();
   try {
     await requestModel({
-      baseUrl: endpointPolicies[input.providerTemplate].baseUrl,
+      baseUrl: input.baseUrl || endpointPolicies[input.providerTemplate].baseUrl,
       apiKey: input.apiKey,
       modelId: input.modelId,
       instruction: "Return only the word OK.",
@@ -434,7 +491,7 @@ export async function validateModelConnection(data) {
     return { status: "healthy", latencyMs: Date.now() - startedAt };
   } catch (error) {
     return {
-      status: ["MODEL_AUTH_FAILED", "MODEL_RATE_LIMITED", "MODEL_TIMEOUT"].includes(error.code)
+      status: ["MODEL_AUTH_FAILED", "MODEL_RATE_LIMITED", "MODEL_TIMEOUT", "MODEL_OR_ENDPOINT_INVALID", "MODEL_QUOTA_EXCEEDED", "MODEL_ENDPOINT_BLOCKED", "INVALID_MODEL_ENDPOINT"].includes(error.code)
         ? error.code.toLowerCase()
         : "unavailable",
       latencyMs: Date.now() - startedAt,
@@ -498,7 +555,12 @@ export function runtimeSummary(userId) {
       status: flags.managedConfigured && flags.managedExecutionEnabled ? "ready" : "unavailable",
     },
     byokEnabled: flags.byokEnabled,
-    supportedTemplates: Object.entries(endpointPolicies).map(([id, policy]) => ({ id, name: policy.label })),
+    supportedTemplates: Object.entries(endpointPolicies).map(([id, policy]) => ({
+      id,
+      name: policy.label,
+      requiresBaseUrl: Boolean(policy.requiresBaseUrl),
+      defaultBaseUrl: policy.displayUrl || null,
+    })),
     connections: flags.byokEnabled ? listModelConnections(userId) : [],
   };
 }

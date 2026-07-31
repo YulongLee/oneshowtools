@@ -314,6 +314,9 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .connection-form label, .model-select-field { display: grid; gap: 6px; color: #68758a; font-size: 10px; }
 .connection-form input, .connection-form select, .model-select-field select { min-height: 41px; padding: 0 11px; border: 1px solid #dbe2ec; border-radius: 8px; color: var(--navy); background: #fff; font: inherit; outline: none; }
 .connection-form input:focus, .connection-form select:focus, .model-select-field select:focus { border-color: #71a4ed; box-shadow: 0 0 0 3px rgba(31,111,229,.1); }
+.connection-form input:disabled { color: #7c889a; background: #f5f7fa; cursor: not-allowed; }
+.connection-base-url { grid-column: 1 / -1; }
+.connection-endpoint { max-width: 560px; overflow: hidden; color: #8190a4; text-overflow: ellipsis; white-space: nowrap; }
 .connection-test-result { grid-column: 1 / -1; min-height: 43px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid; border-radius: 9px; font-size: 10px; }
 .connection-test-result.success { color: #137652; border-color: #bfe7d7; background: #effaf6; }
 .connection-test-result.error { color: #a4464e; border-color: #f0cbd0; background: #fff4f5; }

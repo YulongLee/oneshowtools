@@ -4,6 +4,7 @@ const migration = await readFile(new URL("../db/migrations/0001_global_auth_and_
 const commercialMigration = await readFile(new URL("../db/migrations/0002_commercial_account_lifecycle.sql", import.meta.url), "utf8");
 const adminMigration = await readFile(new URL("../db/migrations/0003_commercial_admin_console.sql", import.meta.url), "utf8");
 const modelMigration = await readFile(new URL("../db/migrations/0004_oneshow_model_runtime.sql", import.meta.url), "utf8");
+const customEndpointMigration = await readFile(new URL("../db/migrations/0007_custom_model_endpoints.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -47,6 +48,10 @@ for (const invariant of [
   if (!modelMigration.includes(invariant)) {
     throw new Error(`Model runtime migration is missing invariant: ${invariant}`);
   }
+}
+
+if (!customEndpointMigration.includes("CREATE TABLE IF NOT EXISTS user_model_connection_endpoints ")) {
+  throw new Error("Custom endpoint migration is missing user_model_connection_endpoints");
 }
 
 for (const table of [

@@ -112,6 +112,49 @@ test("draft credentials can be tested without being persisted", async () => {
   assert.doesNotMatch(JSON.stringify(runtimeSummary(userId)), /draft-secret-key/);
 });
 
+test("custom OpenAI-compatible endpoints are validated, stored, and used", async () => {
+  const userId = addUser("custom-endpoint@example.com");
+  const baseUrl = `http://127.0.0.1:${address.port}/custom/v1`;
+  const draft = await validateModelConnection({
+    name: "Private compatible model",
+    providerTemplate: "custom",
+    baseUrl,
+    modelId: "private-model",
+    apiKey: "private-secret-key-1234",
+  });
+  assert.equal(draft.status, "healthy");
+
+  const connection = createModelConnection(userId, {
+    name: "Private compatible model",
+    providerTemplate: "custom",
+    baseUrl,
+    modelId: "private-model",
+    apiKey: "private-secret-key-1234",
+  });
+  assert.equal(connection.baseUrl, baseUrl);
+  const result = await invokeModel({
+    userId,
+    connectionId: connection.id,
+    instruction: "Test",
+    text: "Hello",
+  });
+  assert.equal(result.text, "ok:private-model");
+  assert.doesNotMatch(JSON.stringify(runtimeSummary(userId)), /private-secret-key/);
+});
+
+test("custom endpoint input rejects unsafe or malformed URLs before saving", async () => {
+  await assert.rejects(
+    async () => validateModelConnection({
+      name: "Unsafe endpoint",
+      providerTemplate: "custom",
+      baseUrl: "file:///etc/passwd",
+      modelId: "private-model",
+      apiKey: "private-secret-key-1234",
+    }),
+    /INVALID_MODEL_ENDPOINT/,
+  );
+});
+
 test("managed model remains the default when personal connections exist", async () => {
   const userId = addUser("managed-default@example.com");
   createModelConnection(userId, {
