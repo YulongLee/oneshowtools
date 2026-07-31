@@ -693,6 +693,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .admin-page-loading { min-height: 55vh; display: flex; align-items: center; justify-content: center; gap: 9px; color: #708097; }
 .admin-page-stack { display: grid; gap: 14px; }
 .admin-v2-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.admin-v2-metrics-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .admin-v2-metric { min-width: 0; min-height: 104px; display: flex; align-items: flex-start; gap: 13px; padding: 18px; border: 1px solid #e0e6ee; border-radius: 13px; background: #fff; box-shadow: 0 5px 20px rgba(43,65,94,.035); }
 .metric-symbol { flex: 0 0 auto; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #1768e5; background: #edf4ff; }
 .metric-symbol.green { color: #13845c; background: #eaf8f2; }
@@ -731,6 +732,25 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .admin-v2-table-wrap th { color: #7a8799; background: #fafbfd; font-size: 8px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
 .admin-v2-table-wrap td > small { display: block; max-width: 260px; margin-top: 3px; overflow: hidden; color: #8995a6; text-overflow: ellipsis; }
 .admin-v2-table-wrap code { display: block; max-width: 190px; overflow: hidden; color: #607087; text-overflow: ellipsis; }
+.admin-data-freshness { min-height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 14px; border: 1px solid #dce5ef; border-radius: 11px; color: #536276; background: #fff; font-size: 10px; }
+.admin-data-freshness strong { color: #223047; font-size: 11px; }
+.admin-data-freshness span { margin-left: auto; color: #7d899a; }
+.admin-data-freshness.healthy { border-color: #cfeadf; background: #f5fbf8; }
+.admin-data-freshness.stale, .admin-data-freshness.warning { border-color: #f1dfb9; background: #fffaf0; }
+.admin-data-freshness.failed, .admin-data-freshness.critical, .admin-data-freshness.not_reporting { border-color: #f1cccc; background: #fff7f7; }
+.admin-positive { color: #14855e; }
+.admin-negative { color: #c44f4f; }
+.admin-health-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.admin-health-metric { min-width: 0; display: grid; gap: 14px; padding: 16px; border: 1px solid #e0e6ee; border-radius: 12px; background: #fff; }
+.admin-health-metric > div { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.admin-health-metric small { overflow: hidden; color: #66758a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-health-metric > strong { color: #17253c; font-size: 19px; letter-spacing: -.02em; }
+.admin-health-metric footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #8995a5; font-size: 8px; }
+.admin-health-metric footer code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-metric-state { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #a8b2c0; box-shadow: 0 0 0 4px #f0f3f7; }
+.admin-metric-state.healthy { background: #1aaf79; box-shadow: 0 0 0 4px #e6f6f0; }
+.admin-metric-state.warning { background: #e9a126; box-shadow: 0 0 0 4px #fff3dc; }
+.admin-metric-state.critical, .admin-metric-state.stale { background: #dc5a5a; box-shadow: 0 0 0 4px #fdeaea; }
 .admin-user-cell { display: flex; align-items: center; gap: 10px; }
 .admin-user-cell > span { flex: 0 0 auto; display: grid; place-items: center; width: 31px; height: 31px; border-radius: 9px; color: #1768e5; background: #edf4ff; font-size: 11px; font-weight: 800; }
 .admin-user-cell > div { min-width: 0; display: grid; gap: 1px; }
@@ -833,9 +853,15 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .admin-v2-header-actions button { width: 35px; padding: 0; }
   .admin-v2-header-actions button:not(:first-child) { font-size: 0; }
   .admin-v2-grid.two, .admin-tool-admin-grid { grid-template-columns: 1fr; }
+  .admin-health-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-v2-toolbar { flex-wrap: wrap; }
   .admin-search { flex-basis: 100%; }
   .admin-provider-strip { grid-template-columns: 1fr; }
   .admin-customer-drawer { width: 100%; }
   .admin-add-admin-form { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .admin-v2-metrics, .admin-v2-metrics-three, .admin-health-metric-grid { grid-template-columns: 1fr; }
+  .admin-data-freshness { align-items: flex-start; flex-wrap: wrap; padding-block: 11px; }
+  .admin-data-freshness span { width: 100%; margin-left: 27px; }
 }

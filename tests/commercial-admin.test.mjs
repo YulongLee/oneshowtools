@@ -140,6 +140,11 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
     db.prepare("SELECT COUNT(*) AS count FROM credit_ledger WHERE reference_id = ?").get("admin-adjustment-small-1").count,
     1,
   );
+  assert.equal(
+    db.prepare("SELECT balance_after - balance_before AS delta FROM credit_ledger_metadata WHERE ledger_id = ?")
+      .get(firstAdjustment.ledgerId).delta,
+    25,
+  );
 
   const largeAdjustment = await handleApi(authenticatedJson(`/api/admin/v1/users/${customer.id}/credits`, support.cookie, {
     amount: 2500, reasonCode: "service_compensation", note: "Extended service incident",
@@ -171,6 +176,21 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   assert.equal(activation.status, 200);
   assert.equal((await activation.json()).recoveryCodes.length, 8);
   assert.equal((await handleApi(authenticated("/api/admin/v1/overview", owner.cookie))).status, 200);
+  for (const path of [
+    "/api/admin/v1/command-center",
+    "/api/admin/v1/credits/ledger",
+    "/api/admin/v1/finance",
+    "/api/admin/v1/analytics/tools",
+    "/api/admin/v1/infrastructure/overview",
+  ]) {
+    const response = await handleApi(authenticated(path, owner.cookie));
+    assert.equal(response.status, 200, path);
+    assert.equal(/password_hash|secret_encrypted|token_hash|key_ciphertext/i.test(JSON.stringify(await response.json())), false);
+  }
+  process.env.ADMIN_MFA_ENFORCED = "false";
+  assert.equal((await handleApi(authenticated("/api/admin/v1/finance", support.cookie))).status, 403);
+  assert.equal((await handleApi(authenticated("/api/admin/v1/infrastructure/overview", finance.cookie))).status, 403);
+  process.env.ADMIN_MFA_ENFORCED = "true";
 
   const customerDetail = await handleApi(authenticated(`/api/admin/v1/users/${customer.id}`, owner.cookie));
   const serialized = JSON.stringify(await customerDetail.json());

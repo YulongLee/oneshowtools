@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./database.mjs";
 import { executeTask, failTaskExecution } from "./runtime.mjs";
+import { collectSystemMetrics } from "./observability.mjs";
 
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 8)}`;
 let timer;
 let working = false;
+let metricsTimer;
 
 export function enqueueTask(taskId, timestamp = Date.now()) {
   db.prepare(`
@@ -108,9 +110,16 @@ export function startWorker() {
   timer = setInterval(() => runNextJob().catch(() => {}), Number(process.env.WORKER_POLL_MS || 500));
   timer.unref?.();
   runNextJob().catch(() => {});
+  if (process.env.INFRASTRUCTURE_COLLECTION_ENABLED !== "false") {
+    metricsTimer = setInterval(() => collectSystemMetrics(), Number(process.env.METRICS_COLLECTION_MS || 60000));
+    metricsTimer.unref?.();
+    collectSystemMetrics();
+  }
 }
 
 export function stopWorker() {
   if (timer) clearInterval(timer);
   timer = undefined;
+  if (metricsTimer) clearInterval(metricsTimer);
+  metricsTimer = undefined;
 }

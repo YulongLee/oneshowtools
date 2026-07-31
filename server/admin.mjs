@@ -3,6 +3,7 @@ import {
 } from "node:crypto";
 import { audit, db } from "./database.mjs";
 import { createSessionToken, hashIdentifier, hashToken, requestClient } from "./security.mjs";
+import { collectSystemMetrics } from "./observability.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -24,6 +25,15 @@ const permissions = [
   ["users.manage", "Manage customer account lifecycle and sessions"],
   ["credits.adjust", "Request governed credit adjustments"],
   ["credits.approve", "Approve high-value credit adjustments"],
+  ["credits.read", "View credit balances and immutable ledger"],
+  ["credits.manage", "Create governed credit ledger commands"],
+  ["finance.read", "View internal financial subledger and reconciliation"],
+  ["finance.manage", "Create and post internal financial journals"],
+  ["finance.close", "Close or reopen internal financial periods"],
+  ["analytics.read", "View privacy-safe tool usage analytics"],
+  ["infrastructure.read", "View infrastructure metrics and health"],
+  ["alerts.manage", "Acknowledge and resolve operational alerts"],
+  ["metrics.export", "Export bounded metric and finance views"],
   ["billing.read", "View commercial records"],
   ["billing.manage", "Manage refunds and commercial exceptions"],
   ["tools.read", "View tool governance records"],
@@ -37,12 +47,12 @@ const permissions = [
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.adjust", "tools.read", "jobs.read", "jobs.manage", "audit.read"],
-  support: ["dashboard.read", "users.read", "users.manage", "credits.adjust", "billing.read", "jobs.read"],
-  finance: ["dashboard.read", "users.read", "credits.adjust", "credits.approve", "billing.read", "billing.manage", "audit.read"],
-  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "audit.read"],
+  support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read"],
+  finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
+  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "billing.read", "tools.read", "privacy.read", "jobs.read", "audit.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -560,6 +570,12 @@ async function customerCommands(request, path, context, dependencies) {
       VALUES (?, ?, 'admin_adjustment', ?, ?, ?, 'admin_adjustment', ?, ?)
     `).run(ledgerId, target.id, amount, `${reasonCode}: ${note}`, `${reasonCode}: ${note}`, key, now());
     const afterBalance = beforeBalance + amount;
+    db.prepare(`
+      INSERT INTO credit_ledger_metadata
+      (ledger_id, actor_user_id, permission_code, reason_code, operator_note,
+        correlation_id, balance_before, balance_after, created_at)
+      VALUES (?, ?, 'credits.adjust', ?, ?, ?, ?, ?, ?)
+    `).run(ledgerId, context.user.id, reasonCode, note, correlationId(request), beforeBalance, afterBalance, now());
     const response = { ok: true, ledgerId, balance: afterBalance, beforeBalance };
     saveIdempotent(key, context.user.id, "credits.adjust", response);
     richAudit({ request, actor: context.user, roles: context.roles, permission: "credits.adjust", action: "admin.credits.adjust", targetType: "user", targetId: target.id, reason: `${reasonCode}: ${note}`, before: { balance: beforeBalance }, after: { balance: afterBalance, amount, ledgerId } });
@@ -587,6 +603,15 @@ async function approveAction(request, path, context) {
       (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
       VALUES (?, ?, 'admin_adjustment', ?, ?, ?, 'admin_approval', ?, ?)
     `).run(ledgerId, approval.target_id, payload.amount, `${payload.reasonCode}: ${payload.note}`, `${payload.reasonCode}: ${payload.note}`, approval.id, now());
+    db.prepare(`
+      INSERT INTO credit_ledger_metadata
+      (ledger_id, actor_user_id, permission_code, reason_code, operator_note, approval_id,
+        correlation_id, balance_before, balance_after, created_at)
+      VALUES (?, ?, 'credits.approve', ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      ledgerId, context.user.id, payload.reasonCode, payload.note, approval.id,
+      correlationId(request), beforeBalance, beforeBalance + payload.amount, now(),
+    );
     db.prepare("UPDATE admin_approvals SET status = 'approved', approved_by = ?, resolved_at = ? WHERE id = ? AND status = 'pending'")
       .run(context.user.id, now(), approval.id);
     db.exec("COMMIT");
@@ -759,6 +784,231 @@ function operations() {
   };
 }
 
+function commandCenter(request) {
+  const base = overview(request);
+  const heartbeat = db.prepare("SELECT * FROM observability_heartbeats WHERE collector = 'local'").get();
+  const newest = Number(db.prepare("SELECT MAX(collected_at) AS value FROM metric_samples").get()?.value || 0);
+  const freshnessMs = newest ? now() - newest : null;
+  const toolUsage = db.prepare(`
+    SELECT COUNT(*) AS executions,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN status IN ('failed','waiting_for_runtime') THEN 1 ELSE 0 END) AS failed
+    FROM tasks WHERE created_at >= ?
+  `).get(now() - base.windowDays * 86400000);
+  return {
+    ...base,
+    meta: {
+      window: `${base.windowDays}d`,
+      comparisonWindow: `previous_${base.windowDays}d`,
+      timezone: process.env.ADMIN_TIMEZONE || "Asia/Shanghai",
+      currency: process.env.ADMIN_REPORTING_CURRENCY || "USD",
+      generatedAt: now(),
+      newestMetricAt: newest || null,
+      freshnessMs,
+      monitoringStatus: !heartbeat ? "not_reporting" : freshnessMs > 180000 ? "stale" : heartbeat.status,
+      metricDefinition: "Persisted domain records and registered local infrastructure samples",
+    },
+    toolUsage: {
+      executions: Number(toolUsage.executions || 0),
+      completed: Number(toolUsage.completed || 0),
+      failed: Number(toolUsage.failed || 0),
+    },
+    criticalAlerts: db.prepare(`
+      SELECT id, severity, kind, title, target_type AS targetType, target_id AS targetId,
+        status, created_at AS createdAt
+      FROM operational_alerts WHERE status IN ('open','acknowledged')
+      ORDER BY CASE severity WHEN 'critical' THEN 0 ELSE 1 END, created_at DESC LIMIT 8
+    `).all(),
+  };
+}
+
+function creditLedger(request) {
+  const { url, page, pageSize, offset } = parsePage(request, 100);
+  const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+  const type = String(url.searchParams.get("type") || "").trim().slice(0, 40);
+  const conditions = ["(u.email LIKE ? OR l.user_id LIKE ? OR l.reference_id LIKE ?)"];
+  const params = [`%${query}%`, `%${query}%`, `%${query}%`];
+  if (type) { conditions.push("l.type = ?"); params.push(type); }
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const total = Number(db.prepare(`
+    SELECT COUNT(*) AS count FROM credit_ledger l JOIN users u ON u.id = l.user_id ${where}
+  `).get(...params).count);
+  const entries = db.prepare(`
+    SELECT l.id, l.user_id AS userId, u.email, l.type, l.amount,
+      l.description_zh AS descriptionZh, l.description_en AS descriptionEn,
+      l.reference_type AS referenceType, l.reference_id AS referenceId,
+      l.created_at AS createdAt, m.reason_code AS reasonCode, m.operator_note AS operatorNote,
+      m.balance_before AS balanceBefore, m.balance_after AS balanceAfter,
+      m.correlation_id AS correlationId, m.original_ledger_id AS originalLedgerId,
+      actor.email AS actorEmail
+    FROM credit_ledger l JOIN users u ON u.id = l.user_id
+    LEFT JOIN credit_ledger_metadata m ON m.ledger_id = l.id
+    LEFT JOIN users actor ON actor.id = m.actor_user_id
+    ${where} ORDER BY l.created_at DESC LIMIT ? OFFSET ?
+  `).all(...params, pageSize, offset);
+  const invariants = {
+    duplicateReferences: Number(db.prepare(`
+      SELECT COUNT(*) AS count FROM (
+        SELECT type, reference_type, reference_id FROM credit_ledger
+        GROUP BY type, reference_type, reference_id HAVING COUNT(*) > 1
+      )
+    `).get().count),
+    negativeBalances: Number(db.prepare(`
+      SELECT COUNT(*) AS count FROM (
+        SELECT user_id, SUM(amount) AS balance FROM credit_ledger
+        GROUP BY user_id HAVING balance < 0
+      )
+    `).get().count),
+  };
+  return {
+    entries, page, pageSize, total, pages: Math.ceil(total / pageSize),
+    totals: {
+      balance: Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS value FROM credit_ledger").get().value),
+      grants: Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS value FROM credit_ledger WHERE amount > 0").get().value),
+      consumed: Math.abs(Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS value FROM credit_ledger WHERE amount < 0").get().value)),
+    },
+    invariants,
+    generatedAt: now(),
+  };
+}
+
+function seedFinanceAccounts() {
+  const accounts = [
+    ["fin_cash", "1000", "现金及渠道应收", "Cash & provider receivable", "asset"],
+    ["fin_deferred", "2200", "递延收入", "Deferred revenue", "liability"],
+    ["fin_revenue", "4000", "平台收入", "Platform revenue", "revenue"],
+    ["fin_refunds", "4100", "退款及折让", "Refunds", "contra_revenue"],
+    ["fin_fees", "5100", "支付渠道费用", "Provider fees", "expense"],
+    ["fin_model_cost", "5200", "模型与工具成本", "Model & tool cost", "expense"],
+    ["fin_control", "9999", "控制账户", "Control account", "control"],
+  ];
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO finance_accounts
+    (id, code, name_zh, name_en, account_type, currency, version, active, created_at)
+    VALUES (?, ?, ?, ?, ?, 'USD', 1, 1, ?)
+  `);
+  for (const account of accounts) insert.run(...account, now());
+}
+
+function financeOverview() {
+  seedFinanceAccounts();
+  const journals = db.prepare(`
+    SELECT j.id, j.entry_number AS entryNumber, j.status, j.currency, j.description,
+      j.source_type AS sourceType, j.source_id AS sourceId, j.created_at AS createdAt,
+      j.posted_at AS postedAt,
+      COALESCE(SUM(p.debit_minor),0) AS debitMinor,
+      COALESCE(SUM(p.credit_minor),0) AS creditMinor
+    FROM finance_journal_entries j LEFT JOIN finance_postings p ON p.journal_id = j.id
+    GROUP BY j.id ORDER BY j.created_at DESC LIMIT 100
+  `).all();
+  return {
+    moduleNotice: "internal_operational_subledger",
+    currency: process.env.ADMIN_REPORTING_CURRENCY || "USD",
+    accounts: db.prepare(`
+      SELECT id, code, name_zh AS nameZh, name_en AS nameEn, account_type AS accountType,
+        currency, version, active FROM finance_accounts ORDER BY code
+    `).all().map((row) => ({ ...row, active: Boolean(row.active) })),
+    journals,
+    periods: db.prepare(`
+      SELECT id, code, starts_at AS startsAt, ends_at AS endsAt, status,
+        closed_at AS closedAt FROM finance_periods ORDER BY starts_at DESC LIMIT 24
+    `).all(),
+    reconciliation: db.prepare(`
+      SELECT id, kind, status, checked_count AS checkedCount, exception_count AS exceptionCount,
+        calculation_version AS calculationVersion, started_at AS startedAt,
+        completed_at AS completedAt FROM finance_reconciliation_runs
+      ORDER BY started_at DESC LIMIT 30
+    `).all(),
+    exceptions: db.prepare(`
+      SELECT id, kind, target_type AS targetType, target_id AS targetId, severity, status,
+        created_at AS createdAt FROM reconciliation_exceptions
+      ORDER BY created_at DESC LIMIT 100
+    `).all(),
+  };
+}
+
+function toolAnalytics(request) {
+  const { url } = parsePage(request);
+  const days = [1, 7, 30, 90].includes(Number(url.searchParams.get("days")))
+    ? Number(url.searchParams.get("days")) : 30;
+  const since = now() - days * 86400000;
+  const tools = db.prepare(`
+    SELECT tools.id, tools.slug, tools.name_zh AS nameZh, tools.name_en AS nameEn,
+      tools.runtime_kind AS runtimeKind, tools.runtime_status AS runtimeStatus,
+      COUNT(t.id) AS executions,
+      COUNT(DISTINCT t.user_id) AS uniqueUsers,
+      SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN t.status IN ('failed','waiting_for_runtime') THEN 1 ELSE 0 END) AS failed,
+      SUM(CASE WHEN t.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+      COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.credit_cost ELSE 0 END),0) AS creditsConsumed,
+      MAX(t.created_at) AS lastEventAt
+    FROM tools LEFT JOIN tasks t ON t.tool_id = tools.id AND t.created_at >= ?
+    GROUP BY tools.id ORDER BY executions DESC, tools.name_en
+  `).all(since).map((row) => {
+    const executions = Number(row.executions || 0);
+    return {
+      ...row,
+      executions,
+      uniqueUsers: Number(row.uniqueUsers || 0),
+      completed: Number(row.completed || 0),
+      failed: Number(row.failed || 0),
+      cancelled: Number(row.cancelled || 0),
+      creditsConsumed: Number(row.creditsConsumed || 0),
+      successRate: executions ? Number(row.completed || 0) / executions : null,
+      reportingStatus: row.lastEventAt ? (now() - row.lastEventAt > 7 * 86400000 ? "stale" : "reporting") : "not_reporting",
+      costStatus: "unavailable",
+    };
+  });
+  return {
+    tools,
+    meta: {
+      windowDays: days,
+      timezone: process.env.ADMIN_TIMEZONE || "Asia/Shanghai",
+      generatedAt: now(),
+      definition: "Persisted task lifecycle records; customer content excluded",
+    },
+  };
+}
+
+function infrastructureOverview() {
+  collectSystemMetrics();
+  const definitions = db.prepare(`
+    SELECT name, label_zh AS labelZh, label_en AS labelEn, unit, warning_threshold AS warningThreshold,
+      critical_threshold AS criticalThreshold, freshness_ms AS freshnessMs FROM metric_definitions
+    ORDER BY name
+  `).all();
+  const metrics = definitions.map((definition) => {
+    const sample = db.prepare(`
+      SELECT value, collected_at AS collectedAt FROM metric_samples
+      WHERE metric_name = ? ORDER BY collected_at DESC LIMIT 1
+    `).get(definition.name);
+    const age = sample ? now() - sample.collectedAt : null;
+    let status = "not_reporting";
+    if (sample) {
+      if (age > definition.freshnessMs) status = "stale";
+      else if (definition.criticalThreshold != null && sample.value >= definition.criticalThreshold) status = "critical";
+      else if (definition.warningThreshold != null && sample.value >= definition.warningThreshold) status = "warning";
+      else status = "healthy";
+    }
+    return { ...definition, value: sample?.value ?? null, collectedAt: sample?.collectedAt || null, status };
+  });
+  return {
+    metrics,
+    heartbeat: db.prepare(`
+      SELECT collector, status, error_code AS errorCode, collected_at AS collectedAt
+      FROM observability_heartbeats WHERE collector = 'local'
+    `).get() || null,
+    alerts: db.prepare(`
+      SELECT id, severity, kind, title, target_type AS targetType, target_id AS targetId,
+        status, details_json AS detailsJson, created_at AS createdAt, resolved_at AS resolvedAt
+      FROM operational_alerts WHERE kind LIKE 'metric:%'
+      ORDER BY created_at DESC LIMIT 100
+    `).all().map((row) => ({ ...row, details: parseJson(row.detailsJson, {}), detailsJson: undefined })),
+    retention: { rawSamplesDays: 7, fiveMinuteDays: 30, hourlyMonths: 13 },
+    externalExport: process.env.EXTERNAL_METRICS_EXPORT_ENABLED === "true" ? "enabled" : "disabled",
+  };
+}
+
 function privacy() {
   return {
     deletions: db.prepare(`
@@ -839,6 +1089,33 @@ function assignAdministratorRole(targetId, roleId, actorId, timestamp) {
 }
 
 async function adminCommands(request, path, context) {
+  let match = path.match(/^\/api\/admin\/v1\/alerts\/([^/]+)\/(acknowledge|resolve)$/);
+  if (match && request.method === "POST") {
+    const denied = requirePermission(context, "alerts.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const note = String(data.note || "").trim().slice(0, 500);
+    if (!note) return fail("REASON_REQUIRED");
+    const alert = db.prepare("SELECT * FROM operational_alerts WHERE id = ?").get(match[1]);
+    if (!alert) return fail("ALERT_NOT_FOUND", 404);
+    const action = match[2];
+    if (action === "acknowledge") {
+      db.prepare(`
+        UPDATE operational_alerts SET status = 'acknowledged', acknowledged_by = ?
+        WHERE id = ? AND status = 'open'
+      `).run(context.user.id, alert.id);
+    } else {
+      db.prepare(`
+        UPDATE operational_alerts SET status = 'resolved', resolved_at = ?
+        WHERE id = ? AND status IN ('open','acknowledged')
+      `).run(now(), alert.id);
+    }
+    richAudit({
+      request, actor: context.user, roles: context.roles, permission: "alerts.manage",
+      action: `admin.alert.${action}`, targetType: "alert", targetId: alert.id, reason: note,
+      before: { status: alert.status }, after: { status: action === "acknowledge" ? "acknowledged" : "resolved" },
+    });
+    return json({ ok: true });
+  }
   if (path === "/api/admin/v1/administrators" && request.method === "POST") {
     const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
     const data = await parseBody(request);
@@ -873,7 +1150,7 @@ async function adminCommands(request, path, context) {
     richAudit({ request, actor: context.user, roles: context.roles, permission: "admins.manage", action: "admin.create", targetType: "administrator", targetId: target.id, reason, after: { email: target.email, role: role.code, status: "active" } });
     return json({ ok: true, administrator: { userId: target.id, email: target.email, role: role.code, status: "active" } }, 201);
   }
-  let match = path.match(/^\/api\/admin\/v1\/administrators\/([^/]+)\/role$/);
+  match = path.match(/^\/api\/admin\/v1\/administrators\/([^/]+)\/role$/);
   if (match && request.method === "POST") {
     const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
     const data = await parseBody(request);
@@ -982,6 +1259,26 @@ export function createAdminHandler(dependencies) {
     if (path === "/api/admin/v1/overview" && request.method === "GET") {
       const denied = requirePermission(context, "dashboard.read"); if (denied) return denied;
       return json(overview(request));
+    }
+    if (path === "/api/admin/v1/command-center" && request.method === "GET") {
+      const denied = requirePermission(context, "dashboard.read"); if (denied) return denied;
+      return json(commandCenter(request));
+    }
+    if (path === "/api/admin/v1/credits/ledger" && request.method === "GET") {
+      const denied = requirePermission(context, "credits.read"); if (denied) return denied;
+      return json(creditLedger(request));
+    }
+    if (path === "/api/admin/v1/finance" && request.method === "GET") {
+      const denied = requirePermission(context, "finance.read"); if (denied) return denied;
+      return json(financeOverview());
+    }
+    if (path === "/api/admin/v1/analytics/tools" && request.method === "GET") {
+      const denied = requirePermission(context, "analytics.read"); if (denied) return denied;
+      return json(toolAnalytics(request));
+    }
+    if (path === "/api/admin/v1/infrastructure/overview" && request.method === "GET") {
+      const denied = requirePermission(context, "infrastructure.read"); if (denied) return denied;
+      return json(infrastructureOverview());
     }
     if (path === "/api/admin/v1/users" && request.method === "GET") {
       const denied = requirePermission(context, "users.read"); if (denied) return denied;

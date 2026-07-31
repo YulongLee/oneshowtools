@@ -3,7 +3,8 @@ import {
   Pulse, ArrowClockwise, Bank, Bell, Check, CheckCircle, Coins, CreditCard,
   File, Gauge, Gear, Globe, IdentificationCard, Key, ListChecks, LockKey,
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
-  Translate, User, UserCircle, Users, Warning, Wrench, X,
+  Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
+  BookOpenText,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -12,8 +13,9 @@ const copy = {
     signInBody: "使用已验证并获得管理员授权的邮箱账户登录。", email: "管理员邮箱", emailStatus: "邮箱状态",
     password: "密码", secureLogin: "安全登录", back: "返回 OneShowTools",
     noPermission: "当前账户没有管理员权限。", loginFailed: "登录失败，请检查邮箱、密码和验证状态。",
-    loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", users: "用户运营",
-    commerce: "支付与积分", tools: "工具治理", operations: "运营中心", privacy: "隐私合规",
+    loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营",
+    creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
+    commerce: "支付与积分", tools: "工具治理", operations: "作业与告警", privacy: "隐私合规",
     audit: "审计日志", admins: "权限管理", refresh: "刷新", logout: "退出",
     searchUser: "搜索用户 ID、姓名或邮箱", search: "搜索", all: "全部", active: "正常",
     suspended: "已封禁", verified: "已验证", unverified: "待验证", credits: "积分",
@@ -54,14 +56,20 @@ const copy = {
     adminInactive: "该用户账户当前不可用。",
     lastSuperAdmin: "系统必须至少保留一名正常的超级管理员。",
     ownAdminLocked: "不能修改或停用自己的管理员权限。",
+    reporting: "数据上报", notReporting: "未上报", stale: "数据过期", healthy: "正常",
+    executions: "执行次数", uniqueUsers: "独立用户", successRate: "成功率", consumed: "已消耗",
+    grants: "累计发放", ledgerEntries: "账本记录", invariants: "账本校验", financeNotice: "内部经营子账，不替代法定会计与报税系统。",
+    journals: "会计分录", accounts: "科目表", periods: "会计期间", reconciliation: "对账运行",
+    metric: "指标", currentValue: "当前值", freshness: "新鲜度", monitoring: "监控状态",
   },
   en: {
     console: "Commercial Admin", loading: "Loading secure administration…", signIn: "Administrator sign in",
     signInBody: "Use a verified email account with administrator access.", email: "Administrator email", emailStatus: "Email status",
     password: "Password", secureLogin: "Secure sign in", back: "Back to OneShowTools",
     noPermission: "This account does not have administrator access.", loginFailed: "Sign in failed. Check the email, password, and verification status.",
-    loadFailed: "Admin data could not be loaded.", overview: "Overview", users: "Customers",
-    commerce: "Commerce & Credits", tools: "Tool Governance", operations: "Operations", privacy: "Privacy",
+    loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers",
+    creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
+    commerce: "Commerce & Credits", tools: "Tool Governance", operations: "Jobs & Alerts", privacy: "Privacy",
     audit: "Audit Log", admins: "Access Control", refresh: "Refresh", logout: "Sign out",
     searchUser: "Search user ID, name, or email", search: "Search", all: "All", active: "Active",
     suspended: "Suspended", verified: "Verified", unverified: "Unverified", credits: "Credits",
@@ -102,6 +110,11 @@ const copy = {
     adminInactive: "That user account is not active.",
     lastSuperAdmin: "At least one active super administrator must remain.",
     ownAdminLocked: "You cannot change or suspend your own administrator access.",
+    reporting: "Reporting", notReporting: "Not reporting", stale: "Stale", healthy: "Healthy",
+    executions: "Executions", uniqueUsers: "Unique users", successRate: "Success rate", consumed: "Consumed",
+    grants: "Granted", ledgerEntries: "Ledger entries", invariants: "Ledger invariants", financeNotice: "Internal operational subledger; not a replacement for statutory accounting or tax filing.",
+    journals: "Journals", accounts: "Chart of accounts", periods: "Periods", reconciliation: "Reconciliation runs",
+    metric: "Metric", currentValue: "Current value", freshness: "Freshness", monitoring: "Monitoring",
   },
 };
 
@@ -243,6 +256,110 @@ function Health({ label, value, ok }) {
   return <div className="admin-health-row"><span className={ok ? "ok" : "warn"}>{ok ? <Check size={13} /> : <Warning size={13} />}</span><strong>{label}</strong><b>{value}</b></div>;
 }
 
+function CommandCenter({ data, locale }) {
+  const t = copy[locale];
+  if (!data) return null;
+  return <div className="admin-page-stack">
+    <div className={`admin-data-freshness ${data.meta.monitoringStatus}`}>
+      <Pulse size={18} /><strong>{t.monitoring}: {data.meta.monitoringStatus}</strong>
+      <span>{data.meta.window} · {data.meta.timezone} · {date(data.meta.generatedAt, locale)}</span>
+    </div>
+    <Overview data={data} locale={locale} />
+    <section className="admin-v2-grid two">
+      <article className="admin-v2-panel"><header><div><small>TOOL RELIABILITY</small><h2>{t.analytics}</h2></div><ChartLineUp size={22} /></header>
+        <div className="admin-health-list">
+          <Health label={t.executions} value={number(data.toolUsage.executions, locale)} ok />
+          <Health label={t.success} value={number(data.toolUsage.completed, locale)} ok />
+          <Health label={t.failedTasks} value={number(data.toolUsage.failed, locale)} ok={!data.toolUsage.failed} />
+        </div></article>
+      <article className="admin-v2-panel"><header><div><small>CRITICAL ATTENTION</small><h2>{t.alerts}</h2></div><Bell size={22} /></header>
+        <div className="admin-health-list">{data.criticalAlerts.length ? data.criticalAlerts.map((alert) =>
+          <Health key={alert.id} label={alert.title} value={alert.severity} ok={false} />
+        ) : <Health label={t.openAlerts} value="0" ok />}</div></article>
+    </section>
+  </div>;
+}
+
+function CreditLedgerView({ data, locale, onPage }) {
+  const t = copy[locale];
+  return <div className="admin-page-stack">
+    <section className="admin-v2-metrics admin-v2-metrics-three">
+      <Metric icon={Coins} label={t.balance} value={number(data?.totals?.balance, locale)} tone="blue" />
+      <Metric icon={ChartLineUp} label={t.grants} value={number(data?.totals?.grants, locale)} tone="green" />
+      <Metric icon={Receipt} label={t.consumed} value={number(data?.totals?.consumed, locale)} tone="orange" />
+    </section>
+    <section className="admin-v2-panel admin-table-panel"><header><div><small>IMMUTABLE LEDGER</small><h2>{t.ledgerEntries}</h2></div><BookOpenText size={22} /></header>
+      <div className="admin-v2-table-wrap"><table><thead><tr><th>{t.account}</th><th>{t.reasonCode}</th><th>{t.amount}</th><th>{t.balance}</th><th>{t.actor}</th><th>{t.time}</th></tr></thead>
+        <tbody>{data?.entries?.map((entry) => <tr key={entry.id}><td><strong>{entry.email}</strong><small>{entry.referenceType} / {entry.referenceId}</small></td>
+          <td>{entry.reasonCode || entry.type}<small>{entry.operatorNote || (locale === "en" ? entry.descriptionEn : entry.descriptionZh)}</small></td>
+          <td><strong className={entry.amount >= 0 ? "admin-positive" : "admin-negative"}>{entry.amount > 0 ? "+" : ""}{number(entry.amount, locale)}</strong></td>
+          <td>{entry.balanceAfter == null ? "—" : `${number(entry.balanceBefore, locale)} → ${number(entry.balanceAfter, locale)}`}</td>
+          <td>{entry.actorEmail || "system"}</td><td>{date(entry.createdAt, locale)}</td></tr>)}
+        {!data?.entries?.length && <tr><td colSpan="6" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>
+      <Pager data={data} onPage={onPage} locale={locale} />
+    </section>
+    <section className="admin-v2-panel"><header><div><small>INVARIANTS</small><h2>{t.invariants}</h2></div><ShieldCheck size={22} /></header>
+      <div className="admin-health-list"><Health label="Duplicate references" value={data?.invariants?.duplicateReferences || 0} ok={!data?.invariants?.duplicateReferences} />
+        <Health label="Negative balances" value={data?.invariants?.negativeBalances || 0} ok={!data?.invariants?.negativeBalances} /></div></section>
+  </div>;
+}
+
+function FinanceView({ data, locale }) {
+  const t = copy[locale];
+  return <div className="admin-page-stack">
+    <div className="admin-data-freshness healthy"><Bank size={18} /><strong>{t.financeNotice}</strong><span>{data?.currency || "USD"}</span></div>
+    <section className="admin-v2-grid two">
+      <article className="admin-v2-panel admin-table-panel"><header><div><small>CHART OF ACCOUNTS</small><h2>{t.accounts}</h2></div><BookOpenText size={22} /></header>
+        <div className="admin-v2-table-wrap"><table><thead><tr><th>Code</th><th>{t.account}</th><th>Type</th></tr></thead><tbody>{data?.accounts?.map((account) =>
+          <tr key={account.id}><td><code>{account.code}</code></td><td>{locale === "en" ? account.nameEn : account.nameZh}</td><td>{account.accountType}</td></tr>)}</tbody></table></div></article>
+      <article className="admin-v2-panel"><header><div><small>RECONCILIATION</small><h2>{t.reconciliation}</h2></div><ListChecks size={22} /></header>
+        <div className="admin-health-list"><Health label={t.journals} value={data?.journals?.length || 0} ok />
+          <Health label={t.periods} value={data?.periods?.length || 0} ok />
+          <Health label={t.exceptions} value={data?.exceptions?.filter((item) => item.status === "open").length || 0} ok={!data?.exceptions?.some((item) => item.status === "open")} /></div></article>
+    </section>
+    <section className="admin-v2-panel admin-table-panel"><header><div><small>BALANCED POSTINGS</small><h2>{t.journals}</h2></div><Receipt size={22} /></header>
+      <div className="admin-v2-table-wrap"><table><thead><tr><th>No.</th><th>{t.status}</th><th>{t.detailsJson}</th><th>Debit</th><th>Credit</th><th>{t.time}</th></tr></thead><tbody>
+        {data?.journals?.map((journal) => <tr key={journal.id}><td><code>{journal.entryNumber}</code></td><td><span className={`admin-badge ${journal.status}`}>{journal.status}</span></td><td>{journal.description}</td><td>{number(journal.debitMinor / 100, locale)} {journal.currency}</td><td>{number(journal.creditMinor / 100, locale)} {journal.currency}</td><td>{date(journal.postedAt || journal.createdAt, locale)}</td></tr>)}
+        {!data?.journals?.length && <tr><td colSpan="6" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div></section>
+  </div>;
+}
+
+function ToolAnalyticsView({ data, locale }) {
+  const t = copy[locale];
+  return <section className="admin-v2-panel admin-table-panel">
+    <div className="admin-data-freshness healthy"><ChartLineUp size={18} /><strong>{data?.meta?.definition}</strong><span>{data?.meta?.windowDays || 30}d · {data?.meta?.timezone}</span></div>
+    <div className="admin-v2-table-wrap"><table><thead><tr><th>{t.tools}</th><th>{t.reporting}</th><th>{t.executions}</th><th>{t.uniqueUsers}</th><th>{t.successRate}</th><th>{t.credits}</th><th>{t.lastSeen}</th></tr></thead><tbody>
+      {data?.tools?.map((tool) => <tr key={tool.id}><td><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><small>{tool.runtimeKind}</small></td>
+        <td><span className={`admin-badge ${tool.reportingStatus}`}>{tool.reportingStatus === "not_reporting" ? t.notReporting : tool.reportingStatus === "stale" ? t.stale : t.healthy}</span></td>
+        <td>{number(tool.executions, locale)}</td><td>{number(tool.uniqueUsers, locale)}</td><td>{tool.successRate == null ? "—" : `${(tool.successRate * 100).toFixed(1)}%`}</td>
+        <td>{number(tool.creditsConsumed, locale)}</td><td>{date(tool.lastEventAt, locale)}</td></tr>)}</tbody></table></div>
+  </section>;
+}
+
+function metricDisplay(metric, locale) {
+  if (metric.value == null) return "—";
+  if (metric.unit === "percent") return `${metric.value.toLocaleString(locale, { maximumFractionDigits: 1 })}%`;
+  if (metric.unit === "bytes") return bytes(metric.value, locale);
+  if (metric.unit === "seconds") return `${Math.round(metric.value).toLocaleString(locale)}s`;
+  return metric.value.toLocaleString(locale, { maximumFractionDigits: 2 });
+}
+
+function InfrastructureView({ data, locale }) {
+  const t = copy[locale];
+  return <div className="admin-page-stack">
+    <div className={`admin-data-freshness ${data?.heartbeat?.status || "not_reporting"}`}><Pulse size={18} />
+      <strong>{t.monitoring}: {data?.heartbeat?.status || t.notReporting}</strong><span>{date(data?.heartbeat?.collectedAt, locale)}</span></div>
+    <section className="admin-health-metric-grid">{data?.metrics?.map((metric) => <article className="admin-health-metric" key={metric.name}>
+      <div><span className={`admin-metric-state ${metric.status}`} /><small>{locale === "en" ? metric.labelEn : metric.labelZh}</small></div>
+      <strong>{metricDisplay(metric, locale)}</strong><footer><code>{metric.name}</code><span>{metric.status}</span></footer>
+    </article>)}</section>
+    <section className="admin-v2-panel admin-table-panel"><header><div><small>ACTIVE CONDITIONS</small><h2>{t.alerts}</h2></div><Bell size={22} /></header>
+      <div className="admin-v2-table-wrap"><table><thead><tr><th>{t.status}</th><th>{t.metric}</th><th>{t.currentValue}</th><th>{t.time}</th></tr></thead><tbody>
+        {data?.alerts?.filter((alert) => alert.status !== "resolved").map((alert) => <tr key={alert.id}><td><span className={`admin-badge ${alert.severity}`}>{alert.severity}</span></td><td>{alert.title}</td><td>{alert.details?.value ?? "—"} {alert.details?.unit}</td><td>{date(alert.createdAt, locale)}</td></tr>)}
+        {!data?.alerts?.some((alert) => alert.status !== "resolved") && <tr><td colSpan="4" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div></section>
+  </div>;
+}
+
 function Pager({ data, onPage, locale }) {
   const t = copy[locale];
   if (!data?.pages || data.pages <= 1) return null;
@@ -381,7 +498,7 @@ export function AdminApp() {
   const [locale, setLocale] = useState(localStorage.getItem("ost_admin_locale") === "en" ? "en" : "zh-CN");
   const t = copy[locale];
   const [session, setSession] = useState();
-  const [view, setView] = useState("overview");
+  const [view, setView] = useState("command");
   const [data, setData] = useState({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -406,8 +523,12 @@ export function AdminApp() {
 
   useEffect(() => { loadSession(); }, [loadSession]);
   const endpoint = useMemo(() => ({
-    overview: "/api/admin/v1/overview?days=30",
+    command: "/api/admin/v1/command-center?days=30",
     users: `/api/admin/v1/users?q=${encodeURIComponent(query)}&status=${userStatus}&page=${page}&pageSize=25`,
+    creditLedger: `/api/admin/v1/credits/ledger?page=${page}&pageSize=25`,
+    finance: "/api/admin/v1/finance",
+    analytics: "/api/admin/v1/analytics/tools?days=30",
+    infrastructure: "/api/admin/v1/infrastructure/overview",
     commerce: "/api/admin/v1/commerce", tools: "/api/admin/v1/tools",
     operations: "/api/admin/v1/operations", privacy: "/api/admin/v1/privacy",
     audit: `/api/admin/v1/audit?page=${page}&pageSize=25`, admins: "/api/admin/v1/administrators",
@@ -481,13 +602,20 @@ export function AdminApp() {
   if (session.mfa.enforced && !session.mfa.verified) return <MfaGate locale={locale} session={session} onReady={loadSession} onLogout={logout} />;
 
   const nav = [
-    ["overview", Gauge, "dashboard.read"], ["users", Users, "users.read"], ["commerce", CreditCard, "billing.read"],
-    ["tools", Storefront, "tools.read"], ["operations", Pulse, "jobs.read"], ["privacy", IdentificationCard, "privacy.read"],
+    ["command", Gauge, "dashboard.read"], ["users", Users, "users.read"],
+    ["creditLedger", Coins, "credits.read"], ["finance", Bank, "finance.read"],
+    ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
+    ["operations", Pulse, "jobs.read"], ["tools", Storefront, "tools.read"], ["commerce", CreditCard, "billing.read"],
+    ["privacy", IdentificationCard, "privacy.read"],
     ["audit", ListChecks, "audit.read"], ["admins", ShieldCheck, "admins.manage"],
   ].filter((item) => allowed(session, item[2]));
   const content = {
-    overview: <Overview data={data.overview} locale={locale} />,
+    command: <CommandCenter data={data.command} locale={locale} />,
     users: <UsersView data={data.users} locale={locale} query={query} setQuery={setQuery} status={userStatus} setStatus={setUserStatus} onSearch={() => { setPage(1); loadView(); }} onSelect={openCustomer} onPage={setPage} />,
+    creditLedger: <CreditLedgerView data={data.creditLedger} locale={locale} onPage={setPage} />,
+    finance: <FinanceView data={data.finance} locale={locale} />,
+    analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
+    infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
     tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
