@@ -14,18 +14,30 @@ process.env.MODEL_CONNECTIONS_ENABLED = "true";
 process.env.ONESHOW_MODEL_EXECUTION_ENABLED = "true";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
+const observedRequests = [];
 const provider = createServer(async (request, response) => {
   let raw = "";
   for await (const chunk of request) raw += chunk;
   const payload = JSON.parse(raw);
+  observedRequests.push({
+    url: request.url,
+    authorization: request.headers.authorization || null,
+    apiKey: request.headers["x-api-key"] || null,
+    anthropicVersion: request.headers["anthropic-version"] || null,
+  });
   response.setHeader("content-type", "application/json");
-  response.end(JSON.stringify({
+  response.end(JSON.stringify(request.url.endsWith("/v1/messages") ? {
+    content: [{ type: "text", text: `ok:${payload.model}` }],
+    usage: { input_tokens: 4, output_tokens: 2 },
+    stop_reason: "end_turn",
+  } : {
     choices: [{ message: { content: `ok:${payload.model}` }, finish_reason: "stop" }],
     usage: { prompt_tokens: 4, completion_tokens: 2 },
   }));
 });
 await new Promise((resolve) => provider.listen(0, "127.0.0.1", resolve));
 const address = provider.address();
+const providerBaseUrl = `http://127.0.0.1:${address.port}`;
 process.env.ONESHOW_MODEL_API_KEY = "managed-secret-key";
 process.env.ONESHOW_MODEL_BASE_URL = `http://127.0.0.1:${address.port}/v1`;
 process.env.ONESHOW_MODEL_ID = "internal-model-id";
@@ -69,6 +81,7 @@ test("managed runtime returns a provider-neutral result and redacted status", as
   const publicStatus = JSON.stringify(runtimeSummary(userId));
   assert.match(publicStatus, /OneShowModel/);
   assert.doesNotMatch(publicStatus, /internal-model-id|managed-secret-key|127\.0\.0\.1/);
+  assert.deepEqual(runtimeSummary(userId).supportedTemplates.map((item) => item.id), ["openai", "anthropic"]);
 });
 
 test("customer credentials are encrypted, masked, owner-scoped, and tamper evident", () => {
@@ -76,7 +89,8 @@ test("customer credentials are encrypted, masked, owner-scoped, and tamper evide
   const otherId = addUser("other@example.com");
   const connection = createModelConnection(ownerId, {
     name: "My model",
-    providerTemplate: "dashscope",
+    providerTemplate: "openai",
+    baseUrl: providerBaseUrl,
     modelId: "qwen-plus",
     apiKey: "customer-super-secret-1234",
   });
@@ -103,7 +117,8 @@ test("draft credentials can be tested without being persisted", async () => {
   const userId = addUser("draft-test@example.com");
   const result = await validateModelConnection({
     name: "Draft connection",
-    providerTemplate: "dashscope",
+    providerTemplate: "openai",
+    baseUrl: providerBaseUrl,
     modelId: "qwen-plus",
     apiKey: "draft-secret-key-1234",
   });
@@ -112,12 +127,12 @@ test("draft credentials can be tested without being persisted", async () => {
   assert.doesNotMatch(JSON.stringify(runtimeSummary(userId)), /draft-secret-key/);
 });
 
-test("custom OpenAI-compatible endpoints are validated, stored, and used", async () => {
+test("OpenAI-compatible endpoints are validated, stored, and used", async () => {
   const userId = addUser("custom-endpoint@example.com");
   const baseUrl = `http://127.0.0.1:${address.port}/custom/v1`;
   const draft = await validateModelConnection({
     name: "Private compatible model",
-    providerTemplate: "custom",
+    providerTemplate: "openai",
     baseUrl,
     modelId: "private-model",
     apiKey: "private-secret-key-1234",
@@ -126,7 +141,7 @@ test("custom OpenAI-compatible endpoints are validated, stored, and used", async
 
   const connection = createModelConnection(userId, {
     name: "Private compatible model",
-    providerTemplate: "custom",
+    providerTemplate: "openai",
     baseUrl,
     modelId: "private-model",
     apiKey: "private-secret-key-1234",
@@ -142,12 +157,12 @@ test("custom OpenAI-compatible endpoints are validated, stored, and used", async
   assert.doesNotMatch(JSON.stringify(runtimeSummary(userId)), /private-secret-key/);
 });
 
-test("provider presets can be overridden with a user supplied base URL", async () => {
-  const userId = addUser("preset-override@example.com");
+test("OpenAI-compatible connections preserve a user supplied base URL and model", async () => {
+  const userId = addUser("openai-compatible@example.com");
   const baseUrl = `http://127.0.0.1:${address.port}/deepseek-compatible`;
   const draft = await validateModelConnection({
     name: "My DeepSeek",
-    providerTemplate: "deepseek",
+    providerTemplate: "openai",
     baseUrl,
     modelId: "deepseek-v4-flash",
     apiKey: "deepseek-user-key-1234",
@@ -156,7 +171,7 @@ test("provider presets can be overridden with a user supplied base URL", async (
 
   const connection = createModelConnection(userId, {
     name: "My DeepSeek",
-    providerTemplate: "deepseek",
+    providerTemplate: "openai",
     baseUrl,
     modelId: "deepseek-v4-flash",
     apiKey: "deepseek-user-key-1234",
@@ -171,11 +186,43 @@ test("provider presets can be overridden with a user supplied base URL", async (
   assert.equal(result.text, "ok:deepseek-v4-flash");
 });
 
+test("Anthropic-compatible connections use the Anthropic request and response protocol", async () => {
+  const userId = addUser("anthropic-compatible@example.com");
+  const baseUrl = `${providerBaseUrl}/anthropic`;
+  const draft = await validateModelConnection({
+    name: "Anthropic-compatible model",
+    providerTemplate: "anthropic",
+    baseUrl,
+    modelId: "deepseek-v4-flash",
+    apiKey: "anthropic-user-key-1234",
+  });
+  assert.equal(draft.status, "healthy");
+  const connection = createModelConnection(userId, {
+    name: "Anthropic-compatible model",
+    providerTemplate: "anthropic",
+    baseUrl,
+    modelId: "deepseek-v4-flash",
+    apiKey: "anthropic-user-key-1234",
+  });
+  const result = await invokeModel({
+    userId,
+    connectionId: connection.id,
+    instruction: "Test",
+    text: "Hello",
+  });
+  assert.equal(result.text, "ok:deepseek-v4-flash");
+  const request = observedRequests.at(-1);
+  assert.equal(request.url, "/anthropic/v1/messages");
+  assert.equal(request.apiKey, "anthropic-user-key-1234");
+  assert.equal(request.anthropicVersion, "2023-06-01");
+  assert.equal(request.authorization, null);
+});
+
 test("custom endpoint input rejects unsafe or malformed URLs before saving", async () => {
   await assert.rejects(
     async () => validateModelConnection({
       name: "Unsafe endpoint",
-      providerTemplate: "custom",
+      providerTemplate: "openai",
       baseUrl: "file:///etc/passwd",
       modelId: "private-model",
       apiKey: "private-secret-key-1234",
@@ -188,7 +235,8 @@ test("managed model remains the default when personal connections exist", async 
   const userId = addUser("managed-default@example.com");
   createModelConnection(userId, {
     name: "Personal model",
-    providerTemplate: "dashscope",
+    providerTemplate: "openai",
+    baseUrl: providerBaseUrl,
     modelId: "qwen-plus",
     apiKey: "personal-secret-key-1234",
     isDefault: true,
@@ -207,7 +255,8 @@ test("each model-backed tool stores an owner-scoped model preference", () => {
   const otherId = addUser("tool-model-other@example.com");
   const connection = createModelConnection(ownerId, {
     name: "Tool model",
-    providerTemplate: "dashscope",
+    providerTemplate: "openai",
+    baseUrl: providerBaseUrl,
     modelId: "qwen-plus",
     apiKey: "tool-secret-key-1234",
   });

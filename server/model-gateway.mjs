@@ -11,29 +11,41 @@ import { db } from "./database.mjs";
 export const MANAGED_MODEL_ALIAS = "OneShowModel";
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 45_000;
+const userProtocols = new Set(["openai", "anthropic"]);
 const endpointPolicies = Object.freeze({
   openai: {
-    label: "OpenAI",
-    baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL || "https://api.openai.com/v1",
-    displayUrl: "https://api.openai.com/v1",
+    label: "OpenAI compatible",
+    protocol: "openai",
+    baseUrl: null,
+    public: true,
+  },
+  anthropic: {
+    label: "Anthropic compatible",
+    protocol: "anthropic",
+    baseUrl: null,
+    public: true,
   },
   deepseek: {
     label: "DeepSeek",
+    protocol: "openai",
     baseUrl: process.env.DEEPSEEK_COMPATIBLE_BASE_URL || "https://api.deepseek.com",
     displayUrl: "https://api.deepseek.com",
   },
   dashscope: {
     label: "DashScope compatible",
+    protocol: "openai",
     baseUrl: process.env.DASHSCOPE_COMPATIBLE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
     displayUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   },
   openrouter: {
     label: "OpenRouter",
+    protocol: "openai",
     baseUrl: process.env.OPENROUTER_COMPATIBLE_BASE_URL || "https://openrouter.ai/api/v1",
     displayUrl: "https://openrouter.ai/api/v1",
   },
   custom: {
     label: "Custom OpenAI-compatible endpoint",
+    protocol: "openai",
     baseUrl: null,
     requiresBaseUrl: true,
   },
@@ -161,13 +173,12 @@ function validConnectionInput(data, requireKey = true) {
   const modelId = String(data.modelId || "").trim();
   const apiKey = String(data.apiKey || "").trim();
   if (!name || name.length > 80) throw gatewayError("INVALID_CONNECTION_NAME", 400);
-  if (!endpointPolicies[providerTemplate]) throw gatewayError("UNSUPPORTED_PROVIDER_TEMPLATE", 400);
+  if (!userProtocols.has(providerTemplate)) throw gatewayError("UNSUPPORTED_PROVIDER_TEMPLATE", 400);
   if (!modelId || modelId.length > 120 || !/^[\w./:-]+$/.test(modelId)) {
     throw gatewayError("INVALID_MODEL_ID", 400);
   }
   if (requireKey && (apiKey.length < 8 || apiKey.length > 2048)) throw gatewayError("INVALID_API_KEY", 400);
-  const suppliedBaseUrl = String(data.baseUrl || "").trim();
-  const baseUrl = normalizeBaseUrl(suppliedBaseUrl || endpointPolicies[providerTemplate].baseUrl);
+  const baseUrl = normalizeBaseUrl(data.baseUrl);
   return { name, providerTemplate, modelId, apiKey, baseUrl };
 }
 
@@ -339,10 +350,12 @@ async function assertSafeEndpoint(rawUrl) {
   return url;
 }
 
-function normalizePayload(payload) {
-  const text = payload?.choices?.[0]?.message?.content
-    ?? payload?.output_text
-    ?? payload?.output?.flatMap((item) => item?.content || []).find((item) => item?.text)?.text;
+function normalizePayload(payload, protocol) {
+  const text = protocol === "anthropic"
+    ? payload?.content?.find((item) => item?.type === "text")?.text
+    : payload?.choices?.[0]?.message?.content
+      ?? payload?.output_text
+      ?? payload?.output?.flatMap((item) => item?.content || []).find((item) => item?.text)?.text;
   if (typeof text !== "string") throw gatewayError("MODEL_INVALID_RESPONSE", 502);
   return {
     text,
@@ -350,26 +363,52 @@ function normalizePayload(payload) {
       inputTokens: payload?.usage?.prompt_tokens ?? payload?.usage?.input_tokens ?? null,
       outputTokens: payload?.usage?.completion_tokens ?? payload?.usage?.output_tokens ?? null,
     },
-    finishReason: payload?.choices?.[0]?.finish_reason || null,
+    finishReason: payload?.choices?.[0]?.finish_reason ?? payload?.stop_reason ?? null,
   };
 }
 
-async function requestModel({ baseUrl, apiKey, modelId, instruction, text, signal }) {
+function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text) {
+  const root = safeBase.href.replace(/\/$/, "");
+  if (protocol === "anthropic") {
+    const suffix = safeBase.pathname.replace(/\/$/, "").endsWith("/v1") ? "messages" : "v1/messages";
+    return {
+      endpoint: new URL(`${root}/${suffix}`),
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: {
+        model: modelId,
+        max_tokens: Math.min(Math.max(Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 4096), 64), 8192),
+        system: instruction,
+        messages: [{ role: "user", content: text }],
+      },
+    };
+  }
+  return {
+    endpoint: new URL(`${root}/chat/completions`),
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    body: {
+      model: modelId,
+      messages: [{ role: "system", content: instruction }, { role: "user", content: text }],
+    },
+  };
+}
+
+async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, instruction, text, signal }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(process.env.MODEL_REQUEST_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     const safeBase = await assertSafeEndpoint(baseUrl);
-    const endpoint = new URL(`${safeBase.href.replace(/\/$/, "")}/chat/completions`);
-    const response = await fetch(endpoint, {
+    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text);
+    const response = await fetch(request.endpoint, {
       method: "POST",
       redirect: "manual",
       signal: controller.signal,
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [{ role: "system", content: instruction }, { role: "user", content: text }],
-      }),
+      headers: request.headers,
+      body: JSON.stringify(request.body),
     });
     if (response.status >= 300 && response.status < 400) throw gatewayError("MODEL_REDIRECT_BLOCKED", 502);
     if (!response.ok) {
@@ -383,7 +422,7 @@ async function requestModel({ baseUrl, apiKey, modelId, instruction, text, signa
     if (declared > MAX_RESPONSE_BYTES) throw gatewayError("MODEL_RESPONSE_TOO_LARGE", 502);
     const raw = await response.text();
     if (Buffer.byteLength(raw) > MAX_RESPONSE_BYTES) throw gatewayError("MODEL_RESPONSE_TOO_LARGE", 502);
-    return normalizePayload(JSON.parse(raw));
+    return normalizePayload(JSON.parse(raw), protocol);
   } catch (error) {
     if (error?.name === "AbortError") throw gatewayError("MODEL_TIMEOUT", 504, true);
     if (error?.code) throw error;
@@ -401,6 +440,7 @@ function resolveRoute(userId, connectionId) {
     return {
       routeKind: "user_connection",
       connectionId: row.id,
+      protocol: policy.protocol || "openai",
       baseUrl: row.endpoint_url || policy.baseUrl,
       apiKey: decryptCredential(row),
       modelId: row.model_id,
@@ -413,6 +453,7 @@ function resolveRoute(userId, connectionId) {
   return {
     routeKind: "managed",
     connectionId: null,
+    protocol: "openai",
     baseUrl: process.env.ONESHOW_MODEL_BASE_URL || "https://api.openai.com/v1",
     apiKey: process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY,
     modelId: process.env.ONESHOW_MODEL_ID || process.env.OPENAI_MODEL || "gpt-4.1-mini",
@@ -459,6 +500,7 @@ export async function testModelConnection(userId, connectionId) {
   try {
     await requestModel({
       baseUrl: row.endpoint_url || endpointPolicies[row.provider_template].baseUrl,
+      protocol: endpointPolicies[row.provider_template].protocol || "openai",
       apiKey: decryptCredential(row),
       modelId: row.model_id,
       instruction: "Return only the word OK.",
@@ -484,6 +526,7 @@ export async function validateModelConnection(data) {
   try {
     await requestModel({
       baseUrl: input.baseUrl || endpointPolicies[input.providerTemplate].baseUrl,
+      protocol: endpointPolicies[input.providerTemplate].protocol,
       apiKey: input.apiKey,
       modelId: input.modelId,
       instruction: "Return only the word OK.",
@@ -556,7 +599,7 @@ export function runtimeSummary(userId) {
       status: flags.managedConfigured && flags.managedExecutionEnabled ? "ready" : "unavailable",
     },
     byokEnabled: flags.byokEnabled,
-    supportedTemplates: Object.entries(endpointPolicies).map(([id, policy]) => ({
+    supportedTemplates: Object.entries(endpointPolicies).filter(([, policy]) => policy.public).map(([id, policy]) => ({
       id,
       name: policy.label,
       requiresBaseUrl: Boolean(policy.requiresBaseUrl),

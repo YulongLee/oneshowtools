@@ -59,7 +59,7 @@ const dictionary = {
     accountProfile: "账户资料", saveProfile: "保存资料", accountSecurity: "账户安全", currentPassword: "当前密码", changePassword: "修改密码", newEmail: "新邮箱", changeEmail: "验证新邮箱",
     activeSessions: "登录设备", revokeOthers: "退出其他设备", privacyControls: "隐私与数据", exportData: "导出账户数据", deleteAccount: "删除账户", deletionUnavailable: "账户删除需完成政策配置后开放。",
     billingPortal: "管理付款与发票", invoices: "发票记录", noInvoices: "暂无发票记录", pendingConfirmation: "付款完成后需要等待安全回调确认。",
-    managedModel: "平台托管模型", personalModels: "我的模型连接", addModel: "添加模型连接", connectionName: "连接名称", providerTemplate: "接口预设", baseUrl: "API 地址（Base URL）", baseUrlPlaceholder: "例如：https://api.deepseek.com", apiKey: "API Key", saveConnection: "安全保存",
+    managedModel: "平台托管模型", personalModels: "我的模型连接", addModel: "添加模型连接", connectionName: "连接名称", providerTemplate: "接口协议", baseUrl: "API 地址（Base URL）", baseUrlPlaceholder: "例如：https://api.deepseek.com", apiKey: "API Key", saveConnection: "安全保存",
     keyPrivacy: "API Key 会加密保存，提交后仅显示末四位，平台和管理员都无法再次查看明文。", noConnections: "尚未添加个人模型连接", testConnection: "测试", setDefault: "设为默认", disable: "停用", enable: "启用", rotateKey: "更换 Key", deleteConnection: "删除",
     selectModel: "运行模型", useManaged: "OneShowModel（平台托管）", connectionHealthy: "连接可用", testBeforeSave: "测试连接", testingConnection: "正在测试", testPassed: "连接测试成功", testFailed: "连接测试失败", testRequired: "请先测试连接，成功后再保存。", modelRouteSaved: "工具模型配置已保存", localTool: "本地工具，无需配置模型", toolSettings: "工具设置", toolSettingsHint: "选择这个工具运行时使用的平台模型或个人模型连接。", saveSettings: "保存设置", currentModel: "当前模型",
     runtimeReady: "模型服务运行正常", managedDescription: "无需配置 API Key，登录后即可在支持的工具中使用。", connectionCount: "个人连接", enabledTools: "可用工具", addFirstConnection: "添加第一个连接", connectionsHint: "接入你自己的模型账户，并自由设置工具的运行来源。", toolRouting: "工具运行方式", toolRoutingHint: "每个工具都明确显示当前处理方式。", close: "关闭",
@@ -95,7 +95,7 @@ const dictionary = {
     accountProfile: "Profile", saveProfile: "Save profile", accountSecurity: "Account security", currentPassword: "Current password", changePassword: "Change password", newEmail: "New email", changeEmail: "Verify new email",
     activeSessions: "Signed-in devices", revokeOthers: "Sign out other devices", privacyControls: "Privacy and data", exportData: "Export account data", deleteAccount: "Delete account", deletionUnavailable: "Account deletion opens after the retention policy is configured.",
     billingPortal: "Manage payments and invoices", invoices: "Invoices", noInvoices: "No invoices yet", pendingConfirmation: "Payment access updates only after secure provider confirmation.",
-    managedModel: "Managed model", personalModels: "My model connections", addModel: "Add model connection", connectionName: "Connection name", providerTemplate: "API preset", baseUrl: "API Base URL", baseUrlPlaceholder: "For example: https://api.deepseek.com", apiKey: "API Key", saveConnection: "Save securely",
+    managedModel: "Managed model", personalModels: "My model connections", addModel: "Add model connection", connectionName: "Connection name", providerTemplate: "API protocol", baseUrl: "API Base URL", baseUrlPlaceholder: "For example: https://api.deepseek.com", apiKey: "API Key", saveConnection: "Save securely",
     keyPrivacy: "API keys are encrypted and cannot be displayed again. Only the last four characters remain visible.", noConnections: "No personal model connections yet", testConnection: "Test", setDefault: "Set default", disable: "Disable", enable: "Enable", rotateKey: "Rotate key", deleteConnection: "Delete",
     selectModel: "Runtime model", useManaged: "OneShowModel (managed)", connectionHealthy: "Connection ready", testBeforeSave: "Test connection", testingConnection: "Testing", testPassed: "Connection test passed", testFailed: "Connection test failed", testRequired: "Test the connection successfully before saving.", modelRouteSaved: "Tool model setting saved", localTool: "Local tool · no model setup needed", toolSettings: "Tool settings", toolSettingsHint: "Choose the managed model or a personal connection for this tool.", saveSettings: "Save settings", currentModel: "Current model",
     runtimeReady: "Model service operational", managedDescription: "No API key setup required. Use it immediately in supported tools.", connectionCount: "Personal connections", enabledTools: "Available tools", addFirstConnection: "Add your first connection", connectionsHint: "Connect your own model account and choose how supported tools run.", toolRouting: "Tool routing", toolRoutingHint: "See the processing route for every tool at a glance.", close: "Close",
@@ -419,7 +419,7 @@ function Marketplace({ tools, locale, query, onQuery, onRun }) {
 
 function Runtime({ data, locale, onRefresh, onNotice }) {
   const t = dictionary[locale];
-  const [form, setForm] = useState({ name: "", providerTemplate: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelId: "", apiKey: "" });
+  const [form, setForm] = useState({ name: "", providerTemplate: "openai", baseUrl: "", modelId: "", apiKey: "" });
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -455,7 +455,7 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
     if (testResult?.status !== "healthy") return onNotice(t.testRequired);
     const saved = await mutate("/api/model-connections", jsonOptions("POST", form), t.configured);
     if (saved) {
-      setForm({ name: "", providerTemplate: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelId: "", apiKey: "" });
+      setForm({ name: "", providerTemplate: "openai", baseUrl: "", modelId: "", apiKey: "" });
       setTestResult(null);
       setShowForm(false);
     }
@@ -465,8 +465,7 @@ function Runtime({ data, locale, onRefresh, onNotice }) {
     setTestResult(null);
   };
   const updateProvider = (providerTemplate) => {
-    const template = data.supportedTemplates.find((item) => item.id === providerTemplate);
-    setForm((current) => ({ ...current, providerTemplate, baseUrl: template?.defaultBaseUrl || "" }));
+    setForm((current) => ({ ...current, providerTemplate }));
     setTestResult(null);
   };
   const testDraftConnection = async () => {
