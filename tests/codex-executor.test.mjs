@@ -120,7 +120,7 @@ test("Codex analysis supports providers with Chat Completions only", async () =>
   let request;
   const executor = createCodexExecutor({
     CodexClass: class {},
-    env: { ...baseEnv, CODEX_ANALYSIS_TRANSPORT: "chat-completions" },
+    env: { ...baseEnv, CODEX_ANALYSIS_TRANSPORT: "chat-completions", DASHSCOPE_WORKSPACE_ID: "ws-test" },
     fetchImpl: async (url, options) => {
       request = { url, options, payload: JSON.parse(options.body) };
       return new Response(JSON.stringify({
@@ -136,9 +136,23 @@ test("Codex analysis supports providers with Chat Completions only", async () =>
   assert.match(request.url, /\/chat\/completions$/);
   assert.equal(request.payload.model, "kimi/kimi-k3");
   assert.equal(request.options.headers.authorization, "Bearer server-only-test-key");
+  assert.equal(request.options.headers["X-DashScope-WorkSpace"], "ws-test");
   assert.equal(result.finalResponse, '{"ok":true}');
   assert.deepEqual(result.changedFiles, []);
   assert.doesNotMatch(JSON.stringify(result), /server-only-test-key/);
+});
+
+test("Codex analysis reports provider capacity limits without leaking details", async () => {
+  const executor = createCodexExecutor({
+    CodexClass: class {},
+    env: { ...baseEnv, CODEX_ANALYSIS_TRANSPORT: "chat-completions", DASHSCOPE_WORKSPACE_ID: "ws-test" },
+    fetchImpl: async () => new Response(JSON.stringify({ error: { code: "EngineOverloadedError", message: "busy" } }), {
+      status: 429, headers: { "content-type": "application/json" },
+    }),
+  });
+  await assert.rejects(executor.run({ prompt: "Analyze", mode: "analysis", model: "kimi/kimi-k3" }), {
+    code: "CODEX_PROVIDER_RATE_LIMITED",
+  });
 });
 
 test("Codex executor stays unavailable until explicitly enabled and configured", async () => {

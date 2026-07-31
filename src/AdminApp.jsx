@@ -19,7 +19,8 @@ const copy = {
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
     intelligenceBrief: "结合外部市场信号与站内真实数据，生成每日工具开发优先级。",
     opportunity: "开发机会", demand: "需求", fit: "平台匹配", competition: "竞争机会", effort: "开发可行性",
-    evidence: "需求证据", nextStep: "建议下一步", latestReport: "最新日报", reportHistory: "历史日报",
+    evidence: "需求证据", whyNow: "为什么现在值得关注", validationPlan: "7 天验证计划", nextStep: "建议下一步", latestReport: "最新日报", reportHistory: "历史日报",
+    build_now: "可进入开发", validate_next: "优先验证", watch: "持续观察",
     sourceNetwork: "情报数据源", categoryCoverage: "产品矩阵覆盖", internalSignals: "站内商业信号",
     connectedSources: "已采集来源", needsConfig: "需要授权", sourceItems: "条信号", unserved: "无结果搜索",
     repeatUsers: "重复使用用户", subscribers: "有效订阅", paidInvoices: "已支付账单", sourceReady: "等待本次采集",
@@ -83,7 +84,8 @@ const copy = {
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
     intelligenceBrief: "Combines external market signals with persisted product data into a daily development priority brief.",
     opportunity: "Opportunity", demand: "Demand", fit: "Platform fit", competition: "Competition", effort: "Feasibility",
-    evidence: "Evidence", nextStep: "Next step", latestReport: "Latest report", reportHistory: "Report history",
+    evidence: "Evidence", whyNow: "Why now", validationPlan: "7-day validation", nextStep: "Next step", latestReport: "Latest report", reportHistory: "Report history",
+    build_now: "Build ready", validate_next: "Validate next", watch: "Watch",
     sourceNetwork: "Intelligence sources", categoryCoverage: "Product coverage", internalSignals: "First-party signals",
     connectedSources: "Collected sources", needsConfig: "Authorization needed", sourceItems: "signals", unserved: "Zero-result searches",
     repeatUsers: "Repeat users", subscribers: "Active subscriptions", paidInvoices: "Paid invoices", sourceReady: "Ready for next run",
@@ -410,9 +412,11 @@ function MarketIntelligenceView({ data, locale, onRun, onSelectDate, onAsk, runn
         {!report && <div className="market-report-empty"><Binoculars size={30} /><strong>{t.noData}</strong><p>{t.intelligenceBrief}</p></div>}
         {report && <><div className="market-report-summary"><p>{report.summaryZh}</p>{report.errorCode && <span className="admin-badge failed">{report.errorCode}</span>}</div>
           <div className="market-opportunity-list">{report.opportunities?.map((item, index) => <article className="market-opportunity" key={`${item.titleEn}-${index}`}>
-            <header><span className="market-rank">{String(index + 1).padStart(2, "0")}</span><div><small>{item.category} · {item.decision}</small><h3>{item.titleZh}</h3></div><strong>{item.priorityScore}</strong></header>
+            <header><span className="market-rank">{String(index + 1).padStart(2, "0")}</span><div><small>{item.category} · {item.decision}</small><h3>{item.titleZh}</h3><span className={`market-stage ${item.stage || "watch"}`}>{t[item.stage] || item.stage || t.watch}</span></div><strong>{item.priorityScore}</strong></header>
             <p>{item.problem}</p><p className="market-solution">{item.solution}</p>
+            {item.whyNow && <p className="market-why-now"><strong>{t.whyNow}：</strong>{item.whyNow}</p>}
             <div className="market-score-grid"><Score label={t.demand} value={item.demandScore} /><Score label={t.fit} value={item.fitScore} /><Score label={t.competition} value={item.competitionScore} /><Score label={t.effort} value={item.effortScore} /></div>
+            {item.validationPlan && <div className="market-validation-plan"><CheckCircle size={15} /><div><small>{t.validationPlan}</small><span>{item.validationPlan}</span></div></div>}
             <div className="market-next-step"><Lightning size={15} /><div><small>{t.nextStep}</small><span>{item.nextStep}</span></div></div>
             <div className="market-evidence"><small>{t.evidence}</small>{item.evidenceIds?.map((id) => { const source = sourceById.get(id); return source ? <a key={id} href={source.url} target="_blank" rel="noreferrer"><LinkSimple size={13} />{source.source} · {source.title}</a> : null; })}</div>
           </article>)}</div></>}

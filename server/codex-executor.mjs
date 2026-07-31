@@ -67,7 +67,7 @@ function changedFiles(items) {
   )];
 }
 
-async function runCompatibleAnalysis({ apiKey, baseUrl, model, prompt, outputSchema, signal, fetchImpl }) {
+async function runCompatibleAnalysis({ apiKey, baseUrl, workspaceId, model, prompt, outputSchema, signal, fetchImpl }) {
   const endpoint = `${String(baseUrl).replace(/\/+$/, "")}/chat/completions`;
   const schemaInstruction = outputSchema
     ? `\nReturn only a JSON object that conforms to this JSON Schema:\n${JSON.stringify(outputSchema)}`
@@ -75,7 +75,11 @@ async function runCompatibleAnalysis({ apiKey, baseUrl, model, prompt, outputSch
   const response = await fetchImpl(endpoint, {
     method: "POST",
     signal,
-    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+      ...(workspaceId ? { "X-DashScope-WorkSpace": workspaceId } : {}),
+    },
     body: JSON.stringify({
       model,
       messages: [
@@ -89,7 +93,9 @@ async function runCompatibleAnalysis({ apiKey, baseUrl, model, prompt, outputSch
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const providerCode = String(payload?.error?.code || payload?.code || "");
-    const code = response.status === 403 && /model.*access|access.*model/i.test(providerCode)
+    const code = response.status === 429
+      ? "CODEX_PROVIDER_RATE_LIMITED"
+      : response.status === 403 && /model.*access|access.*model/i.test(providerCode)
       ? "CODEX_PROVIDER_MODEL_ACCESS_DENIED"
       : response.status === 401 || response.status === 403
         ? "CODEX_PROVIDER_AUTH_FAILED" : "CODEX_PROVIDER_REQUEST_FAILED";
@@ -125,6 +131,7 @@ export function codexExecutorConfig(env = process.env) {
     configured: Boolean(apiKey && baseUrl),
     apiKey,
     baseUrl,
+    workspaceId: env.DASHSCOPE_WORKSPACE_ID || env.DASHSCOPE_WORKSPACE || "",
     model: env.CODEX_MODEL
       || env.DASHSCOPE_MODEL
       || env.OFFERSTEADY_CHAT_MODEL
@@ -183,7 +190,7 @@ export function createCodexExecutor({
       try {
         if (mode === "analysis" && env.CODEX_ANALYSIS_TRANSPORT === "chat-completions") {
           return await runCompatibleAnalysis({
-            apiKey: config.apiKey, baseUrl: config.baseUrl, model: selectedModel,
+            apiKey: config.apiKey, baseUrl: config.baseUrl, workspaceId: config.workspaceId, model: selectedModel,
             prompt: instruction, outputSchema, signal: controller.signal, fetchImpl,
           });
         }

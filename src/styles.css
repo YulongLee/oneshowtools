@@ -894,9 +894,15 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .market-rank { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: #1768e5; background: #edf4ff; font-size: 10px; font-weight: 800; }
 .market-opportunity > header small { color: #728197; font-size: 8px; text-transform: uppercase; }
 .market-opportunity h3 { margin: 4px 0 0; font-size: 14px; }
+.market-stage { width: max-content; display: inline-flex; margin-top: 7px; padding: 4px 7px; border-radius: 999px; font-size: 8px; font-weight: 750; }
+.market-stage.build_now { color: #087554; background: #e6f7f0; }
+.market-stage.validate_next { color: #9a5b13; background: #fff3df; }
+.market-stage.watch { color: #596b84; background: #edf1f6; }
 .market-opportunity > header > strong { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 50%; color: #fff; background: #1768e5; font-size: 14px; box-shadow: 0 0 0 5px #edf4ff; }
 .market-opportunity > p { margin: 0; color: #68768a; font-size: 9px; line-height: 1.7; }
 .market-opportunity > p.market-solution { color: #34435a; font-weight: 600; }
+.market-opportunity > p.market-why-now { padding: 9px 11px; border-left: 3px solid #8db6f2; border-radius: 0 8px 8px 0; color: #52657f; background: #f6f9fe; }
+.market-opportunity > p.market-why-now strong { color: #2e4e78; }
 .market-score-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
 .market-score-grid > div { display: grid; gap: 7px; padding: 10px; border: 1px solid #e5eaf1; border-radius: 9px; background: #fafbfd; }
 .market-score-grid span { display: flex; justify-content: space-between; gap: 6px; }
@@ -908,6 +914,10 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .market-next-step > div { display: grid; gap: 3px; }
 .market-next-step small { color: #6b7d98; font-size: 7px; font-weight: 800; text-transform: uppercase; }
 .market-next-step span { color: #354963; font-size: 9px; line-height: 1.55; }
+.market-validation-plan { display: flex; gap: 9px; padding: 11px 12px; border-radius: 9px; color: #0b8662; background: #eef9f5; }
+.market-validation-plan > div { display: grid; gap: 3px; }
+.market-validation-plan small { color: #508476; font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.market-validation-plan span { color: #31584e; font-size: 9px; line-height: 1.55; }
 .market-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .market-evidence > small { margin-right: 3px; color: #8390a2; font-size: 8px; font-weight: 700; }
 .market-evidence a { max-width: 330px; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; padding: 5px 7px; border-radius: 6px; color: #4b6f9f; background: #f1f5fa; font-size: 8px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
