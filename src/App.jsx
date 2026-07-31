@@ -246,10 +246,10 @@ function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, o
   const zh = locale !== "en";
   const labels = zh ? {
     back: "返回工具市场", eyebrow: "AI WRITING STUDIO", title: "AI 写作工作台", subtitle: "从 49 个专业模板开始，也可以加入自己的提示词。每次生成都会经过质量自检。",
-    modules: "写作能力", templates: "选择模板", input: "写作信息", output: "生成结果", setup: "输出设置", language: "输出语言", length: "内容长度", tone: "写作语气", model: "运行模型", custom: "补充要求（可选）", customHint: "例如：使用更多案例，结尾加入行动建议…", generate: "生成并自检", generating: "正在写作与检查…", empty: "选择模板并填写信息，完成的 Markdown 内容会显示在这里。", quality: "质量自检", copy: "复制 Markdown", download: "下载 .md", copied: "已复制", required: "请填写所有必填项", login: "登录后即可生成并保存任务记录", auto: "跟随输入", chinese: "简体中文", english: "English", short: "精简", medium: "标准", long: "深度", professional: "专业", friendly: "亲和", concise: "简洁", persuasive: "有说服力", creative: "创意", chars: "字", credits: "积分 / 次", passed: "项通过", issue: "项建议",
+    modules: "写作能力", templates: "选择模板", input: "写作信息", output: "生成结果", setup: "输出设置", language: "输出语言", length: "内容长度", tone: "写作语气", model: "运行模型", custom: "补充要求（可选）", customHint: "例如：使用更多案例，结尾加入行动建议…", generate: "生成并自检", generating: "正在生成与质量自检", waiting: "长文章通常需要 1–2 分钟，请保持页面开启", delayed: "等待时间较长，后台可能仍在生成。请稍后到任务中心查看结果。", empty: "选择模板并填写信息，完成的 Markdown 内容会显示在这里。", quality: "质量自检", copy: "复制 Markdown", download: "下载 .md", copied: "已复制", required: "请填写所有必填项", login: "登录后即可生成并保存任务记录", auto: "跟随输入", chinese: "简体中文", english: "English", short: "精简", medium: "标准", long: "深度", professional: "专业", friendly: "亲和", concise: "简洁", persuasive: "有说服力", creative: "创意", chars: "字", credits: "积分 / 次", passed: "项通过", issue: "项建议",
   } : {
     back: "Back to marketplace", eyebrow: "AI WRITING STUDIO", title: "AI Writing Workspace", subtitle: "Start with 49 professional templates or add your own instructions. Every generation includes a quality review.",
-    modules: "Capabilities", templates: "Choose a template", input: "Writing brief", output: "Result", setup: "Output settings", language: "Language", length: "Length", tone: "Tone", model: "Runtime model", custom: "Additional instructions (optional)", customHint: "For example: add more examples and end with next steps…", generate: "Generate & review", generating: "Writing and reviewing…", empty: "Choose a template and complete the brief. Your Markdown result will appear here.", quality: "Quality review", copy: "Copy Markdown", download: "Download .md", copied: "Copied", required: "Complete all required fields", login: "Sign in to generate and save a task record", auto: "Match input", chinese: "Simplified Chinese", english: "English", short: "Short", medium: "Standard", long: "In-depth", professional: "Professional", friendly: "Friendly", concise: "Concise", persuasive: "Persuasive", creative: "Creative", chars: "chars", credits: "credits / run", passed: "checks passed", issue: "suggestions",
+    modules: "Capabilities", templates: "Choose a template", input: "Writing brief", output: "Result", setup: "Output settings", language: "Language", length: "Length", tone: "Tone", model: "Runtime model", custom: "Additional instructions (optional)", customHint: "For example: add more examples and end with next steps…", generate: "Generate & review", generating: "Generating and reviewing", waiting: "Long-form writing usually takes 1–2 minutes. Keep this page open.", delayed: "The request is taking longer than expected and may still finish in the background. Check Task Center shortly.", empty: "Choose a template and complete the brief. Your Markdown result will appear here.", quality: "Quality review", copy: "Copy Markdown", download: "Download .md", copied: "Copied", required: "Complete all required fields", login: "Sign in to generate and save a task record", auto: "Match input", chinese: "Simplified Chinese", english: "English", short: "Short", medium: "Standard", long: "In-depth", professional: "Professional", friendly: "Friendly", concise: "Concise", persuasive: "Persuasive", creative: "Creative", chars: "chars", credits: "credits / run", passed: "checks passed", issue: "suggestions",
   };
   const modules = catalog?.modules || [];
   const [moduleId, setModuleId] = useState(modules[0]?.id || "content-creation");
@@ -260,6 +260,7 @@ function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, o
   const [settings, setSettings] = useState({ outputLanguage: zh ? "zh-CN" : "en", length: "medium", tone: "professional", customInstructions: "" });
   const [modelConnectionId, setModelConnectionId] = useState("managed");
   const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -268,6 +269,7 @@ function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, o
   useEffect(() => { if (!moduleId && modules[0]) setModuleId(modules[0].id); }, [moduleId, modules]);
   useEffect(() => { if (activeModule && !activeModule.templates.some((item) => item.id === templateId)) setTemplateId(activeModule.templates[0]?.id); }, [activeModule, templateId]);
   useEffect(() => { setModelConnectionId(runtimeTool?.modelConnectionId || "managed"); }, [runtimeTool?.modelConnectionId]);
+  useEffect(() => { if (!busy) return undefined; const started = Date.now(); setElapsed(0); const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000); return () => clearInterval(timer); }, [busy]);
   const selectModule = (id) => { const next = modules.find((item) => item.id === id); setModuleId(id); setTemplateId(next?.templates?.[0]?.id); setValues({}); setError(""); };
   const selectTemplate = (id) => { setTemplateId(id); setValues({}); setError(""); };
   const changeModel = async (value) => { const previous = modelConnectionId; setModelConnectionId(value); try { await onModelChange?.(tool.id, value); } catch { setModelConnectionId(previous); setError(dictionary[locale].error); } };
@@ -277,8 +279,8 @@ function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, o
     setBusy(true); setError(""); setResult(null);
     try {
       const response = await api(`/api/tool-actions/${tool.slug}`, jsonOptions("POST", { templateId: activeTemplate.id, values, ...settings, modelConnectionId }));
-      setResult(response.output); onCompleted?.(response);
-    } catch (caught) { setError(caught.status === 402 ? dictionary[locale].insufficient : dictionary[locale].error); }
+      setResult(response.output); onCompleted?.(response); requestAnimationFrame(() => document.querySelector(".writer-result")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    } catch (caught) { setError(caught.status === 402 ? dictionary[locale].insufficient : [502, 504].includes(caught.status) ? labels.delayed : dictionary[locale].error); }
     finally { setBusy(false); }
   };
   const copy = async () => { await navigator.clipboard.writeText(result?.markdown || ""); setCopied(true); setTimeout(() => setCopied(false), 1400); };
@@ -289,6 +291,7 @@ function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, o
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{labels.back}</button>
     <header className="writer-hero"><span className="writer-product-icon"><NotePencil size={34} weight="duotone" /><Sparkle className="writer-spark" size={17} weight="fill" /></span><div><p className="eyebrow">{labels.eyebrow}</p><h1>{labels.title}</h1><p>{labels.subtitle}</p></div><div className="writer-meta"><span><CheckCircle size={16} weight="fill" />{modules.reduce((sum, item) => sum + item.templates.length, 0)} Templates</span><span><Coins size={16} />{tool.creditCost} {labels.credits}</span></div></header>
     <div className="writer-shell">
+      {busy && <div className="writer-progress" role="status"><span><SpinnerGap className="spin" size={20} /></span><div><strong>{labels.generating} · {elapsed}s</strong><small>{labels.waiting}</small></div><i><b style={{ width: `${Math.min(92, 12 + elapsed * .85)}%` }} /></i></div>}
       <aside className="writer-library"><header><strong>{labels.modules}</strong><small>7 MODULES</small></header><nav>{modules.map((module) => { const Icon = writingIconMap[module.icon] || Article; return <button key={module.id} className={`${module.id === activeModule.id ? "active" : ""} ${module.accent}`} onClick={() => selectModule(module.id)}><span><Icon size={19} weight={module.id === activeModule.id ? "duotone" : "regular"} /></span><div><strong>{module.label[zh ? "zh" : "en"]}</strong><small>{module.templates.length} {zh ? "个模板" : "templates"}</small></div><ArrowRight size={14} /></button>; })}</nav></aside>
       <main className="writer-canvas">
         <section className="writer-template-section"><header><div><span>{activeModule.label[zh ? "zh" : "en"]}</span><h2>{labels.templates}</h2></div><p>{activeModule.description[zh ? "zh" : "en"]}</p></header><div className="writer-template-grid">{activeModule.templates.map((template) => <button key={template.id} className={template.id === activeTemplate.id ? "active" : ""} onClick={() => selectTemplate(template.id)}><span><FileText size={18} /></span><div><strong>{template.label[zh ? "zh" : "en"]}</strong><small>{template.description[zh ? "zh" : "en"]}</small></div>{template.id === activeTemplate.id && <CheckCircle size={17} weight="fill" />}</button>)}</div></section>

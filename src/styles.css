@@ -250,6 +250,9 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .writer-meta span { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #d9e4f3; border-radius: 9px; color: #48607e; background: rgba(255,255,255,.8); font-size: 9px; font-weight: 700; white-space: nowrap; }
 .writer-meta span:first-child svg { color: #12936a; }
 .writer-shell { display: grid; grid-template-columns: 220px minmax(0,1fr) 250px; align-items: start; gap: 12px; margin-top: 13px; }
+.writer-progress { grid-column: 1 / -1; min-height: 58px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid #c9dcfa; border-radius: 12px; color: #1768e5; background: linear-gradient(90deg,#f0f6ff,#f8fbff); box-shadow: 0 8px 22px rgba(23,104,229,.06); }
+.writer-progress > span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: #fff; background: #1768e5; }
+.writer-progress > div { display: grid; gap: 3px; }.writer-progress strong { color: #29486e; font-size: 10px; }.writer-progress small { color: #7488a3; font-size: 8px; }.writer-progress > i { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 99px; background: #dfeafb; }.writer-progress > i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#1768e5,#70a8fa); transition: width .8s ease; }
 .writer-library,.writer-settings,.writer-template-section,.writer-editor,.writer-result { border: 1px solid #dde4ed; border-radius: 13px; background: #fff; box-shadow: 0 8px 24px rgba(38,59,88,.035); }
 .writer-library,.writer-settings { position: sticky; top: 90px; overflow: hidden; }
 .writer-library > header,.writer-settings > header { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 14px; border-bottom: 1px solid #e8edf3; }
