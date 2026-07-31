@@ -5,8 +5,8 @@ import { audit, db } from "./database.mjs";
 import { createSessionToken, hashIdentifier, hashToken, requestClient } from "./security.mjs";
 import { collectSystemMetrics } from "./observability.mjs";
 import {
-  generateMarketIntelligenceReport, getMarketIntelligenceReport,
-  listMarketIntelligenceReports, marketIntelligenceStatus,
+  askMarketIntelligence, generateMarketIntelligenceReport, getMarketIntelligenceConversation,
+  getMarketIntelligenceReport, listMarketIntelligenceReports, marketIntelligenceStatus,
 } from "./market-intelligence.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -1285,9 +1285,11 @@ export function createAdminHandler(dependencies) {
     if (path === "/api/admin/v1/market-intelligence" && request.method === "GET") {
       const denied = requirePermission(context, "intelligence.read"); if (denied) return denied;
       const reportDate = String(new URL(request.url).searchParams.get("date") || "").trim();
+      const report = getMarketIntelligenceReport(reportDate || null);
       return json({
         agent: marketIntelligenceStatus(),
-        report: getMarketIntelligenceReport(reportDate || null),
+        report,
+        conversation: getMarketIntelligenceConversation(report?.id, context.user.id),
         history: listMarketIntelligenceReports(30),
       });
     }
@@ -1300,6 +1302,15 @@ export function createAdminHandler(dependencies) {
       } catch (error) {
         return fail(error?.code || "MARKET_REPORT_FAILED", error?.status || 502);
       }
+    }
+    if (path === "/api/admin/v1/market-intelligence/chat" && request.method === "POST") {
+      const denied = requirePermission(context, "intelligence.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      try {
+        const conversation = await askMarketIntelligence({ reportId: String(data.reportId || ""), actorUserId: context.user.id, question: data.question });
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "intelligence.manage", action: "admin.market_intelligence.chat", targetType: "market_report", targetId: data.reportId });
+        return json({ conversation }, 201);
+      } catch (error) { return fail(error?.code || "MARKET_CHAT_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/infrastructure/overview" && request.method === "GET") {
       const denied = requirePermission(context, "infrastructure.read"); if (denied) return denied;

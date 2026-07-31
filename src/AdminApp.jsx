@@ -5,7 +5,7 @@ import {
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
   BookOpenText,
-  Binoculars, Lightning, LinkSimple, TrendUp,
+  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -20,6 +20,12 @@ const copy = {
     intelligenceBrief: "结合外部市场信号与站内真实数据，生成每日工具开发优先级。",
     opportunity: "开发机会", demand: "需求", fit: "平台匹配", competition: "竞争机会", effort: "开发可行性",
     evidence: "需求证据", nextStep: "建议下一步", latestReport: "最新日报", reportHistory: "历史日报",
+    sourceNetwork: "情报数据源", categoryCoverage: "产品矩阵覆盖", internalSignals: "站内商业信号",
+    connectedSources: "已采集来源", needsConfig: "需要授权", sourceItems: "条信号", unserved: "无结果搜索",
+    repeatUsers: "重复使用用户", subscribers: "有效订阅", paidInvoices: "已支付账单", sourceReady: "等待本次采集",
+    intelligenceChat: "与情报助手沟通", chatHint: "针对当前日报继续追问需求场景、产品边界和商业化方案。",
+    chatPlaceholder: "例如：这个需求最适合哪些用户？最小版本应该做什么？", sendQuestion: "发送问题",
+    chatNeedsReport: "生成成功的日报后即可开始沟通。", citedEvidence: "引用证据", suggestedQuestion: "你还可以问",
     commerce: "支付与积分", tools: "工具治理", operations: "作业与告警", privacy: "隐私合规",
     audit: "审计日志", admins: "权限管理", refresh: "刷新", logout: "退出",
     searchUser: "搜索用户 ID、姓名或邮箱", search: "搜索", all: "全部", active: "正常",
@@ -78,6 +84,12 @@ const copy = {
     intelligenceBrief: "Combines external market signals with persisted product data into a daily development priority brief.",
     opportunity: "Opportunity", demand: "Demand", fit: "Platform fit", competition: "Competition", effort: "Feasibility",
     evidence: "Evidence", nextStep: "Next step", latestReport: "Latest report", reportHistory: "Report history",
+    sourceNetwork: "Intelligence sources", categoryCoverage: "Product coverage", internalSignals: "First-party signals",
+    connectedSources: "Collected sources", needsConfig: "Authorization needed", sourceItems: "signals", unserved: "Zero-result searches",
+    repeatUsers: "Repeat users", subscribers: "Active subscriptions", paidInvoices: "Paid invoices", sourceReady: "Ready for next run",
+    intelligenceChat: "Discuss with intelligence", chatHint: "Ask follow-up questions about demand, scope, and commercialization. Answers remain in Chinese.",
+    chatPlaceholder: "例如：这个需求最适合哪些用户？最小版本应该做什么？", sendQuestion: "发送问题",
+    chatNeedsReport: "生成成功的日报后即可开始沟通。", citedEvidence: "引用证据", suggestedQuestion: "你还可以问",
     commerce: "Commerce & Credits", tools: "Tool Governance", operations: "Jobs & Alerts", privacy: "Privacy",
     audit: "Audit Log", admins: "Access Control", refresh: "Refresh", logout: "Sign out",
     searchUser: "Search user ID, name, or email", search: "Search", all: "All", active: "Active",
@@ -345,11 +357,17 @@ function ToolAnalyticsView({ data, locale }) {
   </section>;
 }
 
-function MarketIntelligenceView({ data, locale, onRun, onSelectDate, running }) {
+function MarketIntelligenceView({ data, locale, onRun, onSelectDate, onAsk, running, chatRunning }) {
   const t = copy[locale];
+  const [question, setQuestion] = useState("");
   const report = data?.report;
   const sourceById = new Map((report?.sources || []).map((source) => [source.id, source]));
   const agentReady = data?.agent?.ready;
+  const sourceHealth = report?.sourceHealth?.length ? report.sourceHealth : (data?.agent?.sources || []);
+  const healthySources = sourceHealth.filter((source) => ["healthy", "ready"].includes(source.status)).length;
+  const unservedSearches = report?.internalSnapshot?.unservedSearches?.reduce((sum, item) => sum + Number(item.searches || 0), 0) || 0;
+  const repeatUsers = report?.internalSnapshot?.repeatUsage?.reduce((sum, item) => sum + Number(item.repeatUsers || 0), 0) || 0;
+  const commercial = report?.internalSnapshot?.commercial || {};
   return <div className="admin-page-stack market-intelligence-page">
     <section className="market-agent-hero">
       <div className="market-agent-icon"><Binoculars size={26} weight="fill" /></div>
@@ -362,23 +380,54 @@ function MarketIntelligenceView({ data, locale, onRun, onSelectDate, running }) 
     <section className="admin-v2-metrics admin-v2-metrics-three">
       <Metric icon={TrendUp} label={t.opportunity} value={number(report?.opportunityCount, locale)} tone="blue" />
       <Metric icon={Globe} label={t.evidence} value={number(report?.sourceCount, locale)} tone="green" />
-      <Metric icon={Pulse} label={t.status} value={report?.status || t.noData} tone={report?.status === "completed" ? "purple" : "orange"} />
+      <Metric icon={Pulse} label={t.connectedSources} value={`${healthySources}/${sourceHealth.length || 0}`} tone={report?.status === "completed" ? "purple" : "orange"} />
+    </section>
+
+    <section className="market-intelligence-grid">
+      <article className="admin-v2-panel market-source-panel"><header><div><small>LIVE SOURCE HEALTH</small><h2>{t.sourceNetwork}</h2></div><Globe size={22} /></header>
+        <div className="market-source-grid">{sourceHealth.map((source) => <div className={`market-source-card ${source.status}`} key={source.key}>
+          <span className={`admin-metric-state ${source.status === "healthy" || source.status === "ready" ? "healthy" : source.status === "failed" ? "critical" : "warning"}`} />
+          <div><strong>{source.label}</strong><small>{source.status === "configuration_required" ? t.needsConfig : source.status === "ready" ? t.sourceReady : source.status.replaceAll("_", " ")}</small></div>
+          <em>{number(source.itemCount || 0, locale)} {t.sourceItems}</em>
+        </div>)}</div>
+      </article>
+      <article className="admin-v2-panel market-coverage-panel"><header><div><small>13-CATEGORY MATRIX</small><h2>{t.categoryCoverage}</h2></div><Storefront size={22} /></header>
+        <div className="market-coverage-list">{(report?.categoryCoverage || []).map((item) => <div key={item.category}><span><strong>{item.category}</strong><small>{number(item.count, locale)}</small></span><i><b style={{ width: `${Math.min(100, Number(item.count || 0) * 10)}%` }} /></i></div>)}
+          {!report?.categoryCoverage?.length && <div className="admin-empty">{t.noData}</div>}
+        </div>
+      </article>
+    </section>
+
+    <section className="admin-v2-panel market-first-party-panel"><header><div><small>FIRST-PARTY DEMAND</small><h2>{t.internalSignals}</h2></div><ChartLineUp size={22} /></header>
+      <div><Metric icon={MagnifyingGlass} label={t.unserved} value={number(unservedSearches, locale)} tone="orange" />
+        <Metric icon={ArrowClockwise} label={t.repeatUsers} value={number(repeatUsers, locale)} tone="blue" />
+        <Metric icon={Users} label={t.subscribers} value={number(commercial.subscribers, locale)} tone="green" />
+        <Metric icon={Receipt} label={t.paidInvoices} value={number(commercial.paidInvoices, locale)} tone="purple" /></div>
     </section>
 
     <section className="admin-v2-grid market-report-layout">
       <article className="admin-v2-panel market-report-main"><header><div><small>DAILY BRIEF</small><h2>{t.latestReport}{report?.reportDate ? ` · ${report.reportDate}` : ""}</h2></div><ChartLineUp size={22} /></header>
         {!report && <div className="market-report-empty"><Binoculars size={30} /><strong>{t.noData}</strong><p>{t.intelligenceBrief}</p></div>}
-        {report && <><div className="market-report-summary"><p>{locale === "en" ? report.summaryEn : report.summaryZh}</p>{report.errorCode && <span className="admin-badge failed">{report.errorCode}</span>}</div>
+        {report && <><div className="market-report-summary"><p>{report.summaryZh}</p>{report.errorCode && <span className="admin-badge failed">{report.errorCode}</span>}</div>
           <div className="market-opportunity-list">{report.opportunities?.map((item, index) => <article className="market-opportunity" key={`${item.titleEn}-${index}`}>
-            <header><span className="market-rank">{String(index + 1).padStart(2, "0")}</span><div><small>{item.category} · {item.decision}</small><h3>{locale === "en" ? item.titleEn : item.titleZh}</h3></div><strong>{item.priorityScore}</strong></header>
+            <header><span className="market-rank">{String(index + 1).padStart(2, "0")}</span><div><small>{item.category} · {item.decision}</small><h3>{item.titleZh}</h3></div><strong>{item.priorityScore}</strong></header>
             <p>{item.problem}</p><p className="market-solution">{item.solution}</p>
             <div className="market-score-grid"><Score label={t.demand} value={item.demandScore} /><Score label={t.fit} value={item.fitScore} /><Score label={t.competition} value={item.competitionScore} /><Score label={t.effort} value={item.effortScore} /></div>
             <div className="market-next-step"><Lightning size={15} /><div><small>{t.nextStep}</small><span>{item.nextStep}</span></div></div>
             <div className="market-evidence"><small>{t.evidence}</small>{item.evidenceIds?.map((id) => { const source = sourceById.get(id); return source ? <a key={id} href={source.url} target="_blank" rel="noreferrer"><LinkSimple size={13} />{source.source} · {source.title}</a> : null; })}</div>
           </article>)}</div></>}
       </article>
-      <aside className="admin-v2-panel market-report-history"><header><div><small>ARCHIVE</small><h2>{t.reportHistory}</h2></div><BookOpenText size={22} /></header>
+      <aside className="market-report-rail"><article className="admin-v2-panel market-intelligence-chat"><header><div><small>ASK CODEX</small><h2>{t.intelligenceChat}</h2></div><ChatCircleDots size={22} /></header>
+        <p className="market-chat-hint">{t.chatHint}</p>
+        <div className="market-chat-messages">{data?.conversation?.messages?.map((message) => <div className={`market-chat-message ${message.role}`} key={message.id}>
+          <small>{message.role === "assistant" ? "市场情报" : "我"}</small><p>{message.content}</p>
+          {message.evidenceIds?.length > 0 && <div className="market-chat-citations"><span>{t.citedEvidence}</span>{message.evidenceIds.map((id) => { const source = sourceById.get(id); return source ? <a key={id} href={source.url} target="_blank" rel="noreferrer">{id}</a> : null; })}</div>}
+          {message.role === "assistant" && message.suggestedQuestions?.length > 0 && <div className="market-chat-suggestions"><span>{t.suggestedQuestion}</span>{message.suggestedQuestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}</div>}
+        </div>)}{!data?.conversation?.messages?.length && <div className="market-chat-empty"><ChatCircleDots size={23} /><span>{report?.status === "completed" ? t.chatHint : t.chatNeedsReport}</span></div>}</div>
+        <form className="market-chat-form" onSubmit={async (event) => { event.preventDefault(); if (!question.trim() || chatRunning || report?.status !== "completed") return; const sent = await onAsk(report.id, question.trim()); if (sent) setQuestion(""); }}><textarea rows="3" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={t.chatPlaceholder} disabled={report?.status !== "completed" || chatRunning} /><button disabled={!question.trim() || report?.status !== "completed" || chatRunning}>{chatRunning ? <SpinnerGap className="spin" size={16} /> : <PaperPlaneTilt size={16} weight="fill" />}{t.sendQuestion}</button></form>
+      </article><article className="admin-v2-panel market-report-history"><header><div><small>ARCHIVE</small><h2>{t.reportHistory}</h2></div><BookOpenText size={22} /></header>
         <div className="admin-list">{data?.history?.map((item) => <button key={item.reportDate} className={item.reportDate === report?.reportDate ? "active" : ""} onClick={() => onSelectDate(item.reportDate)}><span><strong>{item.reportDate}</strong><small>{item.sourceCount} {t.evidence} · {item.opportunityCount} {t.opportunity}</small></span><em className={`admin-badge ${item.status}`}>{item.status}</em></button>)}{!data?.history?.length && <div className="admin-empty">{t.noData}</div>}</div>
+      </article>
       </aside>
     </section>
   </div>;
@@ -561,6 +610,7 @@ export function AdminApp() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [intelligenceDate, setIntelligenceDate] = useState("");
   const [intelligenceRunning, setIntelligenceRunning] = useState(false);
+  const [intelligenceChatRunning, setIntelligenceChatRunning] = useState(false);
 
   const loadSession = useCallback(async () => {
     setBusy(true);
@@ -657,6 +707,15 @@ export function AdminApp() {
     catch (error) { setMessage(error.code || t.loadFailed); }
     finally { setIntelligenceRunning(false); }
   };
+  const askIntelligence = async (reportId, question) => {
+    setIntelligenceChatRunning(true); setMessage("");
+    try {
+      const result = await api("/api/admin/v1/market-intelligence/chat", json("POST", { reportId, question }));
+      setData((current) => ({ ...current, intelligence: { ...current.intelligence, conversation: result.conversation } }));
+      return true;
+    } catch (error) { setMessage(error.code || t.loadFailed); return false; }
+    finally { setIntelligenceChatRunning(false); }
+  };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -677,7 +736,7 @@ export function AdminApp() {
     creditLedger: <CreditLedgerView data={data.creditLedger} locale={locale} onPage={setPage} />,
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
-    intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} running={intelligenceRunning} />,
+    intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
     tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} />,

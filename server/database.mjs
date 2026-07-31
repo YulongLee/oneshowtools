@@ -249,6 +249,8 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0006_admin_finops_observability.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0007_custom_model_endpoints.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0008_market_intelligence_agent.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0009_market_intelligence_v2.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0010_market_intelligence_conversations.sql"), "utf8"));
 
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");

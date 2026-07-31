@@ -7,9 +7,10 @@ import test from "node:test";
 process.env.DATA_DIR = await mkdtemp(join(tmpdir(), "oneshow-market-intelligence-"));
 process.env.MARKET_INTELLIGENCE_MODEL = "kimi/kimi-k3";
 const {
-  generateMarketIntelligenceReport, getMarketIntelligenceReport,
+  askMarketIntelligence, generateMarketIntelligenceReport, getMarketIntelligenceConversation, getMarketIntelligenceReport,
   listMarketIntelligenceReports, marketIntelligenceStatus, shouldRunDailyMarketReport,
 } = await import("../server/market-intelligence.mjs");
+const { db } = await import("../server/database.mjs");
 
 const evidence = {
   signals: [
@@ -49,9 +50,13 @@ test("market intelligence persists a traceable Codex report without exposing cre
   assert.equal(listMarketIntelligenceReports()[0].status, "completed");
   assert.equal(shouldRunDailyMarketReport(timestamp), false);
   assert.doesNotMatch(JSON.stringify(report), /api[_-]?key|secret/i);
-  assert.deepEqual(marketIntelligenceStatus(executor), {
-    enabled: true, configured: true, ready: true, model: "kimi/kimi-k3", fallbackModel: null, schedule: "08:00", timezone: "Asia/Shanghai",
+  const status = marketIntelligenceStatus(executor);
+  assert.deepEqual({ ...status, sources: undefined }, {
+    enabled: true, configured: true, ready: true, model: "kimi/kimi-k3", fallbackModel: null, schedule: "08:00", timezone: "Asia/Shanghai", sources: undefined,
   });
+  assert.ok(status.sources.length >= 9);
+  assert.equal(status.sources.find((source) => source.key === "stack_exchange").status, "ready");
+  assert.equal(status.sources.find((source) => source.key === "youtube").status, "configuration_required");
 });
 
 test("market intelligence refuses to publish unsupported recommendations", async () => {
@@ -85,4 +90,38 @@ test("market intelligence records the actual fallback model when preferred acces
     assert.equal(report.model, "deepseek-v4-flash");
     assert.equal(report.status, "completed");
   } finally { delete process.env.MARKET_INTELLIGENCE_FALLBACK_MODEL; }
+});
+
+test("market intelligence supports evidence-grounded Chinese follow-up conversations", async () => {
+  const actorUserId = "market-chat-admin";
+  const timestamp = Date.UTC(2026, 7, 3, 2);
+  db.prepare(`INSERT OR IGNORE INTO users (id, name, email, password_hash, locale, email_verified, status, created_at, updated_at) VALUES (?, '市场管理员', 'market-chat@example.com', 'test', 'zh-CN', 1, 'active', ?, ?)`)
+    .run(actorUserId, timestamp, timestamp);
+  let chatPrompt = "";
+  const executor = {
+    status: () => ({ enabled: true, configured: true, ready: true }),
+    async run({ prompt, outputSchema }) {
+      if (outputSchema.properties.answerZh) {
+        chatPrompt = prompt;
+        return { finalResponse: JSON.stringify({
+          answerZh: "这个需求更适合需要整理研究资料的中文内容团队。建议先验证上传资料、提取重点和生成带引用摘要三个步骤。",
+          evidenceIds: ["E1", "UNKNOWN"],
+          suggestedQuestions: ["这个工具的最小版本应该如何收费？"],
+        }) };
+      }
+      return { finalResponse: JSON.stringify({ summaryZh: "中文研究工具需求正在增加。", summaryEn: "Demand is increasing.", opportunities: [{
+        titleZh: "中文研究摘要", titleEn: "Chinese research brief", category: "Search", decision: "new",
+        problem: "团队整理资料耗时。", solution: "生成带来源的中文摘要。", priorityScore: 85, demandScore: 86, fitScore: 90,
+        competitionScore: 65, effortScore: 82, evidenceIds: ["E1", "E2"], nextStep: "访谈五名中文内容开发者。",
+      }] }) };
+    },
+  };
+  const report = await generateMarketIntelligenceReport({ timestamp, executor, collectSignals: async () => evidence });
+  const conversation = await askMarketIntelligence({ reportId: report.id, actorUserId, question: "这个需求最适合哪些用户？", executor, timestamp: timestamp + 1000 });
+  assert.match(chatPrompt, /必须使用清晰、具体的简体中文回答/);
+  assert.equal(conversation.messages.length, 2);
+  assert.equal(conversation.messages[1].role, "assistant");
+  assert.deepEqual(conversation.messages[1].evidenceIds, ["E1"]);
+  assert.match(conversation.messages[1].content, /中文内容团队/);
+  assert.equal(getMarketIntelligenceConversation(report.id, actorUserId).messages.length, 2);
 });

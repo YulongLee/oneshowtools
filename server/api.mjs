@@ -17,7 +17,7 @@ import {
 import { refundTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
 import { createAdminHandler } from "./admin.mjs";
-import { recordMarketplaceSearch } from "./market-intelligence.mjs";
+import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import {
   createModelConnection,
@@ -913,6 +913,14 @@ export async function handleApi(request) {
       category: data.category, resultCount: data.resultCount,
     });
     return json({ ok: true }, 202);
+  }
+  if (path === "/api/marketplace/behavior-events" && request.method === "POST") {
+    const data = await body(request);
+    const recorded = recordMarketplaceBehavior({
+      opaqueUserId: hashToken(`market:${user.id}`), eventKind: data.eventKind,
+      toolSlug: data.toolSlug, category: data.category, query: data.query,
+    });
+    return recorded ? json({ ok: true }, 202) : fail("INVALID_MARKETPLACE_EVENT");
   }
   if (path === "/api/account/profile" && request.method === "PATCH") return updateProfile(request, user);
   if (path === "/api/account/password" && request.method === "POST") return changePassword(request, user);

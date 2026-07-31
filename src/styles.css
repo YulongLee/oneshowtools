@@ -860,7 +860,27 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .market-agent-meta span { display: inline-flex; align-items: center; gap: 6px; }
 .market-agent-meta .admin-metric-state { width: 7px; height: 7px; }
 .market-agent-run { min-width: 112px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
-.market-report-layout { grid-template-columns: minmax(0,1fr) 260px; align-items: start; }
+.market-intelligence-grid { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(280px,.75fr); gap: 12px; align-items: stretch; }
+.market-source-panel, .market-coverage-panel, .market-first-party-panel { overflow: hidden; }
+.market-source-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding: 12px; }
+.market-source-card { min-width: 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; min-height: 52px; padding: 9px 11px; border: 1px solid #e5eaf1; border-radius: 9px; background: #fbfcfe; }
+.market-source-card > div { min-width: 0; display: grid; gap: 3px; }
+.market-source-card strong { overflow: hidden; color: #33435a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.market-source-card small { color: #8491a3; font-size: 7px; text-transform: capitalize; }
+.market-source-card em { color: #6e7e93; font-size: 7px; font-style: normal; white-space: nowrap; }
+.market-source-card.configuration_required, .market-source-card.adapter_planned, .market-source-card.early_access_required { border-style: dashed; background: #fffdf8; }
+.market-source-card.failed { border-color: #efd4d1; background: #fff9f8; }
+.market-coverage-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 14px; padding: 15px; }
+.market-coverage-list > div { display: grid; gap: 6px; }
+.market-coverage-list span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.market-coverage-list strong { color: #4b5b70; font-size: 8px; }
+.market-coverage-list small { color: #8390a2; font-size: 7px; }
+.market-coverage-list i { height: 4px; overflow: hidden; border-radius: 999px; background: #edf1f6; }
+.market-coverage-list b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#76a9f3,#1768e5); }
+.market-first-party-panel > div { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; padding: 12px; }
+.market-first-party-panel .admin-v2-metric { box-shadow: none; }
+.market-report-layout { grid-template-columns: minmax(0,1fr) 340px; align-items: start; }
+.market-report-rail { display: grid; gap: 12px; align-self: start; }
 .market-report-main > header, .market-report-history > header { position: sticky; top: 0; z-index: 2; background: #fff; }
 .market-report-summary { padding: 17px 19px; border-bottom: 1px solid #edf0f4; background: #fafcff; }
 .market-report-summary p { margin: 0; color: #4f5f74; font-size: 10px; line-height: 1.8; }
@@ -898,6 +918,25 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .market-report-history .admin-list button strong { font-size: 10px; }
 .market-report-history .admin-list button small { overflow: hidden; color: #8390a2; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
 .market-report-history .admin-list button em { flex: 0 0 auto; }
+.market-intelligence-chat { overflow: hidden; }
+.market-chat-hint { margin: 0; padding: 11px 13px; border-bottom: 1px solid #edf0f4; color: #77869a; background: #fafcff; font-size: 8px; line-height: 1.65; }
+.market-chat-messages { max-height: 430px; overflow-y: auto; display: grid; gap: 10px; padding: 12px; }
+.market-chat-message { display: grid; justify-items: start; gap: 4px; }
+.market-chat-message.user { justify-items: end; }
+.market-chat-message > small { color: #8290a2; font-size: 7px; font-weight: 700; }
+.market-chat-message > p { max-width: 92%; margin: 0; padding: 9px 10px; border-radius: 10px 10px 10px 3px; color: #3c4c62; background: #f1f5fa; font-size: 9px; line-height: 1.7; white-space: pre-wrap; }
+.market-chat-message.user > p { color: #fff; background: #1768e5; border-radius: 10px 10px 3px 10px; }
+.market-chat-citations, .market-chat-suggestions { max-width: 92%; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.market-chat-citations span, .market-chat-suggestions span { width: 100%; color: #8390a2; font-size: 7px; }
+.market-chat-citations a { padding: 3px 6px; border-radius: 5px; color: #1768e5; background: #edf4ff; font-size: 7px; font-weight: 700; text-decoration: none; }
+.market-chat-suggestions button { padding: 5px 7px; border: 1px solid #dce6f4; border-radius: 7px; color: #4e6f9a; background: #fff; font-size: 7px; line-height: 1.45; text-align: left; }
+.market-chat-empty { min-height: 120px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 18px; color: #8a98aa; text-align: center; }
+.market-chat-empty span { max-width: 230px; font-size: 8px; line-height: 1.6; }
+.market-chat-form { display: grid; gap: 8px; padding: 12px; border-top: 1px solid #e9edf3; }
+.market-chat-form textarea { width: 100%; resize: vertical; min-height: 68px; padding: 9px 10px; border: 1px solid #dce3ed; border-radius: 9px; color: #2f4057; background: #fff; font: inherit; font-size: 9px; line-height: 1.55; outline: none; }
+.market-chat-form textarea:focus { border-color: #7eacef; box-shadow: 0 0 0 3px rgba(23,104,229,.08); }
+.market-chat-form button { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 8px; color: #fff; background: #1768e5; font-size: 9px; font-weight: 700; }
+.market-chat-form :disabled { cursor: not-allowed; opacity: .5; }
 @media (max-width: 1100px) {
   .admin-v2-shell { grid-template-columns: 72px minmax(0, 1fr); }
   .admin-v2-brand { justify-content: center; padding-inline: 0; }
@@ -907,6 +946,8 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .admin-v2-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-add-admin-form { grid-template-columns: 1fr 1fr; }
   .market-report-layout { grid-template-columns: 1fr; }
+  .market-intelligence-grid { grid-template-columns: 1fr; }
+  .market-first-party-panel > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 760px) {
   .admin-v2-main { padding: 0 14px 35px; }
@@ -922,10 +963,12 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .admin-add-admin-form { grid-template-columns: 1fr; }
   .market-agent-hero { grid-template-columns: auto minmax(0,1fr); }
   .market-agent-run { grid-column: 1 / -1; width: 100%; }
+  .market-source-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
   .admin-v2-metrics, .admin-v2-metrics-three, .admin-health-metric-grid { grid-template-columns: 1fr; }
   .admin-data-freshness { align-items: flex-start; flex-wrap: wrap; padding-block: 11px; }
   .admin-data-freshness span { width: 100%; margin-left: 27px; }
   .market-score-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .market-first-party-panel > div { grid-template-columns: 1fr; }
 }
