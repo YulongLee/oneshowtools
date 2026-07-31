@@ -23,8 +23,9 @@ test("market intelligence persists a traceable Codex report without exposing cre
   let selectedModel;
   const executor = {
     status: () => ({ enabled: true, configured: true, ready: true }),
-    async run({ model, outputSchema }) {
+    async run({ model, mode, outputSchema }) {
       selectedModel = model;
+      assert.equal(mode, "analysis");
       assert.equal(outputSchema.type, "object");
       return { finalResponse: JSON.stringify({
         summaryZh: "研究与引用整理需求正在增加。",

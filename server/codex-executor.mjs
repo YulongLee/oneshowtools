@@ -111,6 +111,7 @@ export function createCodexExecutor({
       workingDirectory = config.workspaceRoot,
       threadId = null,
       model = config.model,
+      mode = "development",
       outputSchema = undefined,
       signal = undefined,
     }) {
@@ -125,6 +126,7 @@ export function createCodexExecutor({
       if (!selectedModel || selectedModel.length > 120 || !/^[\w./:-]+$/.test(selectedModel)) {
         throw executorError("CODEX_MODEL_INVALID", 400);
       }
+      if (!["development", "analysis"].includes(mode)) throw executorError("CODEX_MODE_INVALID", 400);
 
       const workspace = await resolveWorkspace(config.workspaceRoot, workingDirectory);
       const controller = new AbortController();
@@ -150,12 +152,12 @@ export function createCodexExecutor({
         const threadOptions = {
           model: selectedModel,
           modelReasoningEffort: config.modelReasoningEffort,
-          sandboxMode: "workspace-write",
+          sandboxMode: mode === "analysis" ? "read-only" : "workspace-write",
           approvalPolicy: "never",
           networkAccessEnabled: false,
           webSearchMode: "disabled",
           workingDirectory: workspace,
-          skipGitRepoCheck: false,
+          skipGitRepoCheck: mode === "analysis",
         };
         const thread = threadId
           ? client.resumeThread(String(threadId), threadOptions)

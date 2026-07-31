@@ -102,6 +102,20 @@ test("Codex executor rejects workspaces outside its configured root", async () =
   );
 });
 
+test("Codex analysis mode is read-only and can run outside a Git checkout", async () => {
+  let options;
+  class FakeCodex {
+    startThread(value) {
+      options = value;
+      return { id: "analysis-thread", async run() { return { finalResponse: "{}", items: [] }; } };
+    }
+  }
+  const executor = createCodexExecutor({ CodexClass: FakeCodex, env: baseEnv });
+  await executor.run({ prompt: "Analyze evidence", mode: "analysis" });
+  assert.equal(options.sandboxMode, "read-only");
+  assert.equal(options.skipGitRepoCheck, true);
+});
+
 test("Codex executor stays unavailable until explicitly enabled and configured", async () => {
   const disabled = createCodexExecutor({
     CodexClass: class {},
