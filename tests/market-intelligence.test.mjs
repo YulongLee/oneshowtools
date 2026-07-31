@@ -50,7 +50,7 @@ test("market intelligence persists a traceable Codex report without exposing cre
   assert.equal(shouldRunDailyMarketReport(timestamp), false);
   assert.doesNotMatch(JSON.stringify(report), /api[_-]?key|secret/i);
   assert.deepEqual(marketIntelligenceStatus(executor), {
-    enabled: true, configured: true, ready: true, model: "kimi/kimi-k3", schedule: "08:00", timezone: "Asia/Shanghai",
+    enabled: true, configured: true, ready: true, model: "kimi/kimi-k3", fallbackModel: null, schedule: "08:00", timezone: "Asia/Shanghai",
   });
 });
 
@@ -66,4 +66,23 @@ test("market intelligence refuses to publish unsupported recommendations", async
   const report = await generateMarketIntelligenceReport({ timestamp: Date.UTC(2026, 7, 1, 2), executor, collectSignals: async () => evidence });
   assert.equal(report.opportunityCount, 0);
   assert.deepEqual(report.opportunities, []);
+});
+
+test("market intelligence records the actual fallback model when preferred access is denied", async () => {
+  process.env.MARKET_INTELLIGENCE_FALLBACK_MODEL = "deepseek-v4-flash";
+  const calls = [];
+  const executor = {
+    status: () => ({ enabled: true, configured: true, ready: true }),
+    async run({ model }) {
+      calls.push(model);
+      if (model === "kimi/kimi-k3") throw Object.assign(new Error("denied"), { code: "CODEX_PROVIDER_MODEL_ACCESS_DENIED" });
+      return { finalResponse: JSON.stringify({ summaryZh: "已使用备用模型。", summaryEn: "Fallback used.", opportunities: [] }) };
+    },
+  };
+  try {
+    const report = await generateMarketIntelligenceReport({ timestamp: Date.UTC(2026, 7, 2, 2), executor, collectSignals: async () => evidence });
+    assert.deepEqual(calls, ["kimi/kimi-k3", "deepseek-v4-flash"]);
+    assert.equal(report.model, "deepseek-v4-flash");
+    assert.equal(report.status, "completed");
+  } finally { delete process.env.MARKET_INTELLIGENCE_FALLBACK_MODEL; }
 });

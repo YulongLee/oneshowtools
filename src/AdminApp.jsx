@@ -354,7 +354,7 @@ function MarketIntelligenceView({ data, locale, onRun, onSelectDate, running }) 
     <section className="market-agent-hero">
       <div className="market-agent-icon"><Binoculars size={26} weight="fill" /></div>
       <div><small>CODEX · DAILY MARKET WATCH</small><h2>{t.intelligenceAgent}</h2><p>{t.intelligenceBrief}</p>
-        <div className="market-agent-meta"><span><span className={`admin-metric-state ${agentReady ? "healthy" : "critical"}`} />{agentReady ? t.healthy : t.notReporting}</span><span>{data?.agent?.model || "kimi/kimi-k3"}</span><span>{data?.agent?.schedule || "08:00"} · {data?.agent?.timezone || "Asia/Shanghai"}</span></div>
+        <div className="market-agent-meta"><span><span className={`admin-metric-state ${agentReady ? "healthy" : "critical"}`} />{agentReady ? t.healthy : t.notReporting}</span><span>{report?.model || data?.agent?.model || "kimi/kimi-k3"}</span><span>{data?.agent?.schedule || "08:00"} · {data?.agent?.timezone || "Asia/Shanghai"}</span></div>
       </div>
       <button className="admin-primary market-agent-run" disabled={running || !agentReady} onClick={onRun}>{running ? <SpinnerGap className="spin" size={17} /> : <Lightning size={17} weight="fill" />}{t.runIntelligence}</button>
     </section>

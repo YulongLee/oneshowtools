@@ -87,10 +87,14 @@ async function runCompatibleAnalysis({ apiKey, baseUrl, model, prompt, outputSch
     }),
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw executorError(
-    response.status === 401 || response.status === 403 ? "CODEX_PROVIDER_AUTH_FAILED" : "CODEX_PROVIDER_REQUEST_FAILED",
-    response.status === 429 ? 429 : 502,
-  );
+  if (!response.ok) {
+    const providerCode = String(payload?.error?.code || payload?.code || "");
+    const code = response.status === 403 && /model.*access|access.*model/i.test(providerCode)
+      ? "CODEX_PROVIDER_MODEL_ACCESS_DENIED"
+      : response.status === 401 || response.status === 403
+        ? "CODEX_PROVIDER_AUTH_FAILED" : "CODEX_PROVIDER_REQUEST_FAILED";
+    throw executorError(code, response.status === 429 ? 429 : 502);
+  }
   const finalResponse = payload?.choices?.[0]?.message?.content;
   if (typeof finalResponse !== "string" || !finalResponse.trim()) throw executorError("CODEX_PROVIDER_RESPONSE_INVALID", 502);
   return {
