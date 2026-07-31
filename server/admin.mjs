@@ -4,6 +4,10 @@ import {
 import { audit, db } from "./database.mjs";
 import { createSessionToken, hashIdentifier, hashToken, requestClient } from "./security.mjs";
 import { collectSystemMetrics } from "./observability.mjs";
+import {
+  generateMarketIntelligenceReport, getMarketIntelligenceReport,
+  listMarketIntelligenceReports, marketIntelligenceStatus,
+} from "./market-intelligence.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -31,6 +35,8 @@ const permissions = [
   ["finance.manage", "Create and post internal financial journals"],
   ["finance.close", "Close or reopen internal financial periods"],
   ["analytics.read", "View privacy-safe tool usage analytics"],
+  ["intelligence.read", "View market intelligence reports and evidence"],
+  ["intelligence.manage", "Run the market intelligence agent"],
   ["infrastructure.read", "View infrastructure metrics and health"],
   ["alerts.manage", "Acknowledge and resolve operational alerts"],
   ["metrics.export", "Export bounded metric and finance views"],
@@ -47,12 +53,12 @@ const permissions = [
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "audit.read"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "audit.read"],
   support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read"],
   finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
-  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read"],
+  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -1275,6 +1281,25 @@ export function createAdminHandler(dependencies) {
     if (path === "/api/admin/v1/analytics/tools" && request.method === "GET") {
       const denied = requirePermission(context, "analytics.read"); if (denied) return denied;
       return json(toolAnalytics(request));
+    }
+    if (path === "/api/admin/v1/market-intelligence" && request.method === "GET") {
+      const denied = requirePermission(context, "intelligence.read"); if (denied) return denied;
+      const reportDate = String(new URL(request.url).searchParams.get("date") || "").trim();
+      return json({
+        agent: marketIntelligenceStatus(),
+        report: getMarketIntelligenceReport(reportDate || null),
+        history: listMarketIntelligenceReports(30),
+      });
+    }
+    if (path === "/api/admin/v1/market-intelligence/run" && request.method === "POST") {
+      const denied = requirePermission(context, "intelligence.manage"); if (denied) return denied;
+      try {
+        const report = await generateMarketIntelligenceReport({ triggerKind: "manual", actorUserId: context.user.id });
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "intelligence.manage", action: "admin.market_intelligence.run", targetType: "market_report", targetId: report.id });
+        return json({ report }, 201);
+      } catch (error) {
+        return fail(error?.code || "MARKET_REPORT_FAILED", error?.status || 502);
+      }
     }
     if (path === "/api/admin/v1/infrastructure/overview" && request.method === "GET") {
       const denied = requirePermission(context, "infrastructure.read"); if (denied) return denied;

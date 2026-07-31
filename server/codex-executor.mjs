@@ -110,6 +110,7 @@ export function createCodexExecutor({
       prompt,
       workingDirectory = config.workspaceRoot,
       threadId = null,
+      model = config.model,
       outputSchema = undefined,
       signal = undefined,
     }) {
@@ -119,6 +120,10 @@ export function createCodexExecutor({
       const instruction = String(prompt || "").trim();
       if (!instruction || instruction.length > MAX_PROMPT_LENGTH) {
         throw executorError("CODEX_PROMPT_INVALID", 400);
+      }
+      const selectedModel = String(model || "").trim();
+      if (!selectedModel || selectedModel.length > 120 || !/^[\w./:-]+$/.test(selectedModel)) {
+        throw executorError("CODEX_MODEL_INVALID", 400);
       }
 
       const workspace = await resolveWorkspace(config.workspaceRoot, workingDirectory);
@@ -143,7 +148,7 @@ export function createCodexExecutor({
           },
         });
         const threadOptions = {
-          model: config.model,
+          model: selectedModel,
           modelReasoningEffort: config.modelReasoningEffort,
           sandboxMode: "workspace-write",
           approvalPolicy: "never",

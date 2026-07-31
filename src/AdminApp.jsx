@@ -5,6 +5,7 @@ import {
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
   BookOpenText,
+  Binoculars, Lightning, LinkSimple, TrendUp,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -15,6 +16,10 @@ const copy = {
     noPermission: "当前账户没有管理员权限。", loginFailed: "登录失败，请检查邮箱、密码和验证状态。",
     loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营",
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
+    intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
+    intelligenceBrief: "结合外部市场信号与站内真实数据，生成每日工具开发优先级。",
+    opportunity: "开发机会", demand: "需求", fit: "平台匹配", competition: "竞争机会", effort: "开发可行性",
+    evidence: "需求证据", nextStep: "建议下一步", latestReport: "最新日报", reportHistory: "历史日报",
     commerce: "支付与积分", tools: "工具治理", operations: "作业与告警", privacy: "隐私合规",
     audit: "审计日志", admins: "权限管理", refresh: "刷新", logout: "退出",
     searchUser: "搜索用户 ID、姓名或邮箱", search: "搜索", all: "全部", active: "正常",
@@ -69,6 +74,10 @@ const copy = {
     noPermission: "This account does not have administrator access.", loginFailed: "Sign in failed. Check the email, password, and verification status.",
     loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers",
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
+    intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
+    intelligenceBrief: "Combines external market signals with persisted product data into a daily development priority brief.",
+    opportunity: "Opportunity", demand: "Demand", fit: "Platform fit", competition: "Competition", effort: "Feasibility",
+    evidence: "Evidence", nextStep: "Next step", latestReport: "Latest report", reportHistory: "Report history",
     commerce: "Commerce & Credits", tools: "Tool Governance", operations: "Jobs & Alerts", privacy: "Privacy",
     audit: "Audit Log", admins: "Access Control", refresh: "Refresh", logout: "Sign out",
     searchUser: "Search user ID, name, or email", search: "Search", all: "All", active: "Active",
@@ -336,6 +345,49 @@ function ToolAnalyticsView({ data, locale }) {
   </section>;
 }
 
+function MarketIntelligenceView({ data, locale, onRun, onSelectDate, running }) {
+  const t = copy[locale];
+  const report = data?.report;
+  const sourceById = new Map((report?.sources || []).map((source) => [source.id, source]));
+  const agentReady = data?.agent?.ready;
+  return <div className="admin-page-stack market-intelligence-page">
+    <section className="market-agent-hero">
+      <div className="market-agent-icon"><Binoculars size={26} weight="fill" /></div>
+      <div><small>CODEX · DAILY MARKET WATCH</small><h2>{t.intelligenceAgent}</h2><p>{t.intelligenceBrief}</p>
+        <div className="market-agent-meta"><span><span className={`admin-metric-state ${agentReady ? "healthy" : "critical"}`} />{agentReady ? t.healthy : t.notReporting}</span><span>{data?.agent?.model || "kimi/kimi-k3"}</span><span>{data?.agent?.schedule || "08:00"} · {data?.agent?.timezone || "Asia/Shanghai"}</span></div>
+      </div>
+      <button className="admin-primary market-agent-run" disabled={running || !agentReady} onClick={onRun}>{running ? <SpinnerGap className="spin" size={17} /> : <Lightning size={17} weight="fill" />}{t.runIntelligence}</button>
+    </section>
+
+    <section className="admin-v2-metrics admin-v2-metrics-three">
+      <Metric icon={TrendUp} label={t.opportunity} value={number(report?.opportunityCount, locale)} tone="blue" />
+      <Metric icon={Globe} label={t.evidence} value={number(report?.sourceCount, locale)} tone="green" />
+      <Metric icon={Pulse} label={t.status} value={report?.status || t.noData} tone={report?.status === "completed" ? "purple" : "orange"} />
+    </section>
+
+    <section className="admin-v2-grid market-report-layout">
+      <article className="admin-v2-panel market-report-main"><header><div><small>DAILY BRIEF</small><h2>{t.latestReport}{report?.reportDate ? ` · ${report.reportDate}` : ""}</h2></div><ChartLineUp size={22} /></header>
+        {!report && <div className="market-report-empty"><Binoculars size={30} /><strong>{t.noData}</strong><p>{t.intelligenceBrief}</p></div>}
+        {report && <><div className="market-report-summary"><p>{locale === "en" ? report.summaryEn : report.summaryZh}</p>{report.errorCode && <span className="admin-badge failed">{report.errorCode}</span>}</div>
+          <div className="market-opportunity-list">{report.opportunities?.map((item, index) => <article className="market-opportunity" key={`${item.titleEn}-${index}`}>
+            <header><span className="market-rank">{String(index + 1).padStart(2, "0")}</span><div><small>{item.category} · {item.decision}</small><h3>{locale === "en" ? item.titleEn : item.titleZh}</h3></div><strong>{item.priorityScore}</strong></header>
+            <p>{item.problem}</p><p className="market-solution">{item.solution}</p>
+            <div className="market-score-grid"><Score label={t.demand} value={item.demandScore} /><Score label={t.fit} value={item.fitScore} /><Score label={t.competition} value={item.competitionScore} /><Score label={t.effort} value={item.effortScore} /></div>
+            <div className="market-next-step"><Lightning size={15} /><div><small>{t.nextStep}</small><span>{item.nextStep}</span></div></div>
+            <div className="market-evidence"><small>{t.evidence}</small>{item.evidenceIds?.map((id) => { const source = sourceById.get(id); return source ? <a key={id} href={source.url} target="_blank" rel="noreferrer"><LinkSimple size={13} />{source.source} · {source.title}</a> : null; })}</div>
+          </article>)}</div></>}
+      </article>
+      <aside className="admin-v2-panel market-report-history"><header><div><small>ARCHIVE</small><h2>{t.reportHistory}</h2></div><BookOpenText size={22} /></header>
+        <div className="admin-list">{data?.history?.map((item) => <button key={item.reportDate} className={item.reportDate === report?.reportDate ? "active" : ""} onClick={() => onSelectDate(item.reportDate)}><span><strong>{item.reportDate}</strong><small>{item.sourceCount} {t.evidence} · {item.opportunityCount} {t.opportunity}</small></span><em className={`admin-badge ${item.status}`}>{item.status}</em></button>)}{!data?.history?.length && <div className="admin-empty">{t.noData}</div>}</div>
+      </aside>
+    </section>
+  </div>;
+}
+
+function Score({ label, value }) {
+  return <div><span><small>{label}</small><strong>{Number(value || 0)}</strong></span><i><b style={{ width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` }} /></i></div>;
+}
+
 function metricDisplay(metric, locale) {
   if (metric.value == null) return "—";
   if (metric.unit === "percent") return `${metric.value.toLocaleString(locale, { maximumFractionDigits: 1 })}%`;
@@ -507,6 +559,8 @@ export function AdminApp() {
   const [userStatus, setUserStatus] = useState("");
   const [page, setPage] = useState(1);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [intelligenceDate, setIntelligenceDate] = useState("");
+  const [intelligenceRunning, setIntelligenceRunning] = useState(false);
 
   const loadSession = useCallback(async () => {
     setBusy(true);
@@ -528,11 +582,12 @@ export function AdminApp() {
     creditLedger: `/api/admin/v1/credits/ledger?page=${page}&pageSize=25`,
     finance: "/api/admin/v1/finance",
     analytics: "/api/admin/v1/analytics/tools?days=30",
+    intelligence: `/api/admin/v1/market-intelligence${intelligenceDate ? `?date=${encodeURIComponent(intelligenceDate)}` : ""}`,
     infrastructure: "/api/admin/v1/infrastructure/overview",
     commerce: "/api/admin/v1/commerce", tools: "/api/admin/v1/tools",
     operations: "/api/admin/v1/operations", privacy: "/api/admin/v1/privacy",
     audit: `/api/admin/v1/audit?page=${page}&pageSize=25`, admins: "/api/admin/v1/administrators",
-  })[view], [view, query, userStatus, page]);
+  })[view], [view, query, userStatus, page, intelligenceDate]);
 
   const loadView = useCallback(async () => {
     if (!session || (session.mfa.enforced && !session.mfa.verified) || !endpoint) return;
@@ -596,6 +651,12 @@ export function AdminApp() {
   };
   const changeRole = async (id, draft) => { if (!draft.reason?.trim()) return setMessage(t.reasonRequired); try { await api(`/api/admin/v1/administrators/${id}/role`, json("POST", draft)); await loadView(); showToast(); } catch (error) { setMessage(adminError(error.code)); } };
   const changeAdminStatus = async (id, draft) => { if (!draft.reason?.trim()) return setMessage(t.reasonRequired); try { await api(`/api/admin/v1/administrators/${id}/status`, json("POST", draft)); await loadView(); showToast(); } catch (error) { setMessage(adminError(error.code)); } };
+  const runIntelligence = async () => {
+    setIntelligenceRunning(true); setMessage("");
+    try { await api("/api/admin/v1/market-intelligence/run", { method: "POST" }); setIntelligenceDate(""); await loadView(); showToast(); }
+    catch (error) { setMessage(error.code || t.loadFailed); }
+    finally { setIntelligenceRunning(false); }
+  };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -605,6 +666,7 @@ export function AdminApp() {
     ["command", Gauge, "dashboard.read"], ["users", Users, "users.read"],
     ["creditLedger", Coins, "credits.read"], ["finance", Bank, "finance.read"],
     ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
+    ["intelligence", Binoculars, "intelligence.read"],
     ["operations", Pulse, "jobs.read"], ["tools", Storefront, "tools.read"], ["commerce", CreditCard, "billing.read"],
     ["privacy", IdentificationCard, "privacy.read"],
     ["audit", ListChecks, "audit.read"], ["admins", ShieldCheck, "admins.manage"],
@@ -615,6 +677,7 @@ export function AdminApp() {
     creditLedger: <CreditLedgerView data={data.creditLedger} locale={locale} onPage={setPage} />,
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
+    intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} running={intelligenceRunning} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
     tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} />,

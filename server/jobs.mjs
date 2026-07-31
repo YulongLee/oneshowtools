@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { db } from "./database.mjs";
 import { executeTask, failTaskExecution } from "./runtime.mjs";
 import { collectSystemMetrics } from "./observability.mjs";
+import { generateMarketIntelligenceReport, shouldRunDailyMarketReport } from "./market-intelligence.mjs";
 
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 8)}`;
 let timer;
 let working = false;
 let metricsTimer;
+let intelligenceTimer;
 
 export function enqueueTask(taskId, timestamp = Date.now()) {
   db.prepare(`
@@ -115,6 +117,14 @@ export function startWorker() {
     metricsTimer.unref?.();
     collectSystemMetrics();
   }
+  if (process.env.MARKET_INTELLIGENCE_ENABLED !== "false") {
+    const check = () => {
+      if (shouldRunDailyMarketReport()) generateMarketIntelligenceReport({ triggerKind: "scheduled" }).catch(() => {});
+    };
+    intelligenceTimer = setInterval(check, Number(process.env.MARKET_INTELLIGENCE_POLL_MS || 900000));
+    intelligenceTimer.unref?.();
+    check();
+  }
 }
 
 export function stopWorker() {
@@ -122,4 +132,6 @@ export function stopWorker() {
   timer = undefined;
   if (metricsTimer) clearInterval(metricsTimer);
   metricsTimer = undefined;
+  if (intelligenceTimer) clearInterval(intelligenceTimer);
+  intelligenceTimer = undefined;
 }

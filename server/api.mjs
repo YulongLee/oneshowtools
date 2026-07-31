@@ -17,6 +17,7 @@ import {
 import { refundTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
 import { createAdminHandler } from "./admin.mjs";
+import { recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import {
   createModelConnection,
@@ -905,6 +906,14 @@ export async function handleApi(request) {
   const user = auth.user;
 
   if (path === "/api/dashboard" && request.method === "GET") return json(dashboard(user.id));
+  if (path === "/api/marketplace/search-events" && request.method === "POST") {
+    const data = await body(request);
+    recordMarketplaceSearch({
+      opaqueUserId: hashToken(`market:${user.id}`), query: data.query,
+      category: data.category, resultCount: data.resultCount,
+    });
+    return json({ ok: true }, 202);
+  }
   if (path === "/api/account/profile" && request.method === "PATCH") return updateProfile(request, user);
   if (path === "/api/account/password" && request.method === "POST") return changePassword(request, user);
   if (path === "/api/account/email" && request.method === "POST") return requestEmailChange(request, user);

@@ -802,6 +802,13 @@ export function App() {
     return () => window.removeEventListener("popstate", updateRoute);
   }, []);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
+  useEffect(() => {
+    const normalized = query.trim();
+    if (!session || view !== "marketplace" || normalized.length < 2) return undefined;
+    const resultCount = tools.filter((tool) => `${tool.nameZh} ${tool.nameEn} ${tool.descriptionZh} ${tool.descriptionEn}`.toLowerCase().includes(normalized.toLowerCase())).length;
+    const timer = setTimeout(() => api("/api/marketplace/search-events", jsonOptions("POST", { query: normalized, resultCount })).catch(() => {}), 900);
+    return () => clearTimeout(timer);
+  }, [query, session, tools, view]);
 
   const logout = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); setSession(null); setView("dashboard"); setPrivateData({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [] }); };
   const openTool = (tool) => {
