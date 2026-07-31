@@ -142,6 +142,35 @@ test("custom OpenAI-compatible endpoints are validated, stored, and used", async
   assert.doesNotMatch(JSON.stringify(runtimeSummary(userId)), /private-secret-key/);
 });
 
+test("provider presets can be overridden with a user supplied base URL", async () => {
+  const userId = addUser("preset-override@example.com");
+  const baseUrl = `http://127.0.0.1:${address.port}/deepseek-compatible`;
+  const draft = await validateModelConnection({
+    name: "My DeepSeek",
+    providerTemplate: "deepseek",
+    baseUrl,
+    modelId: "deepseek-v4-flash",
+    apiKey: "deepseek-user-key-1234",
+  });
+  assert.equal(draft.status, "healthy");
+
+  const connection = createModelConnection(userId, {
+    name: "My DeepSeek",
+    providerTemplate: "deepseek",
+    baseUrl,
+    modelId: "deepseek-v4-flash",
+    apiKey: "deepseek-user-key-1234",
+  });
+  assert.equal(connection.baseUrl, baseUrl);
+  const result = await invokeModel({
+    userId,
+    connectionId: connection.id,
+    instruction: "Test",
+    text: "Hello",
+  });
+  assert.equal(result.text, "ok:deepseek-v4-flash");
+});
+
 test("custom endpoint input rejects unsafe or malformed URLs before saving", async () => {
   await assert.rejects(
     async () => validateModelConnection({

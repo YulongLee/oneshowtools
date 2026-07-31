@@ -19,8 +19,8 @@ const endpointPolicies = Object.freeze({
   },
   deepseek: {
     label: "DeepSeek",
-    baseUrl: process.env.DEEPSEEK_COMPATIBLE_BASE_URL || "https://api.deepseek.com/v1",
-    displayUrl: "https://api.deepseek.com/v1",
+    baseUrl: process.env.DEEPSEEK_COMPATIBLE_BASE_URL || "https://api.deepseek.com",
+    displayUrl: "https://api.deepseek.com",
   },
   dashscope: {
     label: "DashScope compatible",
@@ -137,7 +137,7 @@ function seedPolicies() {
 }
 seedPolicies();
 
-function normalizeCustomBaseUrl(value) {
+function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
   if (!raw || raw.length > 500) throw gatewayError("INVALID_MODEL_ENDPOINT", 400);
   let url;
@@ -166,7 +166,8 @@ function validConnectionInput(data, requireKey = true) {
     throw gatewayError("INVALID_MODEL_ID", 400);
   }
   if (requireKey && (apiKey.length < 8 || apiKey.length > 2048)) throw gatewayError("INVALID_API_KEY", 400);
-  const baseUrl = providerTemplate === "custom" ? normalizeCustomBaseUrl(data.baseUrl) : null;
+  const suppliedBaseUrl = String(data.baseUrl || "").trim();
+  const baseUrl = normalizeBaseUrl(suppliedBaseUrl || endpointPolicies[providerTemplate].baseUrl);
   return { name, providerTemplate, modelId, apiKey, baseUrl };
 }
 
