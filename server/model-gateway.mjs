@@ -61,8 +61,9 @@ function enabled(name, fallback = false) {
 
 export function gatewayFlags() {
   const legacyManaged = Boolean(process.env.OPENAI_API_KEY);
+  const storedManaged = db.prepare("SELECT 1 AS configured FROM platform_model_configs WHERE purpose = 'managed_runtime' AND status = 'active'").get();
   return {
-    managedConfigured: Boolean(process.env.ONESHOW_MODEL_API_KEY || legacyManaged),
+    managedConfigured: Boolean(storedManaged || process.env.ONESHOW_MODEL_API_KEY || legacyManaged),
     managedExecutionEnabled: enabled("ONESHOW_MODEL_EXECUTION_ENABLED", false),
     byokEnabled: enabled("MODEL_CONNECTIONS_ENABLED", false) && Boolean(process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY),
     workerEnabled: enabled("DURABLE_WORKER_ENABLED", true),
@@ -117,6 +118,78 @@ export function decryptCredential(row) {
 function keyHint(apiKey) {
   const compact = String(apiKey).trim();
   return compact.length > 4 ? `••••${compact.slice(-4)}` : "••••";
+}
+
+const platformPurposes = new Set(["managed_runtime", "market_intelligence"]);
+
+function normalizeWorkspaceId(value) {
+  const workspaceId = String(value || "").trim();
+  if (workspaceId && (workspaceId.length > 120 || !/^[A-Za-z0-9_-]+$/.test(workspaceId))) {
+    throw gatewayError("INVALID_MODEL_WORKSPACE", 400);
+  }
+  return workspaceId || null;
+}
+
+function platformModelRow(purpose) {
+  if (!platformPurposes.has(purpose)) throw gatewayError("INVALID_PLATFORM_MODEL_PURPOSE", 400);
+  return db.prepare("SELECT * FROM platform_model_configs WHERE purpose = ?").get(purpose) || null;
+}
+
+function platformCredentialRow(row) {
+  return row && {
+    ...row,
+    id: row.purpose,
+    user_id: `platform:${row.purpose}`,
+  };
+}
+
+function serializePlatformModel(row, purpose) {
+  if (!row) return {
+    purpose,
+    source: "environment",
+    name: purpose === "managed_runtime" ? MANAGED_MODEL_ALIAS : "Market Intelligence",
+    providerTemplate: "openai",
+    baseUrl: purpose === "managed_runtime"
+      ? process.env.ONESHOW_MODEL_BASE_URL || "https://api.openai.com/v1"
+      : process.env.CODEX_BASE_URL || process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    modelId: purpose === "managed_runtime"
+      ? process.env.ONESHOW_MODEL_ID || process.env.OPENAI_MODEL || null
+      : process.env.MARKET_INTELLIGENCE_MODEL || null,
+    workspaceId: purpose === "market_intelligence" ? process.env.DASHSCOPE_WORKSPACE_ID || null : null,
+    keyHint: null,
+    configured: purpose === "managed_runtime"
+      ? Boolean(process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY)
+      : Boolean(process.env.DASHSCOPE_API_KEY || process.env.OFFERSTEADY_DASHSCOPE_API_KEY),
+    status: "environment",
+    lastTestStatus: null,
+    lastTestLatencyMs: null,
+    lastTestedAt: null,
+  };
+  return {
+    purpose: row.purpose,
+    source: "admin",
+    name: row.name,
+    providerTemplate: row.provider_template,
+    baseUrl: row.base_url,
+    modelId: row.model_id,
+    workspaceId: row.workspace_id || null,
+    keyHint: row.key_hint,
+    configured: row.status === "active",
+    status: row.status,
+    lastTestStatus: row.last_test_status,
+    lastTestLatencyMs: row.last_test_latency_ms,
+    lastTestedAt: row.last_tested_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function listPlatformModelConfigurations() {
+  return ["managed_runtime", "market_intelligence"].map((purpose) => serializePlatformModel(platformModelRow(purpose), purpose));
+}
+
+export function platformModelConfiguration(purpose) {
+  return serializePlatformModel(platformModelRow(purpose), purpose);
 }
 
 function serializeConnection(row) {
@@ -367,7 +440,7 @@ function normalizePayload(payload, protocol) {
   };
 }
 
-function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text) {
+function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId = null) {
   const root = safeBase.href.replace(/\/$/, "");
   if (protocol === "anthropic") {
     const suffix = safeBase.pathname.replace(/\/$/, "").endsWith("/v1") ? "messages" : "v1/messages";
@@ -388,7 +461,11 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text) {
   }
   return {
     endpoint: new URL(`${root}/chat/completions`),
-    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+      ...(workspaceId ? { "X-DashScope-WorkSpace": workspaceId } : {}),
+    },
     body: {
       model: modelId,
       messages: [{ role: "system", content: instruction }, { role: "user", content: text }],
@@ -396,13 +473,13 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text) {
   };
 }
 
-async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, instruction, text, signal }) {
+async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, signal }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(process.env.MODEL_REQUEST_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     const safeBase = await assertSafeEndpoint(baseUrl);
-    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text);
+    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId);
     const response = await fetch(request.endpoint, {
       method: "POST",
       redirect: "manual",
@@ -432,6 +509,96 @@ async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, ins
   }
 }
 
+function validPlatformInput(purpose, data, existing = null) {
+  if (!platformPurposes.has(purpose)) throw gatewayError("INVALID_PLATFORM_MODEL_PURPOSE", 400);
+  const apiKey = String(data.apiKey || "").trim();
+  const input = validConnectionInput({
+    name: data.name || existing?.name || (purpose === "managed_runtime" ? MANAGED_MODEL_ALIAS : "Market Intelligence"),
+    providerTemplate: data.providerTemplate || existing?.provider_template || "openai",
+    baseUrl: data.baseUrl || existing?.base_url,
+    modelId: data.modelId || existing?.model_id,
+    apiKey: apiKey || (existing ? "stored-credential" : ""),
+  }, !existing);
+  return {
+    ...input,
+    apiKey,
+    workspaceId: normalizeWorkspaceId(data.workspaceId ?? existing?.workspace_id),
+    status: data.status === "disabled" ? "disabled" : "active",
+  };
+}
+
+async function testPlatformInput(purpose, data) {
+  const existing = platformModelRow(purpose);
+  const input = validPlatformInput(purpose, data, existing);
+  const apiKey = input.apiKey || (existing ? decryptCredential(platformCredentialRow(existing)) : "");
+  const startedAt = Date.now();
+  try {
+    await requestModel({
+      baseUrl: input.baseUrl,
+      protocol: input.providerTemplate,
+      apiKey,
+      modelId: input.modelId,
+      workspaceId: input.workspaceId,
+      instruction: "Return only the word OK.",
+      text: "Health check",
+    });
+    return { status: "healthy", latencyMs: Date.now() - startedAt, input, apiKey };
+  } catch (error) {
+    const status = ["MODEL_AUTH_FAILED", "MODEL_RATE_LIMITED", "MODEL_TIMEOUT", "MODEL_OR_ENDPOINT_INVALID", "MODEL_QUOTA_EXCEEDED", "MODEL_ENDPOINT_BLOCKED", "INVALID_MODEL_ENDPOINT"].includes(error.code)
+      ? error.code.toLowerCase() : "unavailable";
+    return { status, latencyMs: Date.now() - startedAt, input, apiKey };
+  }
+}
+
+export async function testPlatformModelConfiguration(purpose, data) {
+  const result = await testPlatformInput(purpose, data);
+  return { status: result.status, latencyMs: result.latencyMs };
+}
+
+export async function savePlatformModelConfiguration(purpose, data, actorUserId = null) {
+  const existing = platformModelRow(purpose);
+  const tested = await testPlatformInput(purpose, data);
+  if (!new Set(["healthy", "model_rate_limited"]).has(tested.status)) {
+    throw gatewayError("PLATFORM_MODEL_TEST_FAILED", 422);
+  }
+  const version = existing ? existing.credential_version + (tested.input.apiKey ? 1 : 0) : 1;
+  const encrypted = tested.input.apiKey
+    ? encryptCredential(tested.apiKey, `platform:${purpose}`, purpose, version)
+    : { ciphertext: existing.key_ciphertext, iv: existing.key_iv, tag: existing.key_tag };
+  const timestamp = Date.now();
+  db.prepare(`
+    INSERT INTO platform_model_configs (
+      purpose, name, provider_template, base_url, model_id, workspace_id,
+      key_ciphertext, key_iv, key_tag, key_hint, credential_version, status,
+      last_test_status, last_test_latency_ms, last_tested_at, updated_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(purpose) DO UPDATE SET
+      name=excluded.name, provider_template=excluded.provider_template, base_url=excluded.base_url,
+      model_id=excluded.model_id, workspace_id=excluded.workspace_id,
+      key_ciphertext=excluded.key_ciphertext, key_iv=excluded.key_iv, key_tag=excluded.key_tag,
+      key_hint=excluded.key_hint, credential_version=excluded.credential_version, status=excluded.status,
+      last_test_status=excluded.last_test_status, last_test_latency_ms=excluded.last_test_latency_ms,
+      last_tested_at=excluded.last_tested_at, updated_by=excluded.updated_by, updated_at=excluded.updated_at
+  `).run(
+    purpose, tested.input.name, tested.input.providerTemplate, tested.input.baseUrl, tested.input.modelId, tested.input.workspaceId,
+    encrypted.ciphertext, encrypted.iv, encrypted.tag, tested.input.apiKey ? keyHint(tested.input.apiKey) : existing.key_hint,
+    version, tested.input.status, tested.status, tested.latencyMs, timestamp, actorUserId, existing?.created_at || timestamp, timestamp,
+  );
+  return platformModelConfiguration(purpose);
+}
+
+export function platformModelRoute(purpose) {
+  const row = platformModelRow(purpose);
+  if (!row || row.status !== "active") return null;
+  return {
+    protocol: row.provider_template,
+    baseUrl: row.base_url,
+    apiKey: decryptCredential(platformCredentialRow(row)),
+    modelId: row.model_id,
+    workspaceId: row.workspace_id || null,
+  };
+}
+
 function resolveRoute(userId, connectionId) {
   if (connectionId && connectionId !== "managed") {
     const row = ownedConnection(userId, connectionId, true);
@@ -446,6 +613,7 @@ function resolveRoute(userId, connectionId) {
       modelId: row.model_id,
     };
   }
+  const stored = platformModelRoute("managed_runtime");
   const flags = gatewayFlags();
   if (!flags.managedConfigured || !flags.managedExecutionEnabled) {
     throw gatewayError("ONESH​OW_MODEL_UNAVAILABLE".replace("\u200b", ""), 503, true);
@@ -453,10 +621,11 @@ function resolveRoute(userId, connectionId) {
   return {
     routeKind: "managed",
     connectionId: null,
-    protocol: "openai",
-    baseUrl: process.env.ONESHOW_MODEL_BASE_URL || "https://api.openai.com/v1",
-    apiKey: process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY,
-    modelId: process.env.ONESHOW_MODEL_ID || process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    protocol: stored?.protocol || "openai",
+    baseUrl: stored?.baseUrl || process.env.ONESHOW_MODEL_BASE_URL || "https://api.openai.com/v1",
+    apiKey: stored?.apiKey || process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY,
+    modelId: stored?.modelId || process.env.ONESHOW_MODEL_ID || process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    workspaceId: stored?.workspaceId || null,
   };
 }
 

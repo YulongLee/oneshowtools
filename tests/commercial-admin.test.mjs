@@ -182,6 +182,7 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
     "/api/admin/v1/finance",
     "/api/admin/v1/analytics/tools",
     "/api/admin/v1/infrastructure/overview",
+    "/api/admin/v1/platform-models",
   ]) {
     const response = await handleApi(authenticated(path, owner.cookie));
     assert.equal(response.status, 200, path);

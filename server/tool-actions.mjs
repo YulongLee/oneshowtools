@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import sharp from "sharp";
 import { PDFParse } from "pdf-parse";
-import { audit, db, uploadDirectory } from "./database.mjs";
+import { audit, db } from "./database.mjs";
 import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
+import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -185,6 +184,10 @@ function storeCompletedTask({ user, tool, input, output, resultFile }) {
         INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(resultFile.id, user.id, resultFile.name, resultFile.storageName, resultFile.mimeType, resultFile.sizeBytes, timestamp);
+      db.prepare(`
+        INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'available', ?, ?)
+      `).run(resultFile.id, resultFile.provider, resultFile.objectKey, resultFile.etag, timestamp, timestamp);
       db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, resultFile.id);
     }
     db.exec("COMMIT");
@@ -241,11 +244,10 @@ export async function runToolAction(request, user, tool) {
   let resultFile = null;
   if (processed.buffer) {
     const id = randomUUID();
-    const storageName = `${id}${processed.extension}`;
-    await writeFile(resolve(uploadDirectory, storageName), processed.buffer);
+    const stored = await putStoredFile({ userId: user.id, fileId: id, fileName: processed.name, mimeType: processed.mimeType, buffer: processed.buffer });
     resultFile = {
       id,
-      storageName,
+      ...stored,
       name: processed.name,
       mimeType: processed.mimeType,
       sizeBytes: processed.buffer.length,
@@ -255,7 +257,7 @@ export async function runToolAction(request, user, tool) {
   try {
     return storeCompletedTask({ user, tool, input, output, resultFile });
   } catch (error) {
-    if (resultFile) await rm(resolve(uploadDirectory, resultFile.storageName), { force: true });
+    if (resultFile) await deleteStoredFile(resultFile).catch(() => {});
     throw error;
   }
 }

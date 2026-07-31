@@ -936,6 +936,30 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .market-chat-message > small { color: #8290a2; font-size: 7px; font-weight: 700; }
 .market-chat-message > p { max-width: 92%; margin: 0; padding: 9px 10px; border-radius: 10px 10px 10px 3px; color: #3c4c62; background: #f1f5fa; font-size: 9px; line-height: 1.7; white-space: pre-wrap; }
 .market-chat-message.user > p { color: #fff; background: #1768e5; border-radius: 10px 10px 3px 10px; }
+.platform-model-intro > p { margin: 0; padding: 0 18px 18px; color: #6f7e91; font-size: 9px; line-height: 1.7; }
+.platform-model-layout { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 14px; align-items: start; }
+.platform-model-editor { overflow: hidden; }
+.platform-model-current { display: flex; align-items: center; gap: 10px; margin: 14px 16px 0; padding: 12px; border: 1px solid #e5eaf1; border-radius: 10px; background: #fafcff; }
+.platform-model-current > div { display: grid; gap: 3px; }
+.platform-model-current strong { color: #253750; font-size: 11px; }
+.platform-model-current small { color: #7d8b9d; font-size: 8px; }
+.platform-model-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding: 16px; }
+.platform-model-form label { display: grid; gap: 6px; color: #64758c; font-size: 8px; font-weight: 700; }
+.platform-model-form label.wide { grid-column: 1 / -1; }
+.platform-model-form input, .platform-model-form select { width: 100%; height: 38px; border: 1px solid #d8e0eb; border-radius: 8px; padding: 0 10px; color: #263850; background: #fff; font: inherit; font-size: 10px; outline: none; }
+.platform-model-form input:focus, .platform-model-form select:focus { border-color: #75a5ed; box-shadow: 0 0 0 3px #edf4ff; }
+.platform-model-test { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; padding: 10px 11px; border-radius: 8px; font-size: 9px; }
+.platform-model-test.healthy { color: #087554; background: #eaf8f2; }
+.platform-model-test.warning { color: #9a5b13; background: #fff4e5; }
+.platform-model-test em { margin-left: auto; font-style: normal; }
+.platform-model-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+.platform-model-actions button { min-height: 38px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d5dfec; border-radius: 8px; padding: 0 13px; color: #435772; background: #fff; font-size: 9px; font-weight: 750; cursor: pointer; }
+.platform-model-actions button.admin-primary { color: #fff; border-color: #1768e5; background: #1768e5; }
+.platform-storage-card { overflow: hidden; }
+.platform-storage-status { display: flex; align-items: center; gap: 8px; margin: 4px 14px 13px; padding: 12px; border-radius: 9px; color: #27415f; background: #f2f7fd; }
+.platform-storage-card .admin-detail-row { margin: 0 14px; }
+.platform-storage-card > p { margin: 14px; padding: 11px; border-radius: 8px; color: #728197; background: #fafbfd; font-size: 8px; line-height: 1.7; }
+@media (max-width: 980px) { .platform-model-layout { grid-template-columns: 1fr; } }
 .market-chat-citations, .market-chat-suggestions { max-width: 92%; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .market-chat-citations span, .market-chat-suggestions span { width: 100%; color: #8390a2; font-size: 7px; }
 .market-chat-citations a { padding: 3px 6px; border-radius: 5px; color: #1768e5; background: #edf4ff; font-size: 7px; font-weight: 700; text-decoration: none; }

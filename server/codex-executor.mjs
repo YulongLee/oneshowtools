@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Codex } from "@openai/codex-sdk";
+import { platformModelRoute } from "./model-gateway.mjs";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
@@ -164,6 +165,7 @@ export function createCodexExecutor({
       threadId = null,
       model = config.model,
       mode = "development",
+      platformPurpose = null,
       outputSchema = undefined,
       signal = undefined,
     }) {
@@ -174,7 +176,8 @@ export function createCodexExecutor({
       if (!instruction || instruction.length > MAX_PROMPT_LENGTH) {
         throw executorError("CODEX_PROMPT_INVALID", 400);
       }
-      const selectedModel = String(model || "").trim();
+      const storedRoute = mode === "analysis" && platformPurpose ? platformModelRoute(platformPurpose) : null;
+      const selectedModel = String(storedRoute?.modelId || model || "").trim();
       if (!selectedModel || selectedModel.length > 120 || !/^[\w./:-]+$/.test(selectedModel)) {
         throw executorError("CODEX_MODEL_INVALID", 400);
       }
@@ -190,7 +193,10 @@ export function createCodexExecutor({
       try {
         if (mode === "analysis" && env.CODEX_ANALYSIS_TRANSPORT === "chat-completions") {
           return await runCompatibleAnalysis({
-            apiKey: config.apiKey, baseUrl: config.baseUrl, workspaceId: config.workspaceId, model: selectedModel,
+            apiKey: storedRoute?.apiKey || config.apiKey,
+            baseUrl: storedRoute?.baseUrl || config.baseUrl,
+            workspaceId: storedRoute?.workspaceId || config.workspaceId,
+            model: selectedModel,
             prompt: instruction, outputSchema, signal: controller.signal, fetchImpl,
           });
         }

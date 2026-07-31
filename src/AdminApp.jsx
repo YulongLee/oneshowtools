@@ -17,6 +17,11 @@ const copy = {
     loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营",
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
+    models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
+    managed_runtime: "OneShowModel", market_intelligence: "市场情报模型", modelName: "配置名称", modelProtocol: "接口协议",
+    modelBaseUrl: "API Base URL", modelId: "模型 ID", workspaceId: "阿里云 Workspace（可选）", replaceApiKey: "API Key（留空则保留现有密钥）",
+    testModel: "测试连接", saveModel: "测试并保存", modelTestHealthy: "连接正常", modelRateLimited: "连接有效，但模型当前繁忙或限流",
+    changeReason: "变更原因", storageBackend: "用户文件存储", storagePrefix: "隔离前缀", storageBucket: "Bucket", storageRegion: "地域",
     intelligenceBrief: "结合外部市场信号与站内真实数据，生成每日工具开发优先级。",
     opportunity: "开发机会", demand: "需求", fit: "平台匹配", competition: "竞争机会", effort: "开发可行性",
     evidence: "需求证据", whyNow: "为什么现在值得关注", validationPlan: "7 天验证计划", nextStep: "建议下一步", latestReport: "最新日报", reportHistory: "历史日报",
@@ -82,6 +87,11 @@ const copy = {
     loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers",
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
+    models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
+    managed_runtime: "OneShowModel", market_intelligence: "Market Intelligence", modelName: "Configuration name", modelProtocol: "API protocol",
+    modelBaseUrl: "API Base URL", modelId: "Model ID", workspaceId: "DashScope Workspace (optional)", replaceApiKey: "API Key (leave blank to keep current key)",
+    testModel: "Test connection", saveModel: "Test and save", modelTestHealthy: "Connection healthy", modelRateLimited: "Credential accepted, but model is busy or rate limited",
+    changeReason: "Change reason", storageBackend: "User file storage", storagePrefix: "Isolated prefix", storageBucket: "Bucket", storageRegion: "Region",
     intelligenceBrief: "Combines external market signals with persisted product data into a daily development priority brief.",
     opportunity: "Opportunity", demand: "Demand", fit: "Platform fit", competition: "Competition", effort: "Feasibility",
     evidence: "Evidence", whyNow: "Why now", validationPlan: "7-day validation", nextStep: "Next step", latestReport: "Latest report", reportHistory: "Report history",
@@ -441,6 +451,55 @@ function Score({ label, value }) {
   return <div><span><small>{label}</small><strong>{Number(value || 0)}</strong></span><i><b style={{ width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` }} /></i></div>;
 }
 
+function PlatformModelsView({ data, locale, canManage, onTest, onSave }) {
+  const t = copy[locale];
+  const [purpose, setPurpose] = useState("managed_runtime");
+  const selected = data?.models?.find((item) => item.purpose === purpose);
+  const [draft, setDraft] = useState({});
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    setDraft({
+      name: selected?.name || t[purpose], providerTemplate: selected?.providerTemplate || "openai",
+      baseUrl: selected?.baseUrl || "", modelId: selected?.modelId || "", workspaceId: selected?.workspaceId || "",
+      apiKey: "", reason: "",
+    });
+    setTestResult(null);
+  }, [purpose, selected?.updatedAt, selected?.source, t]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const test = async () => {
+    setTesting(true); setTestResult(null);
+    try { setTestResult(await onTest(purpose, draft)); } finally { setTesting(false); }
+  };
+  const save = async (event) => {
+    event.preventDefault(); setSaving(true);
+    try { const result = await onSave(purpose, draft); if (result) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); }
+    finally { setSaving(false); }
+  };
+  return <div className="admin-page-stack platform-model-page">
+    <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE AI ROUTING</small><h2>{t.platformModels}</h2></div><Gear size={23} /></header><p>{t.platformModelsHint}</p></section>
+    <section className="platform-model-layout">
+      <article className="admin-v2-panel platform-model-editor">
+        <nav className="admin-section-tabs">{["managed_runtime", "market_intelligence"].map((item) => <button key={item} className={purpose === item ? "active" : ""} onClick={() => setPurpose(item)}>{t[item]}</button>)}</nav>
+        <div className="platform-model-current"><span className={`admin-metric-state ${selected?.configured ? "healthy" : "warning"}`} /><div><strong>{selected?.modelId || t.notReporting}</strong><small>{selected?.source === "admin" ? `${selected.keyHint || "••••"} · ${selected.lastTestStatus || t.pending}` : `${locale === "en" ? "Environment configuration" : "环境变量配置"}`}</small></div></div>
+        <form className="platform-model-form" onSubmit={save}>
+          <label>{t.modelName}<input value={draft.name || ""} onChange={change("name")} disabled={!canManage} required /></label>
+          <label>{t.modelProtocol}<select value={draft.providerTemplate || "openai"} onChange={change("providerTemplate")} disabled={!canManage}><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select></label>
+          <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.baseUrl || ""} onChange={change("baseUrl")} disabled={!canManage} required /></label>
+          <label>{t.modelId}<input value={draft.modelId || ""} onChange={change("modelId")} disabled={!canManage} required /></label>
+          <label>{t.workspaceId}<input value={draft.workspaceId || ""} onChange={change("workspaceId")} disabled={!canManage} /></label>
+          <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={selected?.source !== "admin"} /></label>
+          <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
+          {testResult && <div className={`platform-model-test ${testResult.status === "healthy" ? "healthy" : "warning"}`}><CheckCircle size={17} /><span>{testResult.status === "healthy" ? t.modelTestHealthy : testResult.status === "model_rate_limited" ? t.modelRateLimited : testResult.status}</span><em>{testResult.latencyMs} ms</em></div>}
+          {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.testModel}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.saveModel}</button></div>}
+        </form>
+      </article>
+      <aside className="admin-v2-panel platform-storage-card"><header><div><small>PRIVATE OBJECT STORAGE</small><h2>{t.storageBackend}</h2></div><HardDrives size={22} /></header><div className="platform-storage-status"><span className={`admin-metric-state ${data?.storage?.configured ? "healthy" : "warning"}`} /><strong>{data?.storage?.provider?.toUpperCase() || "LOCAL"}</strong></div><DetailRow label={t.storageBucket} value={data?.storage?.bucket} /><DetailRow label={t.storageRegion} value={data?.storage?.region} /><DetailRow label={t.storagePrefix} value={data?.storage?.prefix} /><p>{locale === "en" ? "Objects use private ACL, random IDs, and an isolated prefix. Existing bucket objects are never listed or modified." : "对象使用私有权限、随机 ID 和独立前缀；系统不会列举或修改 Bucket 中的既有文件。"}</p></aside>
+    </section>
+  </div>;
+}
+
 function metricDisplay(metric, locale) {
   if (metric.value == null) return "—";
   if (metric.unit === "percent") return `${metric.value.toLocaleString(locale, { maximumFractionDigits: 1 })}%`;
@@ -637,6 +696,7 @@ export function AdminApp() {
     finance: "/api/admin/v1/finance",
     analytics: "/api/admin/v1/analytics/tools?days=30",
     intelligence: `/api/admin/v1/market-intelligence${intelligenceDate ? `?date=${encodeURIComponent(intelligenceDate)}` : ""}`,
+    models: "/api/admin/v1/platform-models",
     infrastructure: "/api/admin/v1/infrastructure/overview",
     commerce: "/api/admin/v1/commerce", tools: "/api/admin/v1/tools",
     operations: "/api/admin/v1/operations", privacy: "/api/admin/v1/privacy",
@@ -720,6 +780,15 @@ export function AdminApp() {
     } catch (error) { setMessage(error.code || t.loadFailed); return false; }
     finally { setIntelligenceChatRunning(false); }
   };
+  const testPlatformModel = async (purpose, draft) => {
+    try { return await api(`/api/admin/v1/platform-models/${purpose}/test`, json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const savePlatformModel = async (purpose, draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api(`/api/admin/v1/platform-models/${purpose}`, json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -730,6 +799,7 @@ export function AdminApp() {
     ["creditLedger", Coins, "credits.read"], ["finance", Bank, "finance.read"],
     ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
     ["intelligence", Binoculars, "intelligence.read"],
+    ["models", Gear, "models.read"],
     ["operations", Pulse, "jobs.read"], ["tools", Storefront, "tools.read"], ["commerce", CreditCard, "billing.read"],
     ["privacy", IdentificationCard, "privacy.read"],
     ["audit", ListChecks, "audit.read"], ["admins", ShieldCheck, "admins.manage"],
@@ -741,6 +811,7 @@ export function AdminApp() {
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
+    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} onTest={testPlatformModel} onSave={savePlatformModel} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
     tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} />,

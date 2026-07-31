@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { basename, extname, resolve } from "node:path";
-import { audit, db, uploadDirectory } from "./database.mjs";
+import { basename } from "node:path";
+import { audit, db } from "./database.mjs";
+import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
 import { getServerConfig, validateServerConfig } from "./config.mjs";
 import { sendAccountEmail } from "./email.mjs";
 import {
@@ -456,13 +456,26 @@ async function uploadFile(request, user) {
   const maxSize = Number(process.env.MAX_UPLOAD_BYTES || 25 * 1024 * 1024);
   if (file.size > maxSize) return fail("FILE_TOO_LARGE", 413);
   const id = randomUUID();
-  const safeExtension = extname(basename(file.name)).slice(0, 12).replace(/[^.\w-]/g, "");
-  const storageName = `${id}${safeExtension}`;
-  await writeFile(resolve(uploadDirectory, storageName), Buffer.from(await file.arrayBuffer()));
-  db.prepare(`
-    INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, user.id, basename(file.name).slice(0, 180), storageName, file.type || "application/octet-stream", file.size, Date.now());
+  const name = basename(file.name).slice(0, 180);
+  const mimeType = file.type || "application/octet-stream";
+  const stored = await putStoredFile({ userId: user.id, fileId: id, fileName: name, mimeType, buffer: Buffer.from(await file.arrayBuffer()) });
+  const timestamp = Date.now();
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.prepare(`
+      INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, user.id, name, stored.storageName, mimeType, file.size, timestamp);
+    db.prepare(`
+      INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'available', ?, ?)
+    `).run(id, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    await deleteStoredFile(stored).catch(() => {});
+    throw error;
+  }
   audit(user.id, "file.upload", "file", id, { size: file.size });
   return json({ file: db.prepare(`
     SELECT id, name, mime_type AS mimeType, size_bytes AS sizeBytes, created_at AS createdAt FROM files WHERE id = ?
@@ -1055,16 +1068,19 @@ export async function handleApi(request) {
   }
   if (path === "/api/files" && request.method === "GET") {
     return json({ files: db.prepare(`
-      SELECT id, name, mime_type AS mimeType, size_bytes AS sizeBytes, created_at AS createdAt
-      FROM files WHERE user_id = ? ORDER BY created_at DESC
+      SELECT f.id, f.name, f.mime_type AS mimeType, f.size_bytes AS sizeBytes, f.created_at AS createdAt,
+        COALESCE(s.provider, 'local') AS storageProvider
+      FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id
+      WHERE f.user_id = ? ORDER BY f.created_at DESC
     `).all(user.id) });
   }
   if (path === "/api/files" && request.method === "POST") return uploadFile(request, user);
   if (path.match(/^\/api\/files\/[^/]+\/download$/) && request.method === "GET") {
     const id = path.split("/")[3];
-    const file = db.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").get(id, user.id);
+    const file = db.prepare(`SELECT f.*, COALESCE(s.provider, 'local') AS storage_provider, s.object_key
+      FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ? AND f.user_id = ?`).get(id, user.id);
     if (!file) return fail("FILE_NOT_FOUND", 404);
-    return new Response(await readFile(resolve(uploadDirectory, file.storage_name)), {
+    return new Response(await readStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name }), {
       headers: {
         "content-type": file.mime_type,
         "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
@@ -1073,10 +1089,11 @@ export async function handleApi(request) {
   }
   if (path.match(/^\/api\/files\/[^/]+$/) && request.method === "DELETE") {
     const id = path.split("/")[3];
-    const file = db.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").get(id, user.id);
+    const file = db.prepare(`SELECT f.*, COALESCE(s.provider, 'local') AS storage_provider, s.object_key
+      FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ? AND f.user_id = ?`).get(id, user.id);
     if (!file) return fail("FILE_NOT_FOUND", 404);
+    await deleteStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name });
     db.prepare("DELETE FROM files WHERE id = ?").run(id);
-    await rm(resolve(uploadDirectory, file.storage_name), { force: true });
     audit(user.id, "file.delete", "file", id);
     return json({ ok: true });
   }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { db } from "./database.mjs";
 import { codexExecutor } from "./codex-executor.mjs";
+import { platformModelConfiguration } from "./model-gateway.mjs";
 import { collectMarketSignals, marketSourceCatalog } from "./market-sources.mjs";
 
 const DAY_MS = 86_400_000;
@@ -135,9 +136,13 @@ function parseModelReport(response) {
 
 export function marketIntelligenceStatus(executor = codexExecutor) {
   const status = executor.status();
+  const stored = platformModelConfiguration("market_intelligence");
+  const adminConfigured = stored.source === "admin" && stored.status === "active";
   return {
     ...status,
-    model: process.env.MARKET_INTELLIGENCE_MODEL || DEFAULT_MODEL,
+    configured: adminConfigured || status.configured,
+    ready: adminConfigured || status.ready,
+    model: adminConfigured ? stored.modelId : process.env.MARKET_INTELLIGENCE_MODEL || DEFAULT_MODEL,
     fallbackModel: process.env.MARKET_INTELLIGENCE_FALLBACK_MODEL || process.env.ONESHOW_MODEL_ID || null,
     schedule: process.env.MARKET_INTELLIGENCE_SCHEDULE || "08:00", timezone: "Asia/Shanghai",
     sources: marketSourceCatalog(),
@@ -176,7 +181,8 @@ export async function generateMarketIntelligenceReport({
   const reportDate = shanghaiDate(timestamp);
   if (activeRuns.has(reportDate)) return activeRuns.get(reportDate);
   const run = (async () => {
-    const model = process.env.MARKET_INTELLIGENCE_MODEL || DEFAULT_MODEL;
+    const storedModel = platformModelConfiguration("market_intelligence");
+    const model = storedModel.source === "admin" && storedModel.status === "active" ? storedModel.modelId : process.env.MARKET_INTELLIGENCE_MODEL || DEFAULT_MODEL;
     const id = db.prepare("SELECT id FROM market_intelligence_reports WHERE report_date = ?").get(reportDate)?.id || randomUUID();
     db.prepare(`
       INSERT INTO market_intelligence_reports (id, report_date, status, trigger_kind, model, started_at, created_by, created_at, updated_at)
@@ -194,7 +200,7 @@ export async function generateMarketIntelligenceReport({
       let executionModel = model;
       let execution;
       try {
-        execution = await executor.run({ prompt, model, mode: "analysis", outputSchema: reportSchema });
+        execution = await executor.run({ prompt, model, mode: "analysis", platformPurpose: "market_intelligence", outputSchema: reportSchema });
       } catch (error) {
         if (!fallbackEligibleErrors.has(error?.code) || !fallbackModel || fallbackModel === model) throw error;
         executionModel = fallbackModel;
@@ -294,7 +300,7 @@ export async function askMarketIntelligence({ reportId, actorUserId, question, e
   const fallbackModel = String(process.env.MARKET_INTELLIGENCE_FALLBACK_MODEL || process.env.ONESHOW_MODEL_ID || "").trim();
   let executionModel = preferredModel;
   let execution;
-  try { execution = await executor.run({ prompt, model: preferredModel, mode: "analysis", outputSchema: chatSchema }); }
+  try { execution = await executor.run({ prompt, model: preferredModel, mode: "analysis", platformPurpose: "market_intelligence", outputSchema: chatSchema }); }
   catch (error) {
     if (!fallbackEligibleErrors.has(error?.code) || !fallbackModel || fallbackModel === preferredModel) throw error;
     executionModel = fallbackModel;

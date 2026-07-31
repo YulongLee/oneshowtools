@@ -8,6 +8,10 @@ import {
   askMarketIntelligence, generateMarketIntelligenceReport, getMarketIntelligenceConversation,
   getMarketIntelligenceReport, listMarketIntelligenceReports, marketIntelligenceStatus,
 } from "./market-intelligence.mjs";
+import {
+  listPlatformModelConfigurations, savePlatformModelConfiguration, testPlatformModelConfiguration,
+} from "./model-gateway.mjs";
+import { objectStorageStatus } from "./object-storage.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -37,6 +41,8 @@ const permissions = [
   ["analytics.read", "View privacy-safe tool usage analytics"],
   ["intelligence.read", "View market intelligence reports and evidence"],
   ["intelligence.manage", "Run the market intelligence agent"],
+  ["models.read", "View redacted platform model configuration"],
+  ["models.manage", "Test and rotate platform model configuration"],
   ["infrastructure.read", "View infrastructure metrics and health"],
   ["alerts.manage", "Acknowledge and resolve operational alerts"],
   ["metrics.export", "Export bounded metric and finance views"],
@@ -53,12 +59,12 @@ const permissions = [
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "audit.read"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "audit.read"],
   support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read"],
   finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
-  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage"],
+  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -149,7 +155,7 @@ function redact(value) {
   if (!value || typeof value !== "object") return value;
   const output = Array.isArray(value) ? [] : {};
   for (const [key, child] of Object.entries(value)) {
-    if (/password|secret|token|credential|payload_json/i.test(key)) output[key] = "[REDACTED]";
+    if (/password|secret|token|credential|api.?key|access.?key|payload_json/i.test(key)) output[key] = "[REDACTED]";
     else output[key] = child && typeof child === "object" ? redact(child) : child;
   }
   return output;
@@ -1311,6 +1317,31 @@ export function createAdminHandler(dependencies) {
         richAudit({ request, actor: context.user, roles: context.roles, permission: "intelligence.manage", action: "admin.market_intelligence.chat", targetType: "market_report", targetId: data.reportId });
         return json({ conversation }, 201);
       } catch (error) { return fail(error?.code || "MARKET_CHAT_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/platform-models" && request.method === "GET") {
+      const denied = requirePermission(context, "models.read"); if (denied) return denied;
+      return json({ models: listPlatformModelConfigurations(), storage: objectStorageStatus() });
+    }
+    let modelMatch = path.match(/^\/api\/admin\/v1\/platform-models\/([^/]+)\/(test)$/);
+    if (modelMatch && request.method === "POST") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testPlatformModelConfiguration(modelMatch[1], await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.platform_model.test", targetType: "platform_model", targetId: modelMatch[1], after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "PLATFORM_MODEL_TEST_FAILED", error?.status || 502); }
+    }
+    modelMatch = path.match(/^\/api\/admin\/v1\/platform-models\/([^/]+)$/);
+    if (modelMatch && request.method === "PUT") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = listPlatformModelConfigurations().find((item) => item.purpose === modelMatch[1]);
+        const model = await savePlatformModelConfiguration(modelMatch[1], data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.platform_model.update", targetType: "platform_model", targetId: modelMatch[1], reason: String(data.reason), before, after: model });
+        return json({ model });
+      } catch (error) { return fail(error?.code || "PLATFORM_MODEL_UPDATE_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/infrastructure/overview" && request.method === "GET") {
       const denied = requirePermission(context, "infrastructure.read"); if (denied) return denied;

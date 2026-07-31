@@ -24,6 +24,7 @@ const provider = createServer(async (request, response) => {
     authorization: request.headers.authorization || null,
     apiKey: request.headers["x-api-key"] || null,
     anthropicVersion: request.headers["anthropic-version"] || null,
+    workspaceId: request.headers["x-dashscope-workspace"] || null,
   });
   response.setHeader("content-type", "application/json");
   response.end(JSON.stringify(request.url.endsWith("/v1/messages") ? {
@@ -48,8 +49,10 @@ const {
   decryptCredential,
   invokeModel,
   listModelConnections,
+  listPlatformModelConfigurations,
   listToolModelPreferences,
   runtimeSummary,
+  savePlatformModelConfiguration,
   setToolModelPreference,
   toolModelSelection,
   updateModelConnection,
@@ -248,6 +251,30 @@ test("managed model remains the default when personal connections exist", async 
   });
   assert.equal(result.route, "managed");
   assert.equal(result.text, "ok:internal-model-id");
+});
+
+test("admin platform model configuration is encrypted, redacted, tested, and used", async () => {
+  const userId = addUser("platform-model@example.com");
+  const saved = await savePlatformModelConfiguration("managed_runtime", {
+    name: "OneShowModel",
+    providerTemplate: "openai",
+    baseUrl: `${providerBaseUrl}/v1`,
+    modelId: "admin-managed-model",
+    workspaceId: "ws-test-runtime",
+    apiKey: "platform-secret-key-9876",
+  }, userId);
+  assert.equal(saved.source, "admin");
+  assert.equal(saved.keyHint, "••••9876");
+  assert.equal(saved.lastTestStatus, "healthy");
+  assert.doesNotMatch(JSON.stringify(listPlatformModelConfigurations()), /platform-secret-key/);
+
+  const stored = db.prepare("SELECT * FROM platform_model_configs WHERE purpose = 'managed_runtime'").get();
+  assert.notEqual(stored.key_ciphertext, "platform-secret-key-9876");
+  assert.equal(decryptCredential({ ...stored, id: stored.purpose, user_id: `platform:${stored.purpose}` }), "platform-secret-key-9876");
+
+  const result = await invokeModel({ userId, instruction: "Test", text: "Hello" });
+  assert.equal(result.text, "ok:admin-managed-model");
+  assert.equal(observedRequests.at(-1).workspaceId, "ws-test-runtime");
 });
 
 test("each model-backed tool stores an owner-scoped model preference", () => {
