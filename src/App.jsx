@@ -5,10 +5,27 @@ import {
   House, ImageSquare, ListChecks, LockKey, MagicWand, MagnifyingGlass, Microphone,
   ArrowLeft, Copy, DownloadSimple, Play, RocketLaunch, SignOut, Sparkle, SpinnerGap,
   SquaresFour, StopCircle, Translate, Trash, User, UserCircle, Warning, Wrench, X,
-  GearSix, Plus, PlugsConnected, ShieldCheck,
+  GearSix, Plus, PlugsConnected, ShieldCheck, PenNib, ChartLineUp, Megaphone, Code,
+  Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, Robot,
 } from "@phosphor-icons/react";
 
 const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone };
+const marketplaceCategories = [
+  { id: "all", icon: SquaresFour, accepts: [] },
+  { id: "writing", icon: PenNib, accepts: ["writing"] },
+  { id: "seo", icon: ChartLineUp, accepts: ["seo"] },
+  { id: "marketing", icon: Megaphone, accepts: ["marketing"] },
+  { id: "developer", icon: Code, accepts: ["developer"] },
+  { id: "startup", icon: Lightbulb, accepts: ["startup"] },
+  { id: "productivity", icon: Briefcase, accepts: ["document", "productivity"] },
+  { id: "social", icon: ShareNetwork, accepts: ["social"] },
+  { id: "data", icon: ChartBar, accepts: ["data"] },
+  { id: "searchCategory", icon: Binoculars, accepts: ["search"] },
+  { id: "image", icon: ImageSquare, accepts: ["image"] },
+  { id: "video", icon: VideoCamera, accepts: ["video"] },
+  { id: "audio", icon: Microphone, accepts: ["audio"] },
+  { id: "agent", icon: Robot, accepts: ["agent"] },
+];
 
 const dictionary = {
   "zh-CN": {
@@ -16,7 +33,9 @@ const dictionary = {
     search: "搜索工具或输入你想完成的任务", searchAction: "搜索", popularTools: "常用工具", today: "今天想完成什么？", todaySub: "搜索你需要的能力，快速找到合适的 AI 工具。",
     login: "登录", signup: "注册", logout: "退出登录", language: "EN", overview: "平台概览", recentTasks: "最近任务", openMarketplace: "打开工具市场",
     creditsBalance: "可用积分", taskCount: "任务总数", fileCount: "文件数量", completed: "已完成", noTasks: "还没有任务", noTasksHint: "从工具市场选择一个工具，创建你的第一个任务。",
-    marketplace: "Tool Marketplace", marketplaceSub: "发现并使用接入 OneShowTools Platform 的 AI 工具。", all: "全部", image: "图像工具", document: "文档工具", audio: "音频工具", writing: "写作工具",
+    marketplace: "Tool Marketplace", marketplaceSub: "按场景发现工具，用一个账户完成从创作到交付的工作。", all: "全部工具", image: "图片工具", document: "文档工具", audio: "音频工具", writing: "写作工具",
+    seo: "SEO 工具", marketing: "营销工具", developer: "开发工具", startup: "创业工具", productivity: "办公工具", social: "社媒工具", data: "数据工具", searchCategory: "AI 搜索", video: "视频工具", agent: "AI Agent",
+    categoryDirectory: "工具分类", availableTools: "个可用工具", marketplaceResults: "工具目录", toolsFound: "个结果", comingSoon: "该分类的工具正在接入", comingSoonHint: "你可以先查看其他分类，或搜索已经上线的能力。",
     ready: "可运行", config: "待配置", creditsUnit: "积分 / 次", run: "打开工具", runTitle: "创建 AI 任务", inputLabel: "任务内容", inputPlaceholder: "输入需要处理的文本或任务要求…",
     attach: "关联文件", createTask: "创建任务", taskCreated: "任务已创建，可在任务中心查看状态。", runtime: "AI Runtime", runtimeSub: "管理平台托管模型、个人模型连接与工具运行方式。",
     provider: "运行提供商", model: "模型", status: "状态", configured: "已配置", notConfigured: "未配置", runtimeNote: "未配置的运行服务不会伪造结果；任务会保留真实状态并自动退回积分。",
@@ -50,7 +69,9 @@ const dictionary = {
     search: "Search tools or describe what you want to do", searchAction: "Search", popularTools: "Popular tools", today: "What would you like to accomplish?", todaySub: "Search by capability and quickly find the right AI tool.",
     login: "Sign in", signup: "Sign up", logout: "Sign out", language: "中文", overview: "Platform overview", recentTasks: "Recent tasks", openMarketplace: "Open marketplace",
     creditsBalance: "Available credits", taskCount: "Total tasks", fileCount: "Files", completed: "Completed", noTasks: "No tasks yet", noTasksHint: "Choose a tool in the marketplace to create your first task.",
-    marketplace: "Tool Marketplace", marketplaceSub: "Discover AI tools connected to OneShowTools Platform.", all: "All", image: "Image", document: "Documents", audio: "Audio", writing: "Writing",
+    marketplace: "Tool Marketplace", marketplaceSub: "Discover tools by workflow and get work done with one account.", all: "All tools", image: "Image", document: "Documents", audio: "Audio", writing: "Writing",
+    seo: "SEO", marketing: "Marketing", developer: "Developer", startup: "Startup", productivity: "Productivity", social: "Social", data: "Data", searchCategory: "AI Search", video: "Video", agent: "AI Agent",
+    categoryDirectory: "Categories", availableTools: "tools available", marketplaceResults: "Tool directory", toolsFound: "results", comingSoon: "Tools in this category are on the way", comingSoonHint: "Browse another category or search the capabilities already available.",
     ready: "Ready", config: "Setup required", creditsUnit: "credits / run", run: "Open tool", runTitle: "Create AI task", inputLabel: "Task content", inputPlaceholder: "Enter the text or instructions to process…",
     attach: "Attach files", createTask: "Create task", taskCreated: "Task created. Track it in Task Center.", runtime: "AI Runtime", runtimeSub: "Manage the hosted model, personal connections, and tool routing.",
     provider: "Provider", model: "Model", status: "Status", configured: "Configured", notConfigured: "Not configured", runtimeNote: "Unconfigured runtimes never fabricate results. Tasks retain their real state and credits are refunded.",
@@ -371,13 +392,24 @@ function Dashboard({ data, tools, locale, onNavigate, onSearch }) {
 function Marketplace({ tools, locale, query, onQuery, onRun }) {
   const t = dictionary[locale];
   const [category, setCategory] = useState("all");
+  const selectedCategory = marketplaceCategories.find((item) => item.id === category) || marketplaceCategories[0];
   const visible = tools.filter((tool) => {
     const text = `${tool.nameZh} ${tool.nameEn} ${tool.descriptionZh} ${tool.descriptionEn}`.toLowerCase();
-    return (category === "all" || tool.category === category) && (!query || text.includes(query.toLowerCase()));
+    return (category === "all" || selectedCategory.accepts.includes(tool.category)) && (!query || text.includes(query.toLowerCase()));
   });
-  return <div className="page-stack"><PageHeading title={t.marketplace} subtitle={t.marketplaceSub} /><div className="command-search"><MagnifyingGlass size={22} /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={t.search} /><kbd>⌘ K</kbd></div>
-    <div className="category-tabs">{["all", "image", "document", "audio", "writing"].map((item) => <button className={category === item ? "active" : ""} key={item} onClick={() => setCategory(item)}>{t[item]}</button>)}</div>
-    {visible.length ? <div className="tool-grid">{visible.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <article className="tool-card" key={tool.id}><header><span className={`tool-icon ${tool.category}`}><Icon size={25} /></span><StatusPill status={tool.runtimeStatus} locale={locale} /></header><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span><button onClick={() => onRun(tool)}>{t.run}<ArrowRight size={17} /></button></footer></article>; })}</div> : <EmptyState icon={MagnifyingGlass} title={t.noResults} />}
+  const categoryCount = (item) => item.id === "all" ? tools.length : tools.filter((tool) => item.accepts.includes(tool.category)).length;
+  return <div className="page-stack marketplace-page"><PageHeading title={t.marketplace} subtitle={t.marketplaceSub} />
+    <div className="marketplace-search"><MagnifyingGlass size={21} /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={t.search} />{query ? <button aria-label={t.close} onClick={() => onQuery("")}><X size={16} /></button> : <kbd>⌘ K</kbd>}</div>
+    <div className="marketplace-browser">
+      <aside className="marketplace-categories">
+        <header><span>{t.categoryDirectory}</span><small>{tools.length} {t.availableTools}</small></header>
+        <nav>{marketplaceCategories.map((item) => { const CategoryIcon = item.icon; const count = categoryCount(item); return <button className={category === item.id ? "active" : ""} key={item.id} onClick={() => setCategory(item.id)}><span><CategoryIcon size={17} />{t[item.id]}</span><small>{count}</small></button>; })}</nav>
+      </aside>
+      <section className="marketplace-directory">
+        <header><div><span>{t.marketplaceResults}</span><h2>{t[selectedCategory.id]}</h2></div><small>{visible.length} {t.toolsFound}</small></header>
+        {visible.length ? <div className="marketplace-tool-list">{visible.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const usesModel = tool.modelConfigurable || ["document", "writing"].includes(tool.category); return <article className="marketplace-tool-row" key={tool.id}><span className={`tool-icon compact ${tool.category}`}><Icon size={20} /></span><div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p></div><div className="marketplace-tool-meta">{usesModel ? <span className="status-pill ready"><CheckCircle size={14} weight="fill" />{t.configured}</span> : <StatusPill status={tool.runtimeStatus} locale={locale} />}<span><Coins size={14} />{tool.creditCost}</span></div><button className="marketplace-open" aria-label={t.run} onClick={() => onRun(tool)}><ArrowRight size={18} /></button></article>; })}</div> : <EmptyState icon={selectedCategory.icon} title={query ? t.noResults : t.comingSoon} body={query ? undefined : t.comingSoonHint} />}
+      </section>
+    </div>
   </div>;
 }
 

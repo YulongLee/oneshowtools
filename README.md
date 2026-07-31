@@ -55,6 +55,28 @@ use. The platform runs without provider keys, but AI tasks remain in
 - `STRIPE_SECRET_KEY` and `STRIPE_PRO_PRICE_ID` enable real subscription checkout.
 - `ADMIN_EMAILS` is a comma-separated allowlist of verified accounts that may access `/admin`.
 
+## Internal Codex executor
+
+The backend includes an internal Codex executor for developing and maintaining
+individual tools. It is deliberately separate from OneShowModel, is not returned
+by public runtime APIs, and does not appear in the customer model picker.
+
+The executor is disabled by default. To enable it, configure
+`CODEX_EXECUTOR_ENABLED`, `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL`,
+`DASHSCOPE_MODEL`, and `CODEX_WORKSPACE_ROOT`. The supplied
+`OFFERSTEADY_DASHSCOPE_API_KEY`, `OFFERSTEADY_CHAT_QWEN_BASE_URL`, and
+`OFFERSTEADY_CHAT_MODEL` variable names are also accepted directly. The
+workspace must be a dedicated Git checkout beneath the configured root and must
+not contain production credentials, `.env` files, customer uploads, or database
+files. Runs use DashScope's OpenAI-compatible Responses endpoint, a
+workspace-write sandbox with network and web search disabled, a minimal
+child-process environment, and a bounded timeout.
+
+Backend development code can import `codexExecutor` from
+`server/codex-executor.mjs` and call `run({ prompt, workingDirectory })`. The
+result contains only the final response, changed file paths, token usage, and a
+resumable thread ID; raw command output and reasoning are not returned.
+
 ## Admin console
 
 The standalone admin console is available at `/admin`. It uses the same verified

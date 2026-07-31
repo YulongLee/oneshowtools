@@ -131,6 +131,43 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 
 .command-search { height: 52px; padding: 0 15px; border: 1px solid #cbdcf4; border-radius: 10px; display: flex; align-items: center; gap: 11px; color: var(--blue); background: #fff; box-shadow: 0 8px 24px rgba(31,91,175,.05); }
 .command-search input { flex: 1; height: 100%; min-width: 0; border: 0; outline: 0; color: var(--navy); }
+.marketplace-page { gap: 22px; }
+.marketplace-search { height: 54px; display: flex; align-items: center; gap: 11px; padding: 0 15px; border: 1px solid #bfd4f0; border-radius: 11px; color: var(--blue); background: #fff; box-shadow: 0 9px 26px rgba(31,91,175,.055); }
+.marketplace-search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(23,105,232,.08); }
+.marketplace-search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; color: var(--navy); background: transparent; }
+.marketplace-search input::placeholder { color: #96a2b4; }
+.marketplace-search > button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px; color: #77859a; background: #f2f5f9; }
+.marketplace-browser { min-height: 560px; display: grid; grid-template-columns: 205px minmax(0, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 10px 30px rgba(39,63,96,.035); }
+.marketplace-categories { min-width: 0; padding: 18px 12px; border-right: 1px solid #e7ebf1; background: #f9fbfd; }
+.marketplace-categories > header { display: grid; gap: 4px; padding: 0 9px 13px; }
+.marketplace-categories > header span { color: #26334a; font-size: 12px; font-weight: 700; }
+.marketplace-categories > header small { color: #8995a6; font-size: 9px; }
+.marketplace-categories nav { display: grid; gap: 3px; }
+.marketplace-categories nav button { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; color: #5e6b80; background: transparent; font-size: 10px; text-align: left; }
+.marketplace-categories nav button > span { min-width: 0; display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+.marketplace-categories nav button svg { flex: 0 0 auto; color: #8190a4; }
+.marketplace-categories nav button > small { min-width: 21px; height: 20px; display: grid; place-items: center; border-radius: 999px; color: #8b97a8; background: #eef2f6; font-size: 8px; }
+.marketplace-categories nav button:hover { color: var(--blue); background: #f0f5fc; }
+.marketplace-categories nav button.active { color: var(--blue); border-color: #d5e4f8; background: #edf4ff; font-weight: 700; }
+.marketplace-categories nav button.active svg { color: var(--blue); }
+.marketplace-categories nav button.active > small { color: #fff; background: var(--blue); }
+.marketplace-directory { min-width: 0; }
+.marketplace-directory > header { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 21px; border-bottom: 1px solid #e9edf2; }
+.marketplace-directory > header > div { display: grid; gap: 3px; }
+.marketplace-directory > header span { color: #8592a4; font-size: 8px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.marketplace-directory > header h2 { margin: 0; font-size: 17px; letter-spacing: -.25px; }
+.marketplace-directory > header > small { color: #7e8b9e; font-size: 9px; white-space: nowrap; }
+.marketplace-tool-list { padding: 4px 18px 18px; }
+.marketplace-tool-row { min-height: 91px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 13px; padding: 14px 3px; border-bottom: 1px solid #edf0f4; }
+.marketplace-tool-row:last-child { border-bottom: 0; }
+.marketplace-tool-row > div { min-width: 0; }
+.marketplace-tool-row h3 { margin: 0 0 5px; font-size: 13px; }
+.marketplace-tool-row p { max-width: 480px; margin: 0; overflow: hidden; color: #748095; font-size: 10px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; }
+.marketplace-tool-meta { min-width: 78px; display: grid; justify-items: end; gap: 7px; }
+.marketplace-tool-meta > span:last-child { display: inline-flex; align-items: center; gap: 4px; color: #8793a4; font-size: 9px; }
+.marketplace-open { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #dce4ef; border-radius: 9px; color: var(--blue); background: #fff; }
+.marketplace-open:hover { color: #fff; border-color: var(--blue); background: var(--blue); }
+.marketplace-directory > .empty-state { min-height: 360px; }
 .category-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: -13px; }
 .category-tabs button { padding: 8px 13px; border: 1px solid transparent; border-radius: 8px; color: #69768a; background: #edf1f6; font-size: 12px; }
 .category-tabs button.active { color: var(--blue); border-color: #d5e4fa; background: #edf4ff; font-weight: 650; }
@@ -482,6 +519,12 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .guest-hero-copy { max-width: 680px; margin: 0 auto; width: 100%; }
   .capability-visual { width: min(680px,100%); height: 320px; margin: 10px auto 0; }
   .tool-workspace-grid { grid-template-columns: 1fr; }
+  .marketplace-browser { grid-template-columns: 1fr; }
+  .marketplace-categories { border-right: 0; border-bottom: 1px solid #e7ebf1; }
+  .marketplace-categories > header { display: flex; align-items: center; justify-content: space-between; }
+  .marketplace-categories nav { width: 100%; min-width: 0; display: flex; overflow-x: auto; padding-bottom: 3px; scrollbar-width: none; }
+  .marketplace-categories nav::-webkit-scrollbar { display: none; }
+  .marketplace-categories nav button { flex: 0 0 auto; }
 }
 @media (max-width: 600px) {
   .platform-shell { display: block; }
@@ -541,6 +584,14 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .tool-input-panel, .tool-result-panel { min-height: auto; padding: 18px; }
   .result-file-row { grid-template-columns: auto 1fr; }
   .result-file-row .primary-button { grid-column: 1 / -1; }
+  .marketplace-page { gap: 17px; }
+  .marketplace-browser { min-height: 500px; }
+  .marketplace-categories { padding: 13px 10px; }
+  .marketplace-directory > header { min-height: 66px; padding: 0 15px; }
+  .marketplace-tool-list { padding-inline: 12px; }
+  .marketplace-tool-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; }
+  .marketplace-tool-meta { display: none; }
+  .marketplace-tool-row p { max-width: calc(100vw - 180px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .capability-status { animation: none; opacity: .86; }
