@@ -4,6 +4,7 @@ import { PDFParse } from "pdf-parse";
 import { audit, db } from "./database.mjs";
 import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
+import { generateWriting } from "./writing-engine.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -161,7 +162,7 @@ async function processText(slug, payload, locale, user) {
   throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
 }
 
-function storeCompletedTask({ user, tool, input, output, resultFile }) {
+function storeCompletedTask({ user, tool, input, output, resultFile, writingRun = null }) {
   const taskId = randomUUID();
   const timestamp = Date.now();
   db.exec("BEGIN IMMEDIATE");
@@ -189,6 +190,15 @@ function storeCompletedTask({ user, tool, input, output, resultFile }) {
         VALUES (?, ?, ?, ?, 'available', ?, ?)
       `).run(resultFile.id, resultFile.provider, resultFile.objectKey, resultFile.etag, timestamp, timestamp);
       db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, resultFile.id);
+    }
+    if (writingRun) {
+      db.prepare(`
+        INSERT INTO writing_runs (task_id, user_id, module_id, template_id, prompt_version,
+          output_language, output_length, tone, word_count, quality_score, model_route, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(taskId, user.id, writingRun.moduleId, writingRun.templateId, writingRun.promptVersion,
+        writingRun.outputLanguage, writingRun.outputLength, writingRun.tone, writingRun.wordCount,
+        writingRun.qualityScore, writingRun.modelRoute, timestamp);
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -231,14 +241,17 @@ export async function runToolAction(request, user, tool) {
     else throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
   } else {
     const payload = await request.json().catch(() => ({}));
-    input = {
-      text: String(payload.text || "").slice(0, 50000),
-      modelConnectionId: tool.runtimeKind === "openai"
-        ? toolModelSelection(user.id, tool.id, payload.modelConnectionId)
-        : null,
-    };
-    payload.modelConnectionId = input.modelConnectionId;
-    processed = await processText(tool.slug, payload, user.locale, user);
+    const modelConnectionId = tool.runtimeKind === "openai"
+      ? toolModelSelection(user.id, tool.id, payload.modelConnectionId)
+      : null;
+    payload.modelConnectionId = modelConnectionId;
+    if (tool.slug === "ai-writer") {
+      processed = await generateWriting({ user, payload, connectionId: modelConnectionId });
+      input = processed.safeInput;
+    } else {
+      input = { text: String(payload.text || "").slice(0, 50000), modelConnectionId };
+      processed = await processText(tool.slug, payload, user.locale, user);
+    }
   }
 
   let resultFile = null;
@@ -255,7 +268,7 @@ export async function runToolAction(request, user, tool) {
   }
   const output = { ...processed.output, ...(resultFile ? { resultFileId: resultFile.id } : {}) };
   try {
-    return storeCompletedTask({ user, tool, input, output, resultFile });
+    return storeCompletedTask({ user, tool, input, output, resultFile, writingRun: processed.writingRun });
   } catch (error) {
     if (resultFile) await deleteStoredFile(resultFile).catch(() => {});
     throw error;

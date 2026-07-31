@@ -7,9 +7,12 @@ import {
   SquaresFour, StopCircle, Translate, Trash, User, UserCircle, Warning, Wrench, X,
   GearSix, Plus, PlugsConnected, ShieldCheck, PenNib, ChartLineUp, Megaphone, Code,
   Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, Robot,
+  NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
+  PaperPlaneRight, CheckSquare, FileText,
 } from "@phosphor-icons/react";
 
-const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone };
+const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil };
+const writingIconMap = { Article, ArrowsClockwise, TrendUp, MegaphoneSimple, ShareNetwork, Briefcase, Palette };
 const marketplaceCategories = [
   { id: "all", icon: SquaresFour, accepts: [] },
   { id: "writing", icon: PenNib, accepts: ["writing"] },
@@ -239,7 +242,66 @@ function RunToolDialog({ tool, files, locale, onClose, onCreated }) {
   </section></div>;
 }
 
-function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+  const zh = locale !== "en";
+  const labels = zh ? {
+    back: "返回工具市场", eyebrow: "AI WRITING STUDIO", title: "AI 写作工作台", subtitle: "从 49 个专业模板开始，也可以加入自己的提示词。每次生成都会经过质量自检。",
+    modules: "写作能力", templates: "选择模板", input: "写作信息", output: "生成结果", setup: "输出设置", language: "输出语言", length: "内容长度", tone: "写作语气", model: "运行模型", custom: "补充要求（可选）", customHint: "例如：使用更多案例，结尾加入行动建议…", generate: "生成并自检", generating: "正在写作与检查…", empty: "选择模板并填写信息，完成的 Markdown 内容会显示在这里。", quality: "质量自检", copy: "复制 Markdown", download: "下载 .md", copied: "已复制", required: "请填写所有必填项", login: "登录后即可生成并保存任务记录", auto: "跟随输入", chinese: "简体中文", english: "English", short: "精简", medium: "标准", long: "深度", professional: "专业", friendly: "亲和", concise: "简洁", persuasive: "有说服力", creative: "创意", chars: "字", credits: "积分 / 次", passed: "项通过", issue: "项建议",
+  } : {
+    back: "Back to marketplace", eyebrow: "AI WRITING STUDIO", title: "AI Writing Workspace", subtitle: "Start with 49 professional templates or add your own instructions. Every generation includes a quality review.",
+    modules: "Capabilities", templates: "Choose a template", input: "Writing brief", output: "Result", setup: "Output settings", language: "Language", length: "Length", tone: "Tone", model: "Runtime model", custom: "Additional instructions (optional)", customHint: "For example: add more examples and end with next steps…", generate: "Generate & review", generating: "Writing and reviewing…", empty: "Choose a template and complete the brief. Your Markdown result will appear here.", quality: "Quality review", copy: "Copy Markdown", download: "Download .md", copied: "Copied", required: "Complete all required fields", login: "Sign in to generate and save a task record", auto: "Match input", chinese: "Simplified Chinese", english: "English", short: "Short", medium: "Standard", long: "In-depth", professional: "Professional", friendly: "Friendly", concise: "Concise", persuasive: "Persuasive", creative: "Creative", chars: "chars", credits: "credits / run", passed: "checks passed", issue: "suggestions",
+  };
+  const modules = catalog?.modules || [];
+  const [moduleId, setModuleId] = useState(modules[0]?.id || "content-creation");
+  const activeModule = modules.find((item) => item.id === moduleId) || modules[0];
+  const [templateId, setTemplateId] = useState(activeModule?.templates?.[0]?.id || "ai-article");
+  const activeTemplate = activeModule?.templates?.find((item) => item.id === templateId) || activeModule?.templates?.[0];
+  const [values, setValues] = useState({});
+  const [settings, setSettings] = useState({ outputLanguage: zh ? "zh-CN" : "en", length: "medium", tone: "professional", customInstructions: "" });
+  const [modelConnectionId, setModelConnectionId] = useState("managed");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
+
+  useEffect(() => { if (!moduleId && modules[0]) setModuleId(modules[0].id); }, [moduleId, modules]);
+  useEffect(() => { if (activeModule && !activeModule.templates.some((item) => item.id === templateId)) setTemplateId(activeModule.templates[0]?.id); }, [activeModule, templateId]);
+  useEffect(() => { setModelConnectionId(runtimeTool?.modelConnectionId || "managed"); }, [runtimeTool?.modelConnectionId]);
+  const selectModule = (id) => { const next = modules.find((item) => item.id === id); setModuleId(id); setTemplateId(next?.templates?.[0]?.id); setValues({}); setError(""); };
+  const selectTemplate = (id) => { setTemplateId(id); setValues({}); setError(""); };
+  const changeModel = async (value) => { const previous = modelConnectionId; setModelConnectionId(value); try { await onModelChange?.(tool.id, value); } catch { setModelConnectionId(previous); setError(dictionary[locale].error); } };
+  const generate = async () => {
+    if (!authenticated) return onAuth();
+    if (activeTemplate?.fields?.some((item) => item.required && !String(values[item.id] || "").trim())) return setError(labels.required);
+    setBusy(true); setError(""); setResult(null);
+    try {
+      const response = await api(`/api/tool-actions/${tool.slug}`, jsonOptions("POST", { templateId: activeTemplate.id, values, ...settings, modelConnectionId }));
+      setResult(response.output); onCompleted?.(response);
+    } catch (caught) { setError(caught.status === 402 ? dictionary[locale].insufficient : dictionary[locale].error); }
+    finally { setBusy(false); }
+  };
+  const copy = async () => { await navigator.clipboard.writeText(result?.markdown || ""); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const download = () => { const blob = new Blob([result?.markdown || ""], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${activeTemplate?.id || "writing"}.md`; anchor.click(); URL.revokeObjectURL(url); };
+  if (!activeModule || !activeTemplate) return <Loading locale={locale} />;
+
+  return <div className="writer-page">
+    <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{labels.back}</button>
+    <header className="writer-hero"><span className="writer-product-icon"><NotePencil size={34} weight="duotone" /><Sparkle className="writer-spark" size={17} weight="fill" /></span><div><p className="eyebrow">{labels.eyebrow}</p><h1>{labels.title}</h1><p>{labels.subtitle}</p></div><div className="writer-meta"><span><CheckCircle size={16} weight="fill" />{modules.reduce((sum, item) => sum + item.templates.length, 0)} Templates</span><span><Coins size={16} />{tool.creditCost} {labels.credits}</span></div></header>
+    <div className="writer-shell">
+      <aside className="writer-library"><header><strong>{labels.modules}</strong><small>7 MODULES</small></header><nav>{modules.map((module) => { const Icon = writingIconMap[module.icon] || Article; return <button key={module.id} className={`${module.id === activeModule.id ? "active" : ""} ${module.accent}`} onClick={() => selectModule(module.id)}><span><Icon size={19} weight={module.id === activeModule.id ? "duotone" : "regular"} /></span><div><strong>{module.label[zh ? "zh" : "en"]}</strong><small>{module.templates.length} {zh ? "个模板" : "templates"}</small></div><ArrowRight size={14} /></button>; })}</nav></aside>
+      <main className="writer-canvas">
+        <section className="writer-template-section"><header><div><span>{activeModule.label[zh ? "zh" : "en"]}</span><h2>{labels.templates}</h2></div><p>{activeModule.description[zh ? "zh" : "en"]}</p></header><div className="writer-template-grid">{activeModule.templates.map((template) => <button key={template.id} className={template.id === activeTemplate.id ? "active" : ""} onClick={() => selectTemplate(template.id)}><span><FileText size={18} /></span><div><strong>{template.label[zh ? "zh" : "en"]}</strong><small>{template.description[zh ? "zh" : "en"]}</small></div>{template.id === activeTemplate.id && <CheckCircle size={17} weight="fill" />}</button>)}</div></section>
+        <section className="writer-editor"><header><span className={`writer-template-mark ${activeModule.accent}`}><TextAa size={22} weight="duotone" /></span><div><small>{activeModule.label[zh ? "zh" : "en"]}</small><h2>{activeTemplate.label[zh ? "zh" : "en"]}</h2></div></header><div className="writer-fields">{activeTemplate.fields.map((field) => <label key={field.id} className={field.type === "textarea" ? "wide" : ""}><span>{field.label[zh ? "zh" : "en"]}{field.required && <em>*</em>}</span>{field.type === "textarea" ? <textarea rows={field.id === "sourceContent" ? 9 : 5} value={values[field.id] || ""} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} placeholder={field.placeholder?.[zh ? "zh" : "en"] || ""} /> : field.type === "select" ? <select value={values[field.id] || ""} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}><option value="">{zh ? "请选择" : "Select"}</option><option value="beginner">{zh ? "基础/通用" : "General"}</option><option value="advanced">{zh ? "专业/进阶" : "Advanced"}</option><option value="friendly">{zh ? "亲和" : "Friendly"}</option><option value="professional">{zh ? "专业" : "Professional"}</option></select> : <input value={values[field.id] || ""} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} placeholder={field.placeholder?.[zh ? "zh" : "en"] || ""} />}</label>)}</div></section>
+        <section className="writer-result"><header><div><span className="writer-result-icon"><Sparkle size={19} weight="fill" /></span><div><small>MARKDOWN</small><h2>{labels.output}</h2></div></div>{result && <div className="writer-result-actions"><button onClick={copy}><Copy size={16} />{copied ? labels.copied : labels.copy}</button><button onClick={download}><DownloadSimple size={16} />{labels.download}</button></div>}</header>{!result ? <div className="writer-result-empty"><NotePencil size={35} weight="duotone" /><strong>{labels.output}</strong><p>{labels.empty}</p></div> : <><pre>{result.markdown}</pre><div className="writer-review"><div><strong>{result.review?.score ?? 0}</strong><span>/100<br />{labels.quality}</span></div><section><p>{result.review?.checks?.map((item) => <span key={item}><CheckSquare size={15} weight="fill" />{item}</span>)}</p>{result.review?.issues?.length > 0 && <small>{result.review.issues.length} {labels.issue}：{result.review.issues.join("；")}</small>}</section><em>{result.wordCount} {labels.chars}</em></div></>}</section>
+      </main>
+      <aside className="writer-settings"><header><GearSix size={19} /><strong>{labels.setup}</strong></header><label><span>{labels.language}</span><select value={settings.outputLanguage} onChange={(event) => setSettings({ ...settings, outputLanguage: event.target.value })}><option value="zh-CN">{labels.chinese}</option><option value="en">{labels.english}</option><option value="auto">{labels.auto}</option></select></label><label><span>{labels.length}</span><div className="writer-segment">{["short", "medium", "long"].map((value) => <button className={settings.length === value ? "active" : ""} onClick={() => setSettings({ ...settings, length: value })} key={value}>{labels[value]}</button>)}</div></label><label><span>{labels.tone}</span><select value={settings.tone} onChange={(event) => setSettings({ ...settings, tone: event.target.value })}>{["professional", "friendly", "concise", "persuasive", "creative"].map((value) => <option value={value} key={value}>{labels[value]}</option>)}</select></label>{authenticated && <label><span>{labels.model}</span><select value={modelConnectionId} onChange={(event) => changeModel(event.target.value)}><option value="managed">{dictionary[locale].useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}<label><span>{labels.custom}</span><textarea rows={6} value={settings.customInstructions} onChange={(event) => setSettings({ ...settings, customInstructions: event.target.value })} placeholder={labels.customHint} /></label>{!authenticated && <div className="writer-login"><LockKey size={18} /><span>{labels.login}</span></div>}{error && <p className="form-error"><Warning size={16} />{error}</p>}<button className="writer-generate" onClick={generate} disabled={busy}>{busy ? <><SpinnerGap className="spin" size={18} />{labels.generating}</> : <><PaperPlaneRight size={18} weight="fill" />{labels.generate}</>}</button><small className="writer-review-note"><ShieldCheck size={15} />{zh ? "生成后自动检查准确性、结构、可读性与模板规范" : "Automatically checks accuracy, structure, readability, and template fit"}</small></aside>
+    </div>
+  </div>;
+}
+
+function ToolPage({ tool, catalog, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "ai-writer") return <AiWriterPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   const t = dictionary[locale];
   const Icon = iconMap[tool.icon] || Wrench;
   const [file, setFile] = useState(null);
@@ -362,9 +424,9 @@ function ToolPage({ tool, locale, authenticated, runtime, onBack, onAuth, onComp
   </div>;
 }
 
-function PublicToolShell({ tool, locale, authenticated, onBack, onAuth, onLocale, onCompleted }) {
+function PublicToolShell({ tool, catalog, locale, authenticated, onBack, onAuth, onLocale, onCompleted }) {
   const t = dictionary[locale];
-  return <div className="guest-shell"><header className="guest-header"><Brand /><nav><button onClick={onBack}>{t.marketplace}</button><span>{locale === "en" ? tool.nameEn : tool.nameZh}</span></nav><div><button className="locale-button" onClick={onLocale}><Translate size={17} />{t.language}</button><button className="primary-button" onClick={onAuth}>{t.login}</button></div></header><main className="public-tool-main"><ToolPage tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} /></main></div>;
+  return <div className="guest-shell"><header className="guest-header"><Brand /><nav><button onClick={onBack}>{t.marketplace}</button><span>{locale === "en" ? tool.nameEn : tool.nameZh}</span></nav><div><button className="locale-button" onClick={onLocale}><Translate size={17} />{t.language}</button><button className="primary-button" onClick={onAuth}>{t.login}</button></div></header><main className="public-tool-main"><ToolPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} /></main></div>;
 }
 
 function TaskRow({ task, locale, onCancel }) {
@@ -747,6 +809,7 @@ export function App() {
   const [health, setHealth] = useState({});
   const [tools, setTools] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [writingCatalog, setWritingCatalog] = useState(null);
   const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [] });
   const [query, setQuery] = useState("");
   const [authOpen, setAuthOpen] = useState(() => Boolean(new URLSearchParams(location.search).get("resetToken")));
@@ -755,11 +818,11 @@ export function App() {
   const t = dictionary[locale];
 
   const loadPublic = useCallback(async () => {
-    const [sessionResult, healthResult, toolsResult, plansResult] = await Promise.all([
+    const [sessionResult, healthResult, toolsResult, plansResult, writingResult] = await Promise.all([
       api("/api/auth/session").catch(() => ({ user: null })), api("/api/health").catch(() => ({})),
-      api("/api/tools").catch(() => ({ tools: [] })), api("/api/plans").catch(() => ({ plans: [] })),
+      api("/api/tools").catch(() => ({ tools: [] })), api("/api/plans").catch(() => ({ plans: [] })), api("/api/writing/catalog").catch(() => null),
     ]);
-    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult.tools); setPlans(plansResult.plans);
+    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult.tools); setPlans(plansResult.plans); setWritingCatalog(writingResult);
   }, []);
   const loadPrivate = useCallback(async () => {
     if (!session) return;
@@ -843,7 +906,7 @@ export function App() {
   if (session === undefined) return <Loading locale={locale} />;
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
   if (!session && routeSlug && !routeTool) return <Loading locale={locale} />;
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={writingCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {
@@ -855,11 +918,12 @@ export function App() {
     tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
     account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
-    tool: routeTool ? <ToolPage tool={routeTool} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
+    tool: routeTool ? <ToolPage tool={routeTool} catalog={writingCatalog} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 
+  const isWriter = routeTool?.slug === "ai-writer";
   return <div className="platform-shell"><aside className="sidebar"><Brand /><nav>{navItems.map(([key, Icon]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={20} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span></button>)}</nav><div className="sidebar-footer"><div className="mini-profile"><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{session.email}</small></div></div></div></aside>
     <div className="main-column"><header className="platform-header"><button className="global-search" onClick={() => navigateView("marketplace")}><MagnifyingGlass size={19} /><span>{t.search}</span><kbd>⌘ K</kbd></button><div className="header-actions"><button className="locale-button" onClick={() => setLocale(locale === "en" ? "zh-CN" : "en")}><Translate size={17} />{t.language}</button><button className="profile-button" onClick={() => navigateView("account")}><span>{session.name.slice(0, 1).toUpperCase()}</span></button></div></header>
-      <div className={`workspace-layout ${view === "marketplace" ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : ""}`}>{content}</main>{view !== "marketplace" && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>
+      <div className={`workspace-layout ${view === "marketplace" || isWriter ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : isWriter ? "writer-workspace" : ""}`}>{content}</main>{view !== "marketplace" && !isWriter && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>
     </div>{toast && <div className="toast"><CheckCircle size={19} weight="fill" />{toast}</div>}</div>;
 }

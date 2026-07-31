@@ -16,6 +16,7 @@ import {
 } from "./security.mjs";
 import { refundTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
+import { writingCatalog } from "./writing-engine.mjs";
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
@@ -904,6 +905,7 @@ export async function handleApi(request) {
     const tools = db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY name_en`).all();
     return json({ tools });
   }
+  if (path === "/api/writing/catalog" && request.method === "GET") return json(writingCatalog());
   if (path === "/api/plans" && request.method === "GET") {
     const plans = db.prepare(`
       SELECT id, code, name_zh AS nameZh, name_en AS nameEn, amount_minor AS amountMinor,

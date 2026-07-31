@@ -252,6 +252,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0009_market_intelligence_v2.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0010_market_intelligence_conversations.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0011_platform_models_and_object_storage.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0012_ai_writing.sql"), "utf8"));
 
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");
@@ -265,6 +266,7 @@ export function initializeDatabase() {
     ["tool_pdf", "pdf-summary", "PDF 摘要", "PDF Summarizer", "提取 PDF 文本并生成结构化摘要。", "Extract PDF text into a structured summary.", "document", "FilePdf", 12, "openai"],
     ["tool_compress", "image-compressor", "图片压缩", "Image Compressor", "转换为 WebP 以减小图片体积，同时保持清晰度。", "Convert to WebP to reduce size while preserving clarity.", "image", "ImageSquare", 2, "builtin-image"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
+    ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
   ];
   const insertTool = db.prepare(`
     INSERT INTO tools (
@@ -302,7 +304,9 @@ export function initializeDatabase() {
 }
 
 export function refreshRuntimeStatuses() {
-  const openAiReady = Boolean(process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY);
+  const storedManagedModel = db.prepare("SELECT 1 AS ready FROM platform_model_configs WHERE purpose = 'managed_runtime' AND status = 'active'").get();
+  const openAiReady = Boolean(process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY || storedManagedModel?.ready)
+    && String(process.env.ONESHOW_MODEL_EXECUTION_ENABLED || "true").toLowerCase() !== "false";
   const externalReady = Boolean(process.env.TOOL_RUNTIME_BASE_URL);
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'openai'")
     .run(openAiReady ? "ready" : "configuration_required");

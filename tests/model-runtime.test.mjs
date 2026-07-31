@@ -60,6 +60,7 @@ const {
 } = await import("../server/model-gateway.mjs");
 const { db } = await import("../server/database.mjs");
 const { refundTask } = await import("../server/runtime.mjs");
+const { generateWriting, writingCatalog } = await import("../server/writing-engine.mjs");
 
 function addUser(email) {
   const id = randomUUID();
@@ -85,6 +86,33 @@ test("managed runtime returns a provider-neutral result and redacted status", as
   assert.match(publicStatus, /OneShowModel/);
   assert.doesNotMatch(publicStatus, /internal-model-id|managed-secret-key|127\.0\.0\.1/);
   assert.deepEqual(runtimeSummary(userId).supportedTemplates.map((item) => item.id), ["openai", "anthropic"]);
+});
+
+test("AI writing exposes 7 modules and 49 templates, then performs draft and review calls", async () => {
+  const catalog = writingCatalog();
+  assert.equal(catalog.modules.length, 7);
+  assert.equal(catalog.modules.reduce((sum, module) => sum + module.templates.length, 0), 49);
+  assert.doesNotMatch(JSON.stringify(catalog), /Template rules|never invent|hidden prompts/i);
+  const userId = addUser("writer@example.com");
+  const before = observedRequests.length;
+  const generated = await generateWriting({
+    user: { id: userId, locale: "zh-CN" },
+    connectionId: "managed",
+    payload: {
+      templateId: "blog-post",
+      values: { topic: "小团队如何选择 AI 工具", audience: "独立开发者", keywords: "AI工具,效率" },
+      outputLanguage: "zh-CN",
+      length: "short",
+      tone: "professional",
+      customInstructions: "给出三个可执行建议",
+    },
+  });
+  assert.equal(generated.output.mode, "ai-reviewed");
+  assert.equal(generated.output.templateId, "blog-post");
+  assert.equal(generated.output.route, "managed");
+  assert.ok(generated.output.review.score >= 0);
+  assert.equal(observedRequests.length - before, 2);
+  assert.doesNotMatch(JSON.stringify(generated), /managed-secret-key/);
 });
 
 test("customer credentials are encrypted, masked, owner-scoped, and tamper evident", () => {
