@@ -138,6 +138,29 @@ test("Baidu ranking uses the asynchronous provider flow and stores an isolated s
   assert.equal(result.rankSnapshots[0].device, "mobile");
 });
 
+test("backlink providers do not require keyword fields", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const previousLogin = process.env.DATAFORSEO_LOGIN;
+  const previousPassword = process.env.DATAFORSEO_PASSWORD;
+  process.env.DATAFORSEO_LOGIN = "test-login";
+  process.env.DATAFORSEO_PASSWORD = "test-password";
+  globalThis.fetch = async (url, options = {}) => {
+    assert.match(String(url), /backlinks\/summary\/live$/);
+    const posted = JSON.parse(options.body)[0];
+    assert.equal(posted.target, "example.com");
+    return new Response(JSON.stringify({ status_code: 20000, tasks: [{ status_code: 20000, cost: 0.001, result: [{ backlinks: 12, referring_domains: 4 }] }] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (previousLogin == null) delete process.env.DATAFORSEO_LOGIN; else process.env.DATAFORSEO_LOGIN = previousLogin;
+    if (previousPassword == null) delete process.env.DATAFORSEO_PASSWORD; else process.env.DATAFORSEO_PASSWORD = previousPassword;
+  });
+
+  const result = await generateSeo({ user: { id: "backlink-user" }, connectionId: null, payload: { templateId: "backlink-overview", locale: "zh-CN", values: { website: "https://example.com" } } });
+  assert.match(result.output.markdown, /外链总数 \| 12/);
+  assert.equal(result.output.dataSource, "dataforseo");
+});
+
 test("SEO reports use persisted runs and ranking trends use only persisted rank snapshots", async (t) => {
   const userId = randomUUID();
   const taskId = randomUUID();

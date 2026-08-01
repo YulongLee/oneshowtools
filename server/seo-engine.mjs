@@ -468,7 +468,7 @@ async function runBaiduProvider(input, settings, keywordList, keyword) {
 
 async function runProvider(input) {
   if (!dataForSeoCredentials()) throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: input.entry.source });
-  const keywordList = (input.values.keywords || input.values.topic).split(/[,，\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 100);
+  const keywordList = (input.values.keywords || input.values.topic || "").split(/[,，\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 100);
   const keyword = keywordList[0] || input.values.topic;
   const settings = providerSettings(input);
   const { searchEngine, device, location, languageName, os } = settings;
