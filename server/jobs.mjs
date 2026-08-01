@@ -3,12 +3,14 @@ import { db } from "./database.mjs";
 import { executeTask, failTaskExecution } from "./runtime.mjs";
 import { collectSystemMetrics } from "./observability.mjs";
 import { generateMarketIntelligenceReport, shouldRunDailyMarketReport } from "./market-intelligence.mjs";
+import { runDueSeoAgentScans } from "./seo-agent.mjs";
 
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 8)}`;
 let timer;
 let working = false;
 let metricsTimer;
 let intelligenceTimer;
+let seoAgentTimer;
 
 export function enqueueTask(taskId, timestamp = Date.now()) {
   db.prepare(`
@@ -125,6 +127,12 @@ export function startWorker() {
     intelligenceTimer.unref?.();
     check();
   }
+  if (process.env.SEO_AGENT_SCHEDULER_ENABLED !== "false") {
+    const checkSeoAgents = () => runDueSeoAgentScans(1).catch(() => {});
+    seoAgentTimer = setInterval(checkSeoAgents, Number(process.env.SEO_AGENT_POLL_MS || 300000));
+    seoAgentTimer.unref?.();
+    checkSeoAgents();
+  }
 }
 
 export function stopWorker() {
@@ -134,4 +142,6 @@ export function stopWorker() {
   metricsTimer = undefined;
   if (intelligenceTimer) clearInterval(intelligenceTimer);
   intelligenceTimer = undefined;
+  if (seoAgentTimer) clearInterval(seoAgentTimer);
+  seoAgentTimer = undefined;
 }

@@ -255,6 +255,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0012_ai_writing.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0013_seo_workbench.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0014_seo_provider_configs.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0015_seo_agent.sql"), "utf8"));
 
   const rankSnapshotColumns = new Set(db.prepare("PRAGMA table_info(seo_rank_snapshots)").all().map((item) => item.name));
   if (!rankSnapshotColumns.has("search_engine")) db.exec("ALTER TABLE seo_rank_snapshots ADD COLUMN search_engine TEXT NOT NULL DEFAULT 'google'");
@@ -275,6 +276,7 @@ export function initializeDatabase() {
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
+    ["tool_seo_agent", "seo-agent", "OneShow SEO Agent", "OneShow SEO Agent", "持续发现、审批并执行可回滚的 SEO 增长行动。", "Continuously discover, approve, and execute reversible SEO growth actions.", "agent", "Robot", 20, "openai"],
   ];
   const insertTool = db.prepare(`
     INSERT INTO tools (

@@ -10,8 +10,9 @@ import {
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText,
 } from "@phosphor-icons/react";
+import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
 
-const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp };
+const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot };
 const writingIconMap = { Article, ArrowsClockwise, TrendUp, MegaphoneSimple, ShareNetwork, Briefcase, Palette };
 const seoIconMap = { MagnifyingGlass, Article, Pulse: ChartLineUp, TrendUp, Link: ShareNetwork, Binoculars, FileText };
 const marketplaceCategories = [
@@ -414,7 +415,153 @@ function SeoWorkbenchPage({ tool, catalog, locale, authenticated, runtime, onBac
   </div>;
 }
 
-function ToolPage({ tool, catalog, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+function SeoAgentPage({ tool, locale, authenticated, account, onBack, onAuth }) {
+  const zh = locale !== "en";
+  const copy = zh ? {
+    back: "返回工具市场", eyebrow: "AUTONOMOUS SEO WORKSPACE", title: "OneShow SEO Agent", domain: "oneshowseo.com",
+    subtitle: "从发现机会到执行优化，让 SEO 每天持续向前。高风险变更始终由你批准。", running: "Agent 运行中", prototype: "产品原型 · 尚未连接网站写入权限",
+    credits: "可用积分", today: "今日行动", plan: "自动化计划", growth: "增长监控", history: "变更记录", review: "3 项待审批",
+    actionTitle: "修复 12 个页面的 Meta Description", actionBody: "这些页面已有稳定曝光，但摘要缺失或重复。补全后可改善搜索结果中的点击意愿。",
+    evidence: "机会依据", evidenceValue: "来自 28 天 Search Console 数据", impact: "预计影响", impactValue: "+6%～11% 点击率", risk: "风险", riskValue: "低风险，可一键回滚", pages: "影响页面", pagesValue: "12 个 URL", cost: "预计消耗", costValue: "24 积分",
+    approve: "批准并执行", executing: "正在执行", done: "执行完成", changes: "查看变更", hideChanges: "收起变更", safe: "安全模式", safeBody: "页面发布、重定向和删除操作必须人工审批。", on: "已开启", off: "已关闭",
+    scope: "自动化范围", scopeBody: "Agent 可以自主研究和生成草稿，写入网站前需要你的确认。", discover: "发现机会", draft: "生成优化草稿", publish: "发布网站变更", approval: "需要审批",
+    week: "近 7 天增长", impressions: "自然曝光", clicks: "自然点击", health: "技术健康度", next: "下次巡检", nextValue: "今天 18:30",
+    faq: "为 6 个教程页生成 FAQ Schema", faqBody: "页面已包含问答内容，可补充结构化数据帮助搜索引擎理解。", refresh: "更新 3 篇表现下滑的文章", refreshBody: "排名从前 10 位跌至 11–20 位，建议补充过时段落与引用。",
+    inspect: "检查详情", queued: "等待审批", medium: "中风险", low: "低风险", connect: "连接我的网站", login: "登录后开始配置 Agent",
+  } : {
+    back: "Back to marketplace", eyebrow: "AUTONOMOUS SEO WORKSPACE", title: "OneShow SEO Agent", domain: "oneshowseo.com",
+    subtitle: "Move SEO forward every day—from opportunity discovery to safe execution. You approve every high-risk change.", running: "Agent running", prototype: "Product prototype · site write access not connected",
+    credits: "Available credits", today: "Today's actions", plan: "Automation plan", growth: "Growth monitor", history: "Change log", review: "3 awaiting approval",
+    actionTitle: "Fix meta descriptions on 12 pages", actionBody: "These pages have steady impressions but missing or duplicate snippets. Better descriptions can improve search-result CTR.",
+    evidence: "Evidence", evidenceValue: "28 days of Search Console data", impact: "Expected impact", impactValue: "+6%–11% CTR", risk: "Risk", riskValue: "Low, one-click rollback", pages: "Affected", pagesValue: "12 URLs", cost: "Estimated cost", costValue: "24 credits",
+    approve: "Approve & execute", executing: "Executing", done: "Completed", changes: "Review changes", hideChanges: "Hide changes", safe: "Safe mode", safeBody: "Publishing, redirects, and deletion always require human approval.", on: "On", off: "Off",
+    scope: "Automation scope", scopeBody: "The Agent researches and drafts independently, but asks before writing to your site.", discover: "Discover opportunities", draft: "Create optimization drafts", publish: "Publish site changes", approval: "Approval required",
+    week: "Last 7 days", impressions: "Organic impressions", clicks: "Organic clicks", health: "Technical health", next: "Next scan", nextValue: "Today, 18:30",
+    faq: "Generate FAQ schema for 6 guides", faqBody: "The pages already contain Q&A content and can benefit from structured data.", refresh: "Refresh 3 declining articles", refreshBody: "Rankings slipped from the top 10 to positions 11–20; update stale sections and citations.",
+    inspect: "View details", queued: "Awaiting approval", medium: "Medium risk", low: "Low risk", connect: "Connect my website", login: "Sign in to configure the Agent",
+  };
+  const [tab, setTab] = useState("today");
+  const [safeMode, setSafeMode] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [status, setStatus] = useState("idle");
+  const approve = () => {
+    if (!authenticated) return onAuth();
+    setStatus("running");
+    setTimeout(() => setStatus("done"), 900);
+  };
+  const tabs = [["today", copy.today], ["plan", copy.plan], ["growth", copy.growth], ["history", copy.history]];
+  const balance = account?.credits?.balance;
+  return <div className="seo-agent-page">
+    <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{copy.back}</button>
+    <header className="seo-agent-hero">
+      <div className="seo-agent-brand"><span className="seo-agent-logo"><Robot size={31} weight="duotone" /></span><div><p className="eyebrow">{copy.eyebrow}</p><h1>{copy.title}</h1><p>{copy.subtitle}</p></div></div>
+      <div className="seo-agent-hero-meta"><span className="agent-domain"><PlugsConnected size={16} />{copy.domain}</span><span className="agent-live"><i />{copy.running}</span>{authenticated && <span className="agent-credit"><Coins size={17} />{copy.credits} <strong>{balance?.toLocaleString() ?? "—"}</strong></span>}</div>
+    </header>
+    <div className="agent-prototype-note"><ShieldCheck size={16} />{copy.prototype}</div>
+    <nav className="seo-agent-tabs">{tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}{id === "today" && <span>3</span>}</button>)}</nav>
+    <div className="seo-agent-layout">
+      <main className="seo-agent-main">
+        {tab === "today" && <>
+          <section className="agent-section-head"><div><p>{copy.today}</p><h2>{copy.review}</h2></div><span><Clock size={16} />{copy.next} · {copy.nextValue}</span></section>
+          <article className={`agent-primary-action ${status}`}>
+            <header><span className="agent-action-icon"><MagicWand size={24} weight="duotone" /></span><div><span className="agent-recommend">{zh ? "优先推荐" : "Top recommendation"}</span><h3>{copy.actionTitle}</h3><p>{copy.actionBody}</p></div><span className="agent-risk low"><ShieldCheck size={14} />{copy.low}</span></header>
+            <div className="agent-evidence-grid">{[[MagnifyingGlass, copy.evidence, copy.evidenceValue], [TrendUp, copy.impact, copy.impactValue], [ShieldCheck, copy.risk, copy.riskValue], [FileText, copy.pages, copy.pagesValue]].map(([Icon, label, value]) => <div key={label}><Icon size={18} /><span><small>{label}</small><strong>{value}</strong></span></div>)}</div>
+            {expanded && <div className="agent-change-preview"><header><strong>{zh ? "变更预览" : "Change preview"}</strong><span>{copy.pagesValue}</span></header><div><small>/blog/ai-seo-guide</small><p>{zh ? "自动化 SEO 指南：从诊断、内容优化到安全发布，让网站持续获得自然流量。" : "Automated SEO guide: audit, optimize, and publish safely to grow organic traffic."}</p></div><div><small>/tools/seo-workbench</small><p>{zh ? "一站式关键词研究、网站诊断与排名跟踪工具，支持中国与全球搜索市场。" : "Keyword research, site audits, and rank tracking for Chinese and global search markets."}</p></div></div>}
+            <footer><div><small>{copy.cost}</small><strong>{copy.costValue}</strong></div><button className="agent-secondary" onClick={() => setExpanded(!expanded)}>{expanded ? copy.hideChanges : copy.changes}<ArrowRight size={16} /></button><button className="agent-primary" onClick={approve} disabled={status === "running" || status === "done"}>{status === "running" ? <><SpinnerGap className="spin" size={17} />{copy.executing}</> : status === "done" ? <><CheckCircle size={17} weight="fill" />{copy.done}</> : <><Play size={17} weight="fill" />{copy.approve}</>}</button></footer>
+          </article>
+          <div className="agent-action-list">{[[FileText, copy.faq, copy.faqBody, copy.low, "12"], [ArrowsClockwise, copy.refresh, copy.refreshBody, copy.medium, "18"]].map(([Icon, title, body, risk, credits]) => <article key={title}><span><Icon size={21} weight="duotone" /></span><div><h3>{title}</h3><p>{body}</p><small><ShieldCheck size={13} />{risk} · {credits} {zh ? "积分" : "credits"}</small></div><button>{copy.inspect}<ArrowRight size={15} /></button></article>)}</div>
+        </>}
+        {tab === "plan" && <section className="agent-panel"><header><p>{copy.plan}</p><h2>{zh ? "一周自动化节奏" : "Weekly automation rhythm"}</h2></header><div className="agent-plan-list">{[[zh ? "每天" : "Daily", zh ? "扫描技术问题与排名变化" : "Scan technical issues and ranking changes", copy.nextValue], [zh ? "周二" : "Tuesday", zh ? "生成内容更新建议" : "Generate content refresh suggestions", "09:30"], [zh ? "周四" : "Thursday", zh ? "发现关键词与内容缺口" : "Find keyword and content gaps", "10:00"], [zh ? "周五" : "Friday", zh ? "生成本周增长复盘" : "Generate weekly growth review", "17:00"]].map(([day, task, time]) => <div key={task}><span><Clock size={18} /></span><div><small>{day}</small><strong>{task}</strong></div><time>{time}</time></div>)}</div></section>}
+        {tab === "growth" && <section className="agent-panel"><header><p>{copy.growth}</p><h2>{copy.week}</h2></header><div className="agent-growth-grid">{[[TrendUp, copy.impressions, "28,420", "+14.2%"], [ChartLineUp, copy.clicks, "1,836", "+9.8%"], [ShieldCheck, copy.health, "92 / 100", "+4"], [CheckCircle, zh ? "已完成行动" : "Actions completed", "17", zh ? "本周" : "this week"]].map(([Icon, label, value, delta]) => <div key={label}><Icon size={20} weight="duotone" /><small>{label}</small><strong>{value}</strong><span>{delta}</span></div>)}</div><div className="agent-insight"><Lightbulb size={22} weight="duotone" /><div><strong>{zh ? "本周洞察" : "Weekly insight"}</strong><p>{zh ? "教程类页面贡献了 63% 的新增自然点击。建议下一轮优先补充高意图 FAQ 与内部链接。" : "Tutorial pages drove 63% of new organic clicks. Prioritize high-intent FAQs and internal links next."}</p></div></div></section>}
+        {tab === "history" && <section className="agent-panel"><header><p>{copy.history}</p><h2>{zh ? "所有变更均可追溯" : "Every change is traceable"}</h2></header><div className="agent-history-list">{[[CheckCircle, zh ? "更新 8 个页面标题" : "Updated 8 page titles", zh ? "你批准 · 昨天 16:42" : "Approved by you · Yesterday 16:42"], [ArrowsClockwise, zh ? "回滚 /pricing 的描述更新" : "Rolled back /pricing description", zh ? "自动保护 · 3 天前" : "Automatic safeguard · 3 days ago"], [MagnifyingGlass, zh ? "完成全站技术巡检" : "Completed technical site scan", zh ? "Agent · 4 天前" : "Agent · 4 days ago"]].map(([Icon, title, meta]) => <div key={title}><span><Icon size={18} /></span><div><strong>{title}</strong><small>{meta}</small></div><button>{zh ? "查看" : "View"}</button></div>)}</div></section>}
+      </main>
+      <aside className="seo-agent-side">
+        <section className="agent-safety"><header><span><ShieldCheck size={20} weight="duotone" /></span><div><strong>{copy.safe}</strong><small>{safeMode ? copy.on : copy.off}</small></div><button className={safeMode ? "active" : ""} onClick={() => setSafeMode(!safeMode)} aria-label={copy.safe}><i /></button></header><p>{copy.safeBody}</p></section>
+        <section className="agent-scope"><header><strong>{copy.scope}</strong><GearSix size={18} /></header><p>{copy.scopeBody}</p><ul><li><Check size={15} />{copy.discover}</li><li><Check size={15} />{copy.draft}</li><li className="approval"><LockKey size={15} />{copy.publish}<span>{copy.approval}</span></li></ul></section>
+        <section className="agent-side-growth"><header><strong>{copy.week}</strong><TrendUp size={18} /></header><div><span><small>{copy.impressions}</small><strong>+14.2%</strong></span><span><small>{copy.clicks}</small><strong>+9.8%</strong></span></div></section>
+        <button className="agent-connect" onClick={() => authenticated ? setTab("plan") : onAuth()}><PlugsConnected size={18} />{authenticated ? copy.connect : copy.login}</button>
+      </aside>
+    </div>
+  </div>;
+}
+
+function SeoAgentCommercialPage({ tool, locale, authenticated, account, onBack, onAuth }) {
+  const zh = locale !== "en";
+  const c = zh ? {
+    back: "返回工具市场", kicker: "SEO 增长驾驶舱", title: "OneShowSEO", sub: "让 Agent 每天发现增长机会，你负责做最终决定。", demo: "演示数据", prototype: "当前为产品原型，尚未获得任何网站写入权限",
+    site: "网站项目", verified: "演示项目", connect: "连接真实网站", credits: "可用积分", overview: "今日概览", opportunities: "机会队列", automation: "自动化", changes: "变更与回滚",
+    data: "数据连接", dataSub: "决定 Agent 能看到什么、能否证明优化结果。", connected: "已连接", pending: "待接入", today: "今日最值得处理", waiting: "3 项等待你决定", scan: "下次巡检 18:30",
+    action: "修复 12 个高曝光页面的搜索摘要", actionBody: "这些页面过去 28 天获得 18,420 次曝光，但摘要缺失或重复。Agent 已根据页面内容生成独立描述。", evidence: "数据依据", evidenceValue: "Search Console · 28 天", impact: "预计影响", impactValue: "CTR +6%～11%", confidence: "可信度", confidenceValue: "高 · 87%", affected: "影响范围", affectedValue: "12 个 URL", cost: "本次预计消耗", costValue: "24 积分", risk: "低风险", snapshot: "执行前自动保存快照，可随时回滚", preview: "预览 12 项变更", hide: "收起变更", approve: "批准并执行", executing: "正在安全执行", completed: "执行完成",
+    before: "修改前", after: "修改后", queue: "下一批机会", all: "查看全部机会", baseline: "增长基线", baselineSub: "执行后的结果会与此基线比较。", impressions: "自然曝光", clicks: "自然点击", health: "网站健康度", guard: "Agent 安全边界", guardSub: "研究和生成可自动进行，网站写入受策略保护。", mode: "当前模式", modeValue: "逐项审批", protected: "发布、跳转、删除均需人工确认", recent: "最近一次变更", recentValue: "更新 8 个页面标题", rollback: "可回滚",
+    setupTitle: "连接网站项目", setupSub: "完成所有权和数据授权后，Agent 才会使用真实数据。", domain: "网站域名", domainHint: "例如：https://example.com", next: "继续", close: "关闭", step1: "网站信息", step2: "验证所有权", step3: "连接数据", finish: "完成演示配置", verifyBody: "正式版本将提供 DNS、HTML 文件与 Search Console 三种验证方式。", sourceBody: "正式版本将在此授权 GSC、GA4、百度搜索资源平台和 CMS。",
+    modeRecommend: "仅建议", modeApprove: "逐项审批", modeAuto: "低风险自动", schedule: "自动巡检计划", daily: "每日 08:30 · 技术与排名巡检", weekly: "每周五 17:00 · 增长复盘", historyTitle: "所有操作均有证据和快照", rollbackDone: "已完成回滚", view: "查看详情",
+  } : {
+    back: "Back to marketplace", kicker: "SEO GROWTH COMMAND CENTER", title: "OneShowSEO", sub: "The Agent finds growth opportunities every day. You make the final call.", demo: "Demo data", prototype: "Product prototype — no website write access has been granted",
+    site: "Website project", verified: "Demo project", connect: "Connect live site", credits: "Available credits", overview: "Today", opportunities: "Opportunity queue", automation: "Automation", changes: "Changes & rollback",
+    data: "Data connections", dataSub: "These determine what the Agent can see and prove.", connected: "Connected", pending: "Pending", today: "Best action today", waiting: "3 decisions waiting", scan: "Next scan 18:30",
+    action: "Fix search snippets on 12 high-impression pages", actionBody: "These pages received 18,420 impressions over 28 days but have missing or duplicate descriptions. The Agent created a unique draft for each page.", evidence: "Evidence", evidenceValue: "Search Console · 28 days", impact: "Expected impact", impactValue: "CTR +6%–11%", confidence: "Confidence", confidenceValue: "High · 87%", affected: "Affected", affectedValue: "12 URLs", cost: "Estimated cost", costValue: "24 credits", risk: "Low risk", snapshot: "A snapshot is saved before execution and can be rolled back", preview: "Preview 12 changes", hide: "Hide changes", approve: "Approve & execute", executing: "Executing safely", completed: "Completed",
+    before: "Before", after: "After", queue: "Next opportunities", all: "View all opportunities", baseline: "Growth baseline", baselineSub: "Post-action results will be compared with this baseline.", impressions: "Organic impressions", clicks: "Organic clicks", health: "Site health", guard: "Agent guardrails", guardSub: "Research and drafting can run automatically; site writes stay policy protected.", mode: "Current mode", modeValue: "Approval required", protected: "Publishing, redirects, and deletion require approval", recent: "Latest change", recentValue: "Updated 8 page titles", rollback: "Rollback ready",
+    setupTitle: "Connect website project", setupSub: "The Agent uses live data only after ownership and data authorization are complete.", domain: "Website domain", domainHint: "For example: https://example.com", next: "Continue", close: "Close", step1: "Website", step2: "Verify ownership", step3: "Connect data", finish: "Finish demo setup", verifyBody: "The production flow will support DNS, HTML file, and Search Console verification.", sourceBody: "The production flow will authorize GSC, GA4, Baidu Search Resource Platform, and your CMS here.",
+    modeRecommend: "Recommend only", modeApprove: "Approval required", modeAuto: "Auto low-risk", schedule: "Scan schedule", daily: "Daily 08:30 · technical and rank scan", weekly: "Friday 17:00 · growth review", historyTitle: "Every action has evidence and a snapshot", rollbackDone: "Rolled back", view: "View details",
+  };
+  const [tab, setTab] = useState("overview");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState(1);
+  const [domain, setDomain] = useState("https://mianshiwen.cn");
+  const [preview, setPreview] = useState(false);
+  const [actionState, setActionState] = useState("idle");
+  const [agentMode, setAgentMode] = useState("approval");
+  const [rollbackState, setRollbackState] = useState("ready");
+  const balance = account?.credits?.balance;
+  const approve = () => { if (!authenticated) return onAuth(); setActionState("running"); setTimeout(() => setActionState("done"), 950); };
+  const tabs = [["overview", c.overview], ["opportunities", c.opportunities], ["automation", c.automation], ["changes", c.changes]];
+  const sources = [["Google Search Console", c.connected, true], ["GA4", c.connected, true], ["DataForSEO", c.connected, true], [zh ? "百度搜索资源平台" : "Baidu Search", c.pending, false], ["WordPress", c.pending, false]];
+  const opportunities = [
+    [zh ? "内容衰退" : "Content decay", zh ? "更新 3 篇排名下滑的教程" : "Refresh 3 declining guides", zh ? "排名从前 10 位跌至 11–20 位" : "Rankings fell from top 10 to positions 11–20", "18", "medium"],
+    [zh ? "结构化数据" : "Structured data", zh ? "为 6 个教程页补充 HowTo Schema" : "Add HowTo schema to 6 guides", zh ? "页面具备完整步骤，但搜索引擎尚未识别" : "Pages contain steps that search engines do not yet recognize", "12", "low"],
+    [zh ? "内部链接" : "Internal links", zh ? "连接 9 个孤立内容页面" : "Connect 9 orphaned content pages", zh ? "页面已有曝光，但站内链接入口不足" : "Pages have impressions but too few internal entry points", "9", "low"],
+  ];
+  const historyRows = [
+    [zh ? "更新 8 个页面标题" : "Updated 8 page titles", zh ? "你批准 · 昨天 16:42" : "Approved by you · Yesterday 16:42", "+4.8% CTR", true],
+    [zh ? "修复 14 个失效内部链接" : "Fixed 14 broken internal links", zh ? "你批准 · 3 天前" : "Approved by you · 3 days ago", zh ? "健康度 +3" : "Health +3", true],
+    [zh ? "全站技术巡检" : "Full technical scan", zh ? "Agent · 4 天前" : "Agent · 4 days ago", zh ? "发现 7 个问题" : "7 issues found", false],
+  ];
+  return <div className="seo-growth-page">
+    <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{c.back}</button>
+    <header className="seo-growth-header">
+      <div className="seo-growth-title"><span><Robot size={28} weight="duotone" /></span><div><p className="eyebrow">{c.kicker}</p><h1>{c.title}</h1><p>{c.sub}</p></div></div>
+      <div className="seo-growth-account"><span><Coins size={17} />{c.credits}<strong>{balance?.toLocaleString() ?? "—"}</strong></span><button onClick={() => setSetupOpen(true)}><PlugsConnected size={17} />{c.connect}</button></div>
+    </header>
+    <div className="seo-growth-projectbar">
+      <div><small>{c.site}</small><strong>mianshiwen.cn</strong><span><CheckCircle size={14} weight="fill" />{c.verified}</span><em>{c.demo}</em></div>
+      <p><ShieldCheck size={15} />{c.prototype}</p>
+    </div>
+    <section className="seo-growth-sources"><div><strong>{c.data}</strong><small>{c.dataSub}</small></div><ul>{sources.map(([name, status, ready]) => <li key={name} className={ready ? "ready" : "pending"}><i />{name}<span>{status}</span></li>)}</ul><button onClick={() => setSetupOpen(true)}><GearSix size={16} /></button></section>
+    <nav className="seo-growth-tabs">{tabs.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}{id === "opportunities" && <span>3</span>}</button>)}</nav>
+    {tab === "overview" && <div className="seo-growth-layout"><main>
+      <div className="seo-growth-sectionhead"><div><p>{c.today}</p><h2>{c.waiting}</h2></div><span><Clock size={15} />{c.scan}</span></div>
+      <article className={`seo-growth-focus ${actionState}`}>
+        <header><span><MagicWand size={23} weight="duotone" /></span><div><small>{zh ? "最高优先级 · 快速增长机会" : "TOP PRIORITY · QUICK WIN"}</small><h3>{c.action}</h3><p>{c.actionBody}</p></div><em><ShieldCheck size={14} />{c.risk}</em></header>
+        <dl>{[[c.evidence,c.evidenceValue],[c.impact,c.impactValue],[c.confidence,c.confidenceValue],[c.affected,c.affectedValue]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        {preview && <div className="seo-growth-diff"><div><small>{c.before}</small><p>AI SEO 工具：自动提升你的网站排名。</p></div><ArrowRight size={18} /><div><small>{c.after}</small><p>自动化 SEO 指南：持续诊断、优化并安全发布，让网站获得稳定自然流量。</p></div></div>}
+        <div className="seo-growth-safety"><ShieldCheck size={16} /><span>{c.snapshot}</span></div>
+        <footer><div><small>{c.cost}</small><strong>{c.costValue}</strong></div><button className="secondary" onClick={() => setPreview(!preview)}>{preview ? c.hide : c.preview}</button><button className="primary" onClick={approve} disabled={actionState !== "idle"}>{actionState === "running" ? <><SpinnerGap className="spin" size={17} />{c.executing}</> : actionState === "done" ? <><CheckCircle size={17} weight="fill" />{c.completed}</> : <><Play size={17} weight="fill" />{c.approve}</>}</button></footer>
+      </article>
+      <section className="seo-growth-queue"><header><div><strong>{c.queue}</strong><small>{zh ? "按影响、可信度和成本自动排序" : "Prioritized by impact, confidence, and cost"}</small></div><button onClick={() => setTab("opportunities")}>{c.all}<ArrowRight size={14} /></button></header>{opportunities.slice(0,2).map(([type,title,body,cost,risk]) => <div key={title}><span className={risk}><FileText size={18} /></span><div><small>{type}</small><strong>{title}</strong><p>{body}</p></div><em>{cost} {zh ? "积分" : "credits"}</em><button>{c.view}<ArrowRight size={14} /></button></div>)}</section>
+    </main><aside>
+      <section className="seo-growth-baseline"><header><div><strong>{c.baseline}</strong><small>{c.baselineSub}</small></div><ChartLineUp size={19} /></header><dl><div><dt>{c.impressions}</dt><dd>28,420</dd><span>+14.2%</span></div><div><dt>{c.clicks}</dt><dd>1,836</dd><span>+9.8%</span></div><div><dt>{c.health}</dt><dd>92/100</dd><span>+4</span></div></dl></section>
+      <section className="seo-growth-guard"><header><ShieldCheck size={20} weight="duotone" /><strong>{c.guard}</strong></header><p>{c.guardSub}</p><div><small>{c.mode}</small><strong>{c.modeValue}</strong></div><span><LockKey size={14} />{c.protected}</span></section>
+      <section className="seo-growth-recent"><small>{c.recent}</small><strong>{c.recentValue}</strong><span><ArrowsClockwise size={14} />{c.rollback}</span></section>
+    </aside></div>}
+    {tab === "opportunities" && <section className="seo-growth-wide"><header><div><p>{c.opportunities}</p><h2>{zh ? "由真实数据排序的增长机会" : "Growth opportunities ranked by evidence"}</h2></div><span>{zh ? "3 项待处理 · 39 积分" : "3 pending · 39 credits"}</span></header><div className="seo-growth-table">{opportunities.map(([type,title,body,cost,risk], index) => <div key={title}><b>{index + 1}</b><span className={risk}><FileText size={19} /></span><div><small>{type}</small><strong>{title}</strong><p>{body}</p></div><em>{risk === "low" ? c.risk : (zh ? "中风险" : "Medium risk")}</em><span>{cost} {zh ? "积分" : "credits"}</span><button>{c.view}<ArrowRight size={14} /></button></div>)}</div></section>}
+    {tab === "automation" && <section className="seo-growth-wide"><header><div><p>{c.automation}</p><h2>{zh ? "决定 Agent 可以自主做到哪一步" : "Choose how far the Agent can act"}</h2></div></header><div className="seo-growth-modes">{[["recommend",c.modeRecommend,zh?"只发现机会并生成草稿":"Discover and draft only"],["approval",c.modeApprove,zh?"所有网站变更由你批准":"You approve every site change"],["auto",c.modeAuto,zh?"仅自动执行可回滚的低风险任务":"Auto-run reversible low-risk actions"]].map(([id,title,body]) => <button key={id} className={agentMode === id ? "active" : ""} onClick={() => setAgentMode(id)}><span>{agentMode === id ? <CheckCircle size={20} weight="fill" /> : <ShieldCheck size={20} />}</span><strong>{title}</strong><small>{body}</small></button>)}</div><div className="seo-growth-schedule"><header><strong>{c.schedule}</strong><GearSix size={17} /></header><div><Clock size={18} /><span>{c.daily}</span><em>{zh ? "已开启" : "On"}</em></div><div><ChartLineUp size={18} /><span>{c.weekly}</span><em>{zh ? "已开启" : "On"}</em></div></div></section>}
+    {tab === "changes" && <section className="seo-growth-wide"><header><div><p>{c.changes}</p><h2>{c.historyTitle}</h2></div></header><div className="seo-growth-history">{historyRows.map(([title,meta,result,canRollback],index) => <div key={title}><span><CheckCircle size={18} weight="fill" /></span><div><strong>{title}</strong><small>{meta}</small></div><em>{result}</em>{canRollback && <button onClick={() => index === 0 && setRollbackState("done")}>{index === 0 && rollbackState === "done" ? c.rollbackDone : c.rollback}</button>}<button>{c.view}</button></div>)}</div></section>}
+    {setupOpen && <div className="seo-growth-modal-backdrop" role="presentation"><section className="seo-growth-modal" role="dialog" aria-modal="true" aria-label={c.setupTitle}><header><div><span><PlugsConnected size={22} /></span><div><h2>{c.setupTitle}</h2><p>{c.setupSub}</p></div></div><button onClick={() => setSetupOpen(false)} aria-label={c.close}><X size={20} /></button></header><nav>{[[1,c.step1],[2,c.step2],[3,c.step3]].map(([step,label]) => <span key={step} className={setupStep >= step ? "active" : ""}><i>{step}</i>{label}</span>)}</nav>{setupStep === 1 && <label><span>{c.domain}</span><input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder={c.domainHint} /></label>}{setupStep === 2 && <div className="seo-growth-setup-info"><ShieldCheck size={26} weight="duotone" /><strong>{c.step2}</strong><p>{c.verifyBody}</p></div>}{setupStep === 3 && <div className="seo-growth-setup-info"><Database size={26} weight="duotone" /><strong>{c.step3}</strong><p>{c.sourceBody}</p></div>}<footer><button className="secondary" onClick={() => setSetupOpen(false)}>{c.close}</button><button className="primary" onClick={() => setupStep < 3 ? setSetupStep(setupStep + 1) : setSetupOpen(false)}>{setupStep < 3 ? c.next : c.finish}<ArrowRight size={15} /></button></footer></section></div>}
+  </div>;
+}
+
+function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;
   if (tool.slug === "ai-writer") return <AiWriterPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-workbench") return <SeoWorkbenchPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   const t = dictionary[locale];
@@ -1035,10 +1182,10 @@ export function App() {
     tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
     account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
-    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
+    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} locale={locale} authenticated runtime={privateData.runtime} account={{ session, credits: privateData.credits }} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 
-  const isWriter = ["ai-writer", "seo-workbench"].includes(routeTool?.slug);
+  const isWriter = ["ai-writer", "seo-workbench", "seo-agent"].includes(routeTool?.slug);
   return <div className="platform-shell"><aside className="sidebar"><Brand /><nav>{navItems.map(([key, Icon]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={20} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span></button>)}</nav><div className="sidebar-footer"><div className="mini-profile"><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{session.email}</small></div></div></div></aside>
     <div className="main-column"><header className="platform-header"><button className="global-search" onClick={() => navigateView("marketplace")}><MagnifyingGlass size={19} /><span>{t.search}</span><kbd>⌘ K</kbd></button><div className="header-actions"><button className="locale-button" onClick={() => setLocale(locale === "en" ? "zh-CN" : "en")}><Translate size={17} />{t.language}</button><button className="profile-button" onClick={() => navigateView("account")}><span>{session.name.slice(0, 1).toUpperCase()}</span></button></div></header>
       <div className={`workspace-layout ${view === "marketplace" || isWriter ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : isWriter ? "writer-workspace" : ""}`}>{content}</main>{view !== "marketplace" && !isWriter && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>

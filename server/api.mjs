@@ -18,6 +18,7 @@ import { refundTask } from "./runtime.mjs";
 import { runToolAction } from "./tool-actions.mjs";
 import { writingCatalog } from "./writing-engine.mjs";
 import { seoCatalog } from "./seo-engine.mjs";
+import { handleSeoAgent } from "./seo-agent.mjs";
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
@@ -921,6 +922,8 @@ export async function handleApi(request) {
   const auth = requireUser(request);
   if (auth.response) return auth.response;
   const user = auth.user;
+
+  if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) return handleSeoAgent(request, user, path);
 
   if (path === "/api/dashboard" && request.method === "GET") return json(dashboard(user.id));
   if (path === "/api/marketplace/search-events" && request.method === "POST") {

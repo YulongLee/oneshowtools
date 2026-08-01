@@ -1,0 +1,20 @@
+{
+  "captured_at": "2026-08-02T02:30:00+08:00",
+  "site": "https://mianshiwen.cn/",
+  "window": { "start": "2026-08-02", "end": "2026-08-02" },
+  "providers": ["live-crawl"],
+  "metrics": {
+    "clicks": null,
+    "impressions": null,
+    "ctr": null,
+    "average_position": null,
+    "organic_sessions": null,
+    "organic_conversions": null,
+    "indexed_pages": null
+  },
+  "keyword_groups": [],
+  "limitations": [
+    "Search Console, GA4, Baidu, and CMS are not authorized.",
+    "Live crawl coverage is not an index count."
+  ]
+}

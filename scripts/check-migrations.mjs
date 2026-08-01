@@ -7,6 +7,7 @@ const modelMigration = await readFile(new URL("../db/migrations/0004_oneshow_mod
 const customEndpointMigration = await readFile(new URL("../db/migrations/0007_custom_model_endpoints.sql", import.meta.url), "utf8");
 const intelligenceMigration = await readFile(new URL("../db/migrations/0008_market_intelligence_agent.sql", import.meta.url), "utf8");
 const platformInfrastructureMigration = await readFile(new URL("../db/migrations/0011_platform_models_and_object_storage.sql", import.meta.url), "utf8");
+const seoAgentMigration = await readFile(new URL("../db/migrations/0015_seo_agent.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -59,6 +60,15 @@ if (!customEndpointMigration.includes("CREATE TABLE IF NOT EXISTS user_model_con
 for (const table of ["platform_model_configs", "file_storage_objects"]) {
   if (!platformInfrastructureMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
     throw new Error(`Platform infrastructure migration is missing table: ${table}`);
+  }
+}
+
+for (const table of [
+  "seo_agent_projects", "seo_agent_connectors", "seo_agent_scans",
+  "seo_agent_opportunities", "seo_agent_actions",
+]) {
+  if (!seoAgentMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`SEO Agent migration is missing table: ${table}`);
   }
 }
 
