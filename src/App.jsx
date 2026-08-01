@@ -11,8 +11,9 @@ import {
   PaperPlaneRight, CheckSquare, FileText,
 } from "@phosphor-icons/react";
 
-const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil };
+const iconMap = { MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp };
 const writingIconMap = { Article, ArrowsClockwise, TrendUp, MegaphoneSimple, ShareNetwork, Briefcase, Palette };
+const seoIconMap = { MagnifyingGlass, Article, Pulse: ChartLineUp, TrendUp, Link: ShareNetwork, Binoculars, FileText };
 const marketplaceCategories = [
   { id: "all", icon: SquaresFour, accepts: [] },
   { id: "writing", icon: PenNib, accepts: ["writing"] },
@@ -303,8 +304,64 @@ function AiWriterPage({ tool, catalog, locale, authenticated, runtime, onBack, o
   </div>;
 }
 
+function SeoWorkbenchPage({ tool, catalog, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+  const zh = locale !== "en";
+  const labels = zh ? {
+    back: "返回工具市场", eyebrow: "EVIDENCE-DRIVEN SEO", title: "SEO 工作台", subtitle: "真实抓取网站，结合模型分析；没有数据源的指标不会编造。",
+    modules: "SEO 能力", templates: "选择分析任务", input: "分析参数", output: "分析报告", settings: "运行设置", model: "分析模型", custom: "补充要求（可选）", customHint: "例如：重点分析中文市场和转化型关键词…",
+    run: "开始真实分析", running: "正在抓取与分析", waiting: "网站诊断可能需要 30–90 秒，请保持页面开启", empty: "选择任务并填写参数，报告与证据会显示在这里。", copy: "复制 Markdown", download: "下载 .md", copied: "已复制", required: "请填写所有必填项", login: "登录后即可分析并保存任务记录", credits: "积分 / 次", locked: "需要数据源", lockedBody: "该能力依赖真实关键词、SERP 或外链供应商，配置后才会开放。", score: "规则评分", source: "数据来源", quality: "数据质量", error: "分析失败，请检查网址、数据源或模型配置。",
+  } : {
+    back: "Back to marketplace", eyebrow: "EVIDENCE-DRIVEN SEO", title: "SEO Workspace", subtitle: "Crawl real websites and interpret evidence with AI. Missing provider metrics are never fabricated.",
+    modules: "SEO capabilities", templates: "Choose an analysis", input: "Analysis inputs", output: "SEO report", settings: "Run settings", model: "Analysis model", custom: "Additional instructions (optional)", customHint: "For example: focus on commercial intent and the US market…",
+    run: "Run evidence analysis", running: "Crawling and analyzing", waiting: "Website audits may take 30–90 seconds. Keep this page open.", empty: "Choose an analysis and complete the inputs. The evidence report will appear here.", copy: "Copy Markdown", download: "Download .md", copied: "Copied", required: "Complete all required fields", login: "Sign in to analyze and save task history", credits: "credits / run", locked: "Data source required", lockedBody: "This capability requires a real keyword, SERP, or backlink provider and opens only after configuration.", score: "Rule score", source: "Data source", quality: "Data quality", error: "Analysis failed. Check the URL, data source, or model setup.",
+  };
+  const modules = catalog?.modules || [];
+  const [moduleId, setModuleId] = useState(modules[0]?.id || "keyword-research");
+  const activeModule = modules.find((item) => item.id === moduleId) || modules[0];
+  const [templateId, setTemplateId] = useState(activeModule?.templates?.[0]?.id || "keyword-discovery");
+  const activeTemplate = activeModule?.templates?.find((item) => item.id === templateId) || activeModule?.templates?.[0];
+  const [values, setValues] = useState({});
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [modelConnectionId, setModelConnectionId] = useState("managed");
+  const [busy, setBusy] = useState(false); const [elapsed, setElapsed] = useState(0); const [error, setError] = useState(""); const [result, setResult] = useState(null); const [copied, setCopied] = useState(false);
+  const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
+  useEffect(() => { if (!moduleId && modules[0]) setModuleId(modules[0].id); }, [moduleId, modules]);
+  useEffect(() => { if (activeModule && !activeModule.templates.some((item) => item.id === templateId)) setTemplateId(activeModule.templates[0]?.id); }, [activeModule, templateId]);
+  useEffect(() => { setModelConnectionId(runtimeTool?.modelConnectionId || "managed"); }, [runtimeTool?.modelConnectionId]);
+  useEffect(() => { if (!busy) return undefined; const started = Date.now(); const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000); return () => clearInterval(timer); }, [busy]);
+  const selectModule = (id) => { const next = modules.find((item) => item.id === id); setModuleId(id); setTemplateId(next?.templates?.[0]?.id); setValues({}); setError(""); setResult(null); };
+  const selectTemplate = (template) => { setTemplateId(template.id); setValues({}); setError(template.available ? "" : labels.lockedBody); setResult(null); };
+  const changeModel = async (value) => { const previous = modelConnectionId; setModelConnectionId(value); try { await onModelChange?.(tool.id, value); } catch { setModelConnectionId(previous); setError(dictionary[locale].error); } };
+  const run = async () => {
+    if (!authenticated) return onAuth();
+    if (!activeTemplate.available) return setError(labels.lockedBody);
+    if (activeTemplate.fields.some((field) => field.required && !String(values[field.id] || "").trim())) return setError(labels.required);
+    setBusy(true); setElapsed(0); setError(""); setResult(null);
+    try { const response = await api(`/api/tool-actions/${tool.slug}`, jsonOptions("POST", { templateId: activeTemplate.id, values, locale, customInstructions, modelConnectionId })); setResult(response.output); onCompleted?.(response); requestAnimationFrame(() => document.querySelector(".seo-result")?.scrollIntoView({ behavior: "smooth", block: "start" })); }
+    catch (caught) { setError(caught.status === 402 ? dictionary[locale].insufficient : labels.error); } finally { setBusy(false); }
+  };
+  const copy = async () => { await navigator.clipboard.writeText(result?.markdown || ""); setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  const download = () => { const blob = new Blob([result?.markdown || ""], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${activeTemplate?.id || "seo-report"}.md`; a.click(); URL.revokeObjectURL(url); };
+  if (!activeModule || !activeTemplate) return <Loading locale={locale} />;
+  return <div className="writer-page seo-page">
+    <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{labels.back}</button>
+    <header className="writer-hero seo-hero"><span className="writer-product-icon seo-product-icon"><ChartLineUp size={34} weight="duotone" /><MagnifyingGlass className="writer-spark" size={17} weight="bold" /></span><div><p className="eyebrow">{labels.eyebrow}</p><h1>{labels.title}</h1><p>{labels.subtitle}</p></div><div className="writer-meta"><span><CheckCircle size={16} weight="fill" />{modules.reduce((sum, item) => sum + item.templates.length, 0)} Templates</span><span><Coins size={16} />{tool.creditCost} {labels.credits}</span></div></header>
+    <div className="writer-shell seo-shell">
+      {busy && <div className="writer-progress"><span><SpinnerGap className="spin" size={20} /></span><div><strong>{labels.running} · {elapsed}s</strong><small>{labels.waiting}</small></div><i><b style={{ width: `${Math.min(92, 10 + elapsed * .75)}%` }} /></i></div>}
+      <aside className="writer-library seo-library"><header><strong>{labels.modules}</strong><small>7 MODULES</small></header><nav>{modules.map((module) => { const Icon = seoIconMap[module.icon] || ChartLineUp; return <button key={module.id} className={`${module.id === activeModule.id ? "active" : ""} ${module.accent}`} onClick={() => selectModule(module.id)}><span><Icon size={19} weight={module.id === activeModule.id ? "duotone" : "regular"} /></span><div><strong>{module.label[zh ? "zh" : "en"]}</strong><small>{module.templates.length} {zh ? "个工具" : "tools"}</small></div><ArrowRight size={14} /></button>; })}</nav></aside>
+      <main className="writer-canvas">
+        <section className="writer-template-section"><header><div><span>{activeModule.label[zh ? "zh" : "en"]}</span><h2>{labels.templates}</h2></div><p>{activeModule.description[zh ? "zh" : "en"]}</p></header><div className="writer-template-grid">{activeModule.templates.map((template) => <button key={template.id} className={`${template.id === activeTemplate.id ? "active" : ""} ${!template.available ? "locked" : ""}`} onClick={() => selectTemplate(template)}><span>{template.available ? <FileText size={18} /> : <LockKey size={18} />}</span><div><strong>{template.label[zh ? "zh" : "en"]}</strong><small>{template.available ? template.description[zh ? "zh" : "en"] : labels.locked}</small></div>{template.id === activeTemplate.id && <CheckCircle size={17} weight="fill" />}</button>)}</div></section>
+        <section className="writer-editor"><header><span className={`writer-template-mark ${activeModule.accent}`}><MagnifyingGlass size={22} weight="duotone" /></span><div><small>{activeModule.label[zh ? "zh" : "en"]}</small><h2>{activeTemplate.label[zh ? "zh" : "en"]}</h2></div>{!activeTemplate.available && <span className="seo-source-required"><LockKey size={14} />{labels.locked}</span>}</header><div className="writer-fields">{activeTemplate.fields.map((field) => <label key={field.id} className={field.type === "textarea" ? "wide" : ""}><span>{field.label[zh ? "zh" : "en"]}{field.required && <em>*</em>}</span>{field.type === "textarea" ? <textarea rows={field.id === "content" ? 10 : 5} value={values[field.id] || ""} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} placeholder={field.placeholder?.[zh ? "zh" : "en"] || ""} /> : <input type={field.type === "url" ? "url" : "text"} value={values[field.id] || ""} onChange={(event) => setValues({ ...values, [field.id]: event.target.value })} placeholder={field.placeholder?.[zh ? "zh" : "en"] || ""} />}</label>)}</div></section>
+        <section className="writer-result seo-result"><header><div><span className="writer-result-icon"><ChartLineUp size={19} weight="fill" /></span><div><small>MARKDOWN + EVIDENCE</small><h2>{labels.output}</h2></div></div>{result && <div className="writer-result-actions"><button onClick={copy}><Copy size={16} />{copied ? labels.copied : labels.copy}</button><button onClick={download}><DownloadSimple size={16} />{labels.download}</button></div>}</header>{!result ? <div className="writer-result-empty"><ChartLineUp size={35} weight="duotone" /><strong>{labels.output}</strong><p>{labels.empty}</p></div> : <><div className="seo-result-metrics"><span><small>{labels.score}</small><strong>{result.score ?? "—"}{result.score != null ? "/100" : ""}</strong></span><span><small>{labels.source}</small><strong>{result.dataSource}</strong></span><span><small>{labels.quality}</small><strong>{result.dataQuality}</strong></span></div><pre>{result.markdown}</pre></>}</section>
+      </main>
+      <aside className="writer-settings"><header><GearSix size={19} /><strong>{labels.settings}</strong></header><div className="seo-source-card"><ShieldCheck size={18} /><div><strong>{zh ? "数据真实性保护" : "Evidence guard"}</strong><small>{zh ? "缺失指标显示暂无数据，不由模型补齐" : "Missing metrics stay unavailable, never model-filled"}</small></div></div>{authenticated && <label><span>{labels.model}</span><select value={modelConnectionId} onChange={(event) => changeModel(event.target.value)}><option value="managed">{dictionary[locale].useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}<label><span>{labels.custom}</span><textarea rows={7} value={customInstructions} onChange={(event) => setCustomInstructions(event.target.value)} placeholder={labels.customHint} /></label>{!authenticated && <div className="writer-login"><LockKey size={18} /><span>{labels.login}</span></div>}{error && <p className="form-error"><Warning size={16} />{error}</p>}<button className="writer-generate" onClick={run} disabled={busy || !activeTemplate.available}>{busy ? <><SpinnerGap className="spin" size={18} />{labels.running}</> : <><PaperPlaneRight size={18} weight="fill" />{activeTemplate.available ? labels.run : labels.locked}</>}</button><small className="writer-review-note"><ShieldCheck size={15} />{zh ? "网站抓取有严格的内网地址与跳转安全限制" : "Crawling blocks private addresses and unsafe redirects"}</small></aside>
+    </div>
+  </div>;
+}
+
 function ToolPage({ tool, catalog, locale, authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
   if (tool.slug === "ai-writer") return <AiWriterPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
+  if (tool.slug === "seo-workbench") return <SeoWorkbenchPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   const t = dictionary[locale];
   const Icon = iconMap[tool.icon] || Wrench;
   const [file, setFile] = useState(null);
@@ -813,6 +870,7 @@ export function App() {
   const [tools, setTools] = useState([]);
   const [plans, setPlans] = useState([]);
   const [writingCatalog, setWritingCatalog] = useState(null);
+  const [seoCatalog, setSeoCatalog] = useState(null);
   const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [] });
   const [query, setQuery] = useState("");
   const [authOpen, setAuthOpen] = useState(() => Boolean(new URLSearchParams(location.search).get("resetToken")));
@@ -821,11 +879,11 @@ export function App() {
   const t = dictionary[locale];
 
   const loadPublic = useCallback(async () => {
-    const [sessionResult, healthResult, toolsResult, plansResult, writingResult] = await Promise.all([
+    const [sessionResult, healthResult, toolsResult, plansResult, writingResult, seoResult] = await Promise.all([
       api("/api/auth/session").catch(() => ({ user: null })), api("/api/health").catch(() => ({})),
-      api("/api/tools").catch(() => ({ tools: [] })), api("/api/plans").catch(() => ({ plans: [] })), api("/api/writing/catalog").catch(() => null),
+      api("/api/tools").catch(() => ({ tools: [] })), api("/api/plans").catch(() => ({ plans: [] })), api("/api/writing/catalog").catch(() => null), api("/api/seo/catalog").catch(() => null),
     ]);
-    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult.tools); setPlans(plansResult.plans); setWritingCatalog(writingResult);
+    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult.tools); setPlans(plansResult.plans); setWritingCatalog(writingResult); setSeoCatalog(seoResult);
   }, []);
   const loadPrivate = useCallback(async () => {
     if (!session) return;
@@ -909,7 +967,8 @@ export function App() {
   if (session === undefined) return <Loading locale={locale} />;
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
   if (!session && routeSlug && !routeTool) return <Loading locale={locale} />;
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={writingCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  const activeCatalog = routeTool?.slug === "seo-workbench" ? seoCatalog : writingCatalog;
+  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {
@@ -921,10 +980,10 @@ export function App() {
     tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
     account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
-    tool: routeTool ? <ToolPage tool={routeTool} catalog={writingCatalog} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
+    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} locale={locale} authenticated runtime={privateData.runtime} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 
-  const isWriter = routeTool?.slug === "ai-writer";
+  const isWriter = ["ai-writer", "seo-workbench"].includes(routeTool?.slug);
   return <div className="platform-shell"><aside className="sidebar"><Brand /><nav>{navItems.map(([key, Icon]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={20} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span></button>)}</nav><div className="sidebar-footer"><div className="mini-profile"><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{session.email}</small></div></div></div></aside>
     <div className="main-column"><header className="platform-header"><button className="global-search" onClick={() => navigateView("marketplace")}><MagnifyingGlass size={19} /><span>{t.search}</span><kbd>⌘ K</kbd></button><div className="header-actions"><button className="locale-button" onClick={() => setLocale(locale === "en" ? "zh-CN" : "en")}><Translate size={17} />{t.language}</button><button className="profile-button" onClick={() => navigateView("account")}><span>{session.name.slice(0, 1).toUpperCase()}</span></button></div></header>
       <div className={`workspace-layout ${view === "marketplace" || isWriter ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : isWriter ? "writer-workspace" : ""}`}>{content}</main>{view !== "marketplace" && !isWriter && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>

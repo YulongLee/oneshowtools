@@ -5,6 +5,7 @@ import { audit, db } from "./database.mjs";
 import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { generateWriting } from "./writing-engine.mjs";
+import { generateSeo } from "./seo-engine.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -162,7 +163,7 @@ async function processText(slug, payload, locale, user) {
   throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
 }
 
-function storeCompletedTask({ user, tool, input, output, resultFile, writingRun = null }) {
+function storeCompletedTask({ user, tool, input, output, resultFile, writingRun = null, seoRun = null }) {
   const taskId = randomUUID();
   const timestamp = Date.now();
   db.exec("BEGIN IMMEDIATE");
@@ -199,6 +200,15 @@ function storeCompletedTask({ user, tool, input, output, resultFile, writingRun 
       `).run(taskId, user.id, writingRun.moduleId, writingRun.templateId, writingRun.promptVersion,
         writingRun.outputLanguage, writingRun.outputLength, writingRun.tone, writingRun.wordCount,
         writingRun.qualityScore, writingRun.modelRoute, timestamp);
+    }
+    if (seoRun) {
+      db.prepare(`
+        INSERT INTO seo_runs (task_id, user_id, module_id, template_id, website, data_source,
+          data_quality, score, report_markdown, structured_json, model_route, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(taskId, user.id, seoRun.moduleId, seoRun.templateId, seoRun.website,
+        seoRun.dataSource, seoRun.dataQuality, seoRun.score, seoRun.reportMarkdown,
+        JSON.stringify(seoRun.structured || {}), seoRun.modelRoute, timestamp);
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -248,6 +258,9 @@ export async function runToolAction(request, user, tool) {
     if (tool.slug === "ai-writer") {
       processed = await generateWriting({ user, payload, connectionId: modelConnectionId });
       input = processed.safeInput;
+    } else if (tool.slug === "seo-workbench") {
+      processed = await generateSeo({ user, payload, connectionId: modelConnectionId });
+      input = processed.safeInput;
     } else {
       input = { text: String(payload.text || "").slice(0, 50000), modelConnectionId };
       processed = await processText(tool.slug, payload, user.locale, user);
@@ -268,7 +281,7 @@ export async function runToolAction(request, user, tool) {
   }
   const output = { ...processed.output, ...(resultFile ? { resultFileId: resultFile.id } : {}) };
   try {
-    return storeCompletedTask({ user, tool, input, output, resultFile, writingRun: processed.writingRun });
+    return storeCompletedTask({ user, tool, input, output, resultFile, writingRun: processed.writingRun, seoRun: processed.seoRun });
   } catch (error) {
     if (resultFile) await deleteStoredFile(resultFile).catch(() => {});
     throw error;
