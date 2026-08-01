@@ -163,7 +163,7 @@ async function processText(slug, payload, locale, user) {
   throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
 }
 
-function storeCompletedTask({ user, tool, input, output, resultFile, writingRun = null, seoRun = null }) {
+function storeCompletedTask({ user, tool, input, output, resultFile, writingRun = null, seoRun = null, rankSnapshots = [] }) {
   const taskId = randomUUID();
   const timestamp = Date.now();
   db.exec("BEGIN IMMEDIATE");
@@ -209,6 +209,15 @@ function storeCompletedTask({ user, tool, input, output, resultFile, writingRun 
       `).run(taskId, user.id, seoRun.moduleId, seoRun.templateId, seoRun.website,
         seoRun.dataSource, seoRun.dataQuality, seoRun.score, seoRun.reportMarkdown,
         JSON.stringify(seoRun.structured || {}), seoRun.modelRoute, timestamp);
+    }
+    for (const snapshot of rankSnapshots) {
+      db.prepare(`
+        INSERT INTO seo_rank_snapshots
+        (id, user_id, website, keyword, country, language, rank, result_url, source, observed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(randomUUID(), user.id, snapshot.website, snapshot.keyword, snapshot.country || null,
+        snapshot.language || null, snapshot.rank ?? null, snapshot.resultUrl || null,
+        snapshot.source, snapshot.observedAt || timestamp);
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -281,7 +290,7 @@ export async function runToolAction(request, user, tool) {
   }
   const output = { ...processed.output, ...(resultFile ? { resultFileId: resultFile.id } : {}) };
   try {
-    return storeCompletedTask({ user, tool, input, output, resultFile, writingRun: processed.writingRun, seoRun: processed.seoRun });
+    return storeCompletedTask({ user, tool, input, output, resultFile, writingRun: processed.writingRun, seoRun: processed.seoRun, rankSnapshots: processed.rankSnapshots || [] });
   } catch (error) {
     if (resultFile) await deleteStoredFile(resultFile).catch(() => {});
     throw error;

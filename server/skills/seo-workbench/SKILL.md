@@ -36,3 +36,4 @@ Produce decision-ready SEO output from the evidence supplied by the runtime. Tre
 - Competitor and content gaps: `references/competitor-analysis.md`
 - Report format and quality gate: `references/reporting.md`
 - Research basis: `references/research-basis.md`
+- Open-source capability benchmarks: `references/open-source-benchmarks.md`

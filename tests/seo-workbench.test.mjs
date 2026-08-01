@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 
 process.env.NODE_ENV = "test";
 process.env.ALLOW_TEST_SEO_ENDPOINTS = "true";
 
-const { seoCatalog, generateSeo } = await import("../server/seo-engine.mjs");
+const { seoCatalog, seoDataSourceStatus, generateSeo } = await import("../server/seo-engine.mjs");
 const { safeSeoUrl } = await import("../server/seo-fetch.mjs");
+const { db } = await import("../server/database.mjs");
 
 test("SEO workbench exposes seven evidence-aware modules and locks unavailable provider tools", () => {
   const catalog = seoCatalog();
@@ -38,4 +40,80 @@ test("SEO website audit crawls real HTML evidence and returns an explainable sco
 
 test("SEO crawler blocks embedded credentials", async () => {
   await assert.rejects(() => safeSeoUrl("https://user:pass@example.com"), { code: "SEO_URL_BLOCKED" });
+});
+
+test("technical SEO templates return capability-specific evidence instead of one generic report", async (t) => {
+  let origin;
+  const server = createServer((request, response) => {
+    if (request.url === "/robots.txt") return response.end(`User-agent: *\nDisallow: /private\nSitemap: ${origin}/sitemap.xml`);
+    if (request.url === "/sitemap.xml") { response.setHeader("content-type", "application/xml"); return response.end(`<urlset><url><loc>${origin}/</loc></url><url><loc>${origin}/about</loc></url></urlset>`); }
+    if (request.url === "/missing") { response.statusCode = 404; return response.end("missing"); }
+    response.setHeader("content-type", "text/html");
+    if (request.url === "/about") return response.end(`<html><head><title>About Example Company</title><link rel="canonical" href="${origin}/about"></head><body><h1>About</h1></body></html>`);
+    response.end(`<html><head><title>Example Company Home Page</title></head><body><h1>Home</h1><img src="/hero.jpg"><a href="/missing">Missing</a><a href="/about">About</a></body></html>`);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  origin = `http://127.0.0.1:${server.address().port}`;
+
+  const robots = await generateSeo({ user: { id: "seo-specific" }, connectionId: null, payload: { templateId: "robots-txt", locale: "zh-CN", values: { website: origin } } });
+  const sitemap = await generateSeo({ user: { id: "seo-specific" }, connectionId: null, payload: { templateId: "sitemap", locale: "zh-CN", values: { website: origin } } });
+  const images = await generateSeo({ user: { id: "seo-specific" }, connectionId: null, payload: { templateId: "image-optimization", locale: "zh-CN", values: { website: origin } } });
+  const links = await generateSeo({ user: { id: "seo-specific" }, connectionId: null, payload: { templateId: "broken-links", locale: "zh-CN", values: { website: origin } } });
+
+  assert.match(robots.output.markdown, /User-agent 分组/);
+  assert.equal(robots.output.structured.details.robots.sitemaps.length, 1);
+  assert.match(sitemap.output.markdown, /URL 数量/);
+  assert.equal(sitemap.output.structured.details.sitemaps[0].locations.length, 2);
+  assert.match(images.output.markdown, /缺少 alt/);
+  assert.equal(images.output.structured.details.images[0].missingAlt, 1);
+  assert.match(links.output.markdown, /HTTP 404/);
+  assert.equal(links.output.structured.details.links.some((item) => item.status === 404), true);
+  assert.notEqual(robots.output.markdown, sitemap.output.markdown);
+});
+
+test("Search Console configuration does not falsely unlock arbitrary SERP tools", () => {
+  const status = seoDataSourceStatus({ GOOGLE_SEARCH_CONSOLE_SITE_URL: "https://example.com/", GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN: "token" });
+  assert.equal(status.labels.searchConsole, true);
+  assert.equal(status["serp-provider"], false);
+});
+
+test("SERP provider output records a real rank snapshot for later trend reports", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const previousLogin = process.env.DATAFORSEO_LOGIN;
+  const previousPassword = process.env.DATAFORSEO_PASSWORD;
+  process.env.DATAFORSEO_LOGIN = "test-login";
+  process.env.DATAFORSEO_PASSWORD = "test-password";
+  globalThis.fetch = async () => new Response(JSON.stringify({ status_code: 20000, tasks: [{ status_code: 20000, cost: 0.01, result: [{ items: [{ type: "organic", url: "https://example.com/ranking-page", rank_absolute: 4 }] }] }] }), { status: 200, headers: { "content-type": "application/json" } });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (previousLogin == null) delete process.env.DATAFORSEO_LOGIN; else process.env.DATAFORSEO_LOGIN = previousLogin;
+    if (previousPassword == null) delete process.env.DATAFORSEO_PASSWORD; else process.env.DATAFORSEO_PASSWORD = previousPassword;
+  });
+
+  const result = await generateSeo({ user: { id: "rank-user" }, connectionId: null, payload: { templateId: "keyword-ranking", locale: "zh-CN", values: { website: "https://example.com", keywords: "AI tools", country: "United States", language: "English" } } });
+  assert.match(result.output.markdown, /本次排名：4/);
+  assert.equal(result.rankSnapshots.length, 1);
+  assert.equal(result.rankSnapshots[0].rank, 4);
+  assert.equal(result.output.dataQuality, "provider-observed");
+});
+
+test("SEO reports use persisted runs and ranking trends use only persisted rank snapshots", async (t) => {
+  const userId = randomUUID();
+  const taskId = randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO users (id, name, email, password_hash, locale, email_verified, status, created_at, updated_at) VALUES (?, 'SEO Test', ?, 'hash', 'zh-CN', 1, 'active', ?, ?)").run(userId, `${userId}@example.test`, now, now);
+  t.after(() => db.prepare("DELETE FROM users WHERE id = ?").run(userId));
+  db.prepare("INSERT INTO tasks (id, user_id, tool_id, status, input_json, output_json, credit_cost, created_at, updated_at, completed_at) VALUES (?, ?, 'tool_seo', 'completed', '{}', '{}', 0, ?, ?, ?)").run(taskId, userId, now, now, now);
+  db.prepare("INSERT INTO seo_runs (task_id, user_id, module_id, template_id, website, data_source, data_quality, score, report_markdown, structured_json, model_route, created_at) VALUES (?, ?, 'website-audit', 'canonical', 'https://example.com', 'crawl', 'observed', 82, '# Existing report', '{}', NULL, ?)").run(taskId, userId, now);
+  db.prepare("INSERT INTO seo_rank_snapshots (id, user_id, website, keyword, country, language, rank, result_url, source, observed_at) VALUES (?, ?, 'https://example.com', 'AI tools', 'United States', 'English', 8, 'https://example.com/old', 'dataforseo-serp', ?)").run(randomUUID(), userId, now - 86400000);
+  db.prepare("INSERT INTO seo_rank_snapshots (id, user_id, website, keyword, country, language, rank, result_url, source, observed_at) VALUES (?, ?, 'https://example.com', 'AI tools', 'United States', 'English', 4, 'https://example.com/new', 'dataforseo-serp', ?)").run(randomUUID(), userId, now);
+
+  const report = await generateSeo({ user: { id: userId }, connectionId: null, payload: { templateId: "seo-summary", locale: "zh-CN", values: { website: "https://example.com" } } });
+  const trend = await generateSeo({ user: { id: userId }, connectionId: null, payload: { templateId: "ranking-trend", locale: "zh-CN", values: { website: "https://example.com", keywords: "AI tools" } } });
+  assert.match(report.output.markdown, /已完成分析：1 次/);
+  assert.match(report.output.html, /<!doctype html>/);
+  assert.equal(report.output.structured.summary.latestScore, 82);
+  assert.match(trend.output.markdown, /\| AI tools \| 4 \| 8 \| \+4 \|/);
+  assert.equal(trend.output.dataSource, "rank-snapshots");
 });

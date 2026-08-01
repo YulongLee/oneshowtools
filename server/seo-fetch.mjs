@@ -71,7 +71,7 @@ export async function fetchSeoResource(rawUrl, { method = "GET", accept = "text/
 }
 
 const clean = (value, max = 4000) => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
-const absolute = (href, base) => { try { return new URL(href, base).href.split("#")[0]; } catch { return ""; } };
+const absolute = (href, base) => { if (typeof href !== "string" || !href.trim()) return ""; try { return new URL(href, base).href.split("#")[0]; } catch { return ""; } };
 
 export function parseSeoPage(resource, evidenceId = "P1") {
   const $ = cheerio.load(resource.text || "");
