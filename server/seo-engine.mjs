@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { db } from "./database.mjs";
 import { invokeModel } from "./model-gateway.mjs";
 import { inspectPageSpeed, inspectSite } from "./seo-fetch.mjs";
+import { dataForSeoCredentials } from "./seo-provider-config.mjs";
 import { publicSeoCatalog, seoTemplateMap } from "./seo-templates.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "skills/seo-workbench");
@@ -22,7 +23,7 @@ const clean = (value, max = 40_000) => String(value ?? "").replace(/\0/g, "").tr
 const error = (code, status = 400, details = null) => Object.assign(new Error(code), { code, status, details });
 
 export function seoDataSourceStatus(env = process.env) {
-  const dataForSeo = Boolean(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD);
+  const dataForSeo = Boolean(dataForSeoCredentials(env));
   const gsc = Boolean(env.GOOGLE_SEARCH_CONSOLE_SITE_URL && (env.GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN || env.GOOGLE_OAUTH_ACCESS_TOKEN || (env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET && env.GOOGLE_OAUTH_REFRESH_TOKEN)));
   return {
     direct: true, model: true, history: true,
@@ -274,7 +275,9 @@ function runRankHistory(user, input) {
 }
 
 async function dataForSeo(path, body) {
-  const token = Buffer.from(`${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`).toString("base64");
+  const credentials = dataForSeoCredentials();
+  if (!credentials) throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: "dataforseo" });
+  const token = Buffer.from(`${credentials.login}:${credentials.password}`).toString("base64");
   const response = await fetch(`https://api.dataforseo.com${path}`, { method: "POST", headers: { authorization: `Basic ${token}`, "content-type": "application/json" }, body: JSON.stringify([body]) });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.status_code !== 20000 || data.tasks?.[0]?.status_code !== 20000) throw error("SEO_PROVIDER_FAILED", 502);
@@ -282,7 +285,7 @@ async function dataForSeo(path, body) {
 }
 
 async function runProvider(input) {
-  if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: input.entry.source });
+  if (!dataForSeoCredentials()) throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: input.entry.source });
   const keywordList = (input.values.keywords || input.values.topic).split(/[,，\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 100);
   const keyword = keywordList[0] || input.values.topic;
   const location = input.values.country || "United States";

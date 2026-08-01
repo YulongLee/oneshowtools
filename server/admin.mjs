@@ -12,6 +12,9 @@ import {
   listPlatformModelConfigurations, savePlatformModelConfiguration, testPlatformModelConfiguration,
 } from "./model-gateway.mjs";
 import { objectStorageStatus } from "./object-storage.mjs";
+import {
+  saveSeoProviderConfiguration, seoProviderConfiguration, testSeoProviderConfiguration,
+} from "./seo-provider-config.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -43,6 +46,8 @@ const permissions = [
   ["intelligence.manage", "Run the market intelligence agent"],
   ["models.read", "View redacted platform model configuration"],
   ["models.manage", "Test and rotate platform model configuration"],
+  ["seo_sources.read", "View redacted SEO data source configuration"],
+  ["seo_sources.manage", "Test and rotate SEO data source credentials"],
   ["infrastructure.read", "View infrastructure metrics and health"],
   ["alerts.manage", "Acknowledge and resolve operational alerts"],
   ["metrics.export", "Export bounded metric and finance views"],
@@ -59,12 +64,12 @@ const permissions = [
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "audit.read"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "seo_sources.read", "audit.read"],
   support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read"],
   finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
-  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage"],
+  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage", "seo_sources.read", "seo_sources.manage"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -1321,6 +1326,34 @@ export function createAdminHandler(dependencies) {
     if (path === "/api/admin/v1/platform-models" && request.method === "GET") {
       const denied = requirePermission(context, "models.read"); if (denied) return denied;
       return json({ models: listPlatformModelConfigurations(), storage: objectStorageStatus() });
+    }
+    if (path === "/api/admin/v1/seo-provider" && request.method === "GET") {
+      const denied = requirePermission(context, "seo_sources.read"); if (denied) return denied;
+      return json({
+        configuration: seoProviderConfiguration(),
+        capabilities: { keywordMetrics: 2, liveSerp: 2, backlinks: 6, competitors: 3, total: 13 },
+        environmentFallback: Boolean(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD),
+        ipWhitelist: { enabledByProvider: null, serverIp: process.env.OUTBOUND_PUBLIC_IP || null },
+      });
+    }
+    if (path === "/api/admin/v1/seo-provider/test" && request.method === "POST") {
+      const denied = requirePermission(context, "seo_sources.manage"); if (denied) return denied;
+      try {
+        const result = await testSeoProviderConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "seo_sources.manage", action: "admin.seo_provider.test", targetType: "seo_provider", targetId: "dataforseo", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "SEO_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/seo-provider" && request.method === "PUT") {
+      const denied = requirePermission(context, "seo_sources.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = seoProviderConfiguration();
+        const configuration = await saveSeoProviderConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "seo_sources.manage", action: "admin.seo_provider.update", targetType: "seo_provider", targetId: "dataforseo", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "SEO_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
     let modelMatch = path.match(/^\/api\/admin\/v1\/platform-models\/([^/]+)\/(test)$/);
     if (modelMatch && request.method === "POST") {

@@ -13,6 +13,7 @@ process.env.ALLOW_DEV_EMAIL_DELIVERY = "true";
 process.env.ACCOUNT_DELETION_ENABLED = "false";
 process.env.ADMIN_MFA_ENFORCED = "false";
 process.env.ADMIN_MFA_ENCRYPTION_KEY = "test-commercial-admin-encryption-key";
+process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.ADMIN_CREDIT_APPROVAL_THRESHOLD = "1000";
 
 const { handleApi } = await import(`../server/api.mjs?admin=${Date.now()}`);
@@ -73,6 +74,32 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   const ownerSession = await handleApi(authenticated("/api/admin/v1/session", owner.cookie));
   assert.equal(ownerSession.status, 200);
   assert.deepEqual((await ownerSession.json()).roles, ["super_admin"]);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (String(url) === "https://api.dataforseo.com/v3/appendix/user_data") {
+      assert.match(options.headers.authorization, /^Basic /);
+      return new Response(JSON.stringify({ tasks: [{ status_code: 20000, result: [{ money: { balance: 1, currency: "USD" } }] }] }), { status: 200 });
+    }
+    return originalFetch(url, options);
+  };
+  try {
+    assert.equal((await handleApi(authenticated("/api/admin/v1/seo-provider", owner.cookie))).status, 200);
+    const testedProvider = await handleApi(authenticatedJson("/api/admin/v1/seo-provider/test", owner.cookie, {
+      login: "admin@example.com", password: "seo-provider-secret",
+    }));
+    assert.equal(testedProvider.status, 200);
+    assert.equal((await testedProvider.json()).status, "healthy");
+    const savedProvider = await handleApi(authenticatedJson("/api/admin/v1/seo-provider", owner.cookie, {
+      login: "admin@example.com", password: "seo-provider-secret", reason: "Enable production SEO metrics",
+    }, { method: "PUT" }));
+    assert.equal(savedProvider.status, 200);
+    assert.doesNotMatch(JSON.stringify(await savedProvider.json()), /seo-provider-secret/);
+    const redactedProvider = await handleApi(authenticated("/api/admin/v1/seo-provider", owner.cookie));
+    assert.doesNotMatch(JSON.stringify(await redactedProvider.json()), /seo-provider-secret|admin@example\.com/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 
   const timestamp = Date.now();
   for (const [user, role] of [[support, "support"], [finance, "finance"]]) {

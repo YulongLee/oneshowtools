@@ -18,6 +18,10 @@ const copy = {
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
     models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
+    seoSources: "SEO 数据源", seoSourceTitle: "DataForSEO 数据源", seoSourceHint: "用于关键词指标、实时排名、外链和竞争分析。API 密码加密保存，提交后不再显示明文。",
+    seoLogin: "API 登录名", seoPassword: "API 密码（留空则保留现有密码）", seoConnectionTest: "测试账户连接",
+    seoConnectionSave: "测试并保存", seoBalance: "账户余额", seoUnlocked: "可解锁能力", seoProviderHealthy: "认证成功，可以读取账户信息",
+    seoIpHint: "如果在 DataForSEO 开启 IP 白名单，请加入 OneShowTools 服务器的固定出口 IP。未配置白名单时无需填写。",
     managed_runtime: "OneShowModel", market_intelligence: "市场情报模型", modelName: "配置名称", modelProtocol: "接口协议",
     modelBaseUrl: "API Base URL", modelId: "模型 ID", workspaceId: "阿里云 Workspace（可选）", replaceApiKey: "API Key（留空则保留现有密钥）",
     testModel: "测试连接", saveModel: "测试并保存", modelTestHealthy: "连接正常", modelRateLimited: "连接有效，但模型当前繁忙或限流",
@@ -88,6 +92,10 @@ const copy = {
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
     models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
+    seoSources: "SEO Sources", seoSourceTitle: "DataForSEO source", seoSourceHint: "Provides keyword metrics, live rankings, backlinks, and competitor data. The API password is encrypted and never displayed again.",
+    seoLogin: "API login", seoPassword: "API password (leave blank to keep the stored password)", seoConnectionTest: "Test account connection",
+    seoConnectionSave: "Test and save", seoBalance: "Account balance", seoUnlocked: "Capabilities unlocked", seoProviderHealthy: "Authentication succeeded and account data is available",
+    seoIpHint: "If DataForSEO IP allowlisting is enabled, add the fixed OneShowTools outbound IP. No action is needed when allowlisting is disabled.",
     managed_runtime: "OneShowModel", market_intelligence: "Market Intelligence", modelName: "Configuration name", modelProtocol: "API protocol",
     modelBaseUrl: "API Base URL", modelId: "Model ID", workspaceId: "DashScope Workspace (optional)", replaceApiKey: "API Key (leave blank to keep current key)",
     testModel: "Test connection", saveModel: "Test and save", modelTestHealthy: "Connection healthy", modelRateLimited: "Credential accepted, but model is busy or rate limited",
@@ -500,6 +508,50 @@ function PlatformModelsView({ data, locale, canManage, onTest, onSave }) {
   </div>;
 }
 
+function SeoSourcesView({ data, locale, canManage, onTest, onSave }) {
+  const t = copy[locale];
+  const configuration = data?.configuration;
+  const [draft, setDraft] = useState({ login: "", password: "", status: "active", reason: "" });
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    setDraft({ login: "", password: "", status: configuration?.configured && configuration?.enabled === false ? "disabled" : "active", reason: "" });
+    setTestResult(null);
+  }, [configuration?.updatedAt]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const test = async () => {
+    setTesting(true); setTestResult(null);
+    try { setTestResult(await onTest(draft)); } finally { setTesting(false); }
+  };
+  const save = async (event) => {
+    event.preventDefault(); setSaving(true);
+    try {
+      const result = await onSave(draft);
+      if (result) setDraft((current) => ({ ...current, login: "", password: "", reason: "" }));
+    } finally { setSaving(false); }
+  };
+  const balance = testResult?.balance ?? configuration?.balance;
+  const currency = testResult?.currency || configuration?.currency || "USD";
+  return <div className="admin-page-stack seo-source-page">
+    <section className="admin-v2-panel platform-model-intro"><header><div><small>COMMERCIAL SEO DATA</small><h2>{t.seoSourceTitle}</h2></div><LinkSimple size={23} /></header><p>{t.seoSourceHint}</p></section>
+    <section className="seo-source-layout">
+      <article className="admin-v2-panel seo-source-editor">
+        <div className="platform-model-current"><span className={`admin-metric-state ${configuration?.configured && configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.configured ? configuration.loginHint : t.notReporting}</strong><small>{configuration?.configured ? `${configuration.passwordHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : locale === "en" ? "No stored credential" : "尚未保存凭证"}</small></div></div>
+        <form className="platform-model-form" onSubmit={save}>
+          <label>{t.seoLogin}<input type="email" value={draft.login} onChange={change("login")} placeholder={configuration?.loginHint || "contact@example.com"} disabled={!canManage} required={!configuration?.configured} autoComplete="off" /></label>
+          <label>{t.status}<select value={draft.status} onChange={change("status")} disabled={!canManage}><option value="active">{t.active}</option><option value="disabled">{locale === "en" ? "Disabled" : "停用"}</option></select></label>
+          <label className="wide">{t.seoPassword}<input type="password" value={draft.password} onChange={change("password")} placeholder={configuration?.passwordHint || ""} disabled={!canManage} required={!configuration?.configured} autoComplete="new-password" /></label>
+          <label className="wide">{t.changeReason}<input value={draft.reason} onChange={change("reason")} disabled={!canManage} required /></label>
+          {testResult && <div className={`platform-model-test ${testResult.status === "healthy" ? "healthy" : "warning"}`}><CheckCircle size={17} /><span>{testResult.status === "healthy" ? t.seoProviderHealthy : testResult.status}</span><em>{testResult.latencyMs} ms</em></div>}
+          {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.seoConnectionTest}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.seoConnectionSave}</button></div>}
+        </form>
+      </article>
+      <aside className="admin-v2-panel seo-source-summary"><header><div><small>ACCOUNT & COVERAGE</small><h2>{t.seoBalance}</h2></div><Coins size={22} /></header><strong className="seo-source-balance">{balance == null ? "—" : `${currency} ${Number(balance).toLocaleString(locale, { maximumFractionDigits: 4 })}`}</strong><DetailRow label={t.seoUnlocked} value={`${data?.capabilities?.total || 13}`} /><DetailRow label={locale === "en" ? "Keyword metrics" : "关键词指标"} value={data?.capabilities?.keywordMetrics} /><DetailRow label={locale === "en" ? "Live SERP" : "实时排名"} value={data?.capabilities?.liveSerp} /><DetailRow label={locale === "en" ? "Backlinks" : "外链分析"} value={data?.capabilities?.backlinks} /><DetailRow label={locale === "en" ? "Competitors" : "竞争分析"} value={data?.capabilities?.competitors} /><p>{t.seoIpHint}{data?.ipWhitelist?.serverIp ? ` ${data.ipWhitelist.serverIp}` : ""}</p></aside>
+    </section>
+  </div>;
+}
+
 function metricDisplay(metric, locale) {
   if (metric.value == null) return "—";
   if (metric.unit === "percent") return `${metric.value.toLocaleString(locale, { maximumFractionDigits: 1 })}%`;
@@ -697,6 +749,7 @@ export function AdminApp() {
     analytics: "/api/admin/v1/analytics/tools?days=30",
     intelligence: `/api/admin/v1/market-intelligence${intelligenceDate ? `?date=${encodeURIComponent(intelligenceDate)}` : ""}`,
     models: "/api/admin/v1/platform-models",
+    seoSources: "/api/admin/v1/seo-provider",
     infrastructure: "/api/admin/v1/infrastructure/overview",
     commerce: "/api/admin/v1/commerce", tools: "/api/admin/v1/tools",
     operations: "/api/admin/v1/operations", privacy: "/api/admin/v1/privacy",
@@ -789,6 +842,15 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/platform-models/${purpose}`, json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const testSeoProvider = async (draft) => {
+    try { return await api("/api/admin/v1/seo-provider/test", json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const saveSeoProvider = async (draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/seo-provider", json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -800,6 +862,7 @@ export function AdminApp() {
     ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
     ["intelligence", Binoculars, "intelligence.read"],
     ["models", Gear, "models.read"],
+    ["seoSources", LinkSimple, "seo_sources.read"],
     ["operations", Pulse, "jobs.read"], ["tools", Storefront, "tools.read"], ["commerce", CreditCard, "billing.read"],
     ["privacy", IdentificationCard, "privacy.read"],
     ["audit", ListChecks, "audit.read"], ["admins", ShieldCheck, "admins.manage"],
@@ -812,6 +875,7 @@ export function AdminApp() {
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
     models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} onTest={testPlatformModel} onSave={savePlatformModel} />,
+    seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
     tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} />,

@@ -254,6 +254,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0011_platform_models_and_object_storage.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0012_ai_writing.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0013_seo_workbench.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0014_seo_provider_configs.sql"), "utf8"));
 
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");

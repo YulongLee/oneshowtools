@@ -1013,11 +1013,16 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .platform-model-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 .platform-model-actions button { min-height: 38px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d5dfec; border-radius: 8px; padding: 0 13px; color: #435772; background: #fff; font-size: 9px; font-weight: 750; cursor: pointer; }
 .platform-model-actions button.admin-primary { color: #fff; border-color: #1768e5; background: #1768e5; }
+.seo-source-layout { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 14px; align-items: start; }
+.seo-source-editor { overflow: hidden; }
+.seo-source-summary { padding-bottom: 16px; }
+.seo-source-balance { display: block; margin: 2px 16px 14px; color: #1768e5; font-size: 24px; letter-spacing: -.03em; }
+.seo-source-summary > p { margin: 15px 16px 0; padding: 12px; border-radius: 9px; color: #65768d; background: #f5f8fc; font-size: 8px; line-height: 1.7; }
 .platform-storage-card { overflow: hidden; }
 .platform-storage-status { display: flex; align-items: center; gap: 8px; margin: 4px 14px 13px; padding: 12px; border-radius: 9px; color: #27415f; background: #f2f7fd; }
 .platform-storage-card .admin-detail-row { margin: 0 14px; }
 .platform-storage-card > p { margin: 14px; padding: 11px; border-radius: 8px; color: #728197; background: #fafbfd; font-size: 8px; line-height: 1.7; }
-@media (max-width: 980px) { .platform-model-layout { grid-template-columns: 1fr; } }
+@media (max-width: 980px) { .platform-model-layout, .seo-source-layout { grid-template-columns: 1fr; } }
 .market-chat-citations, .market-chat-suggestions { max-width: 92%; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .market-chat-citations span, .market-chat-suggestions span { width: 100%; color: #8390a2; font-size: 7px; }
 .market-chat-citations a { padding: 3px 6px; border-radius: 5px; color: #1768e5; background: #edf4ff; font-size: 7px; font-weight: 700; text-decoration: none; }
