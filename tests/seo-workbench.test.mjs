@@ -18,6 +18,9 @@ test("SEO workbench exposes seven evidence-aware modules and locks unavailable p
   assert.equal(backlink.templates.every((template) => template.available === false), true);
   const audit = catalog.modules.find((module) => module.id === "website-audit");
   assert.equal(audit.templates.every((template) => template.available === true), true);
+  const ranking = catalog.modules.find((module) => module.id === "rank-tracking").templates.find((template) => template.id === "keyword-ranking");
+  const engine = ranking.fields.find((field) => field.id === "searchEngine");
+  assert.deepEqual(engine.options.map((option) => option.value), ["google", "baidu"]);
 });
 
 test("SEO website audit crawls real HTML evidence and returns an explainable score", async (t) => {
@@ -96,6 +99,43 @@ test("SERP provider output records a real rank snapshot for later trend reports"
   assert.equal(result.rankSnapshots.length, 1);
   assert.equal(result.rankSnapshots[0].rank, 4);
   assert.equal(result.output.dataQuality, "provider-observed");
+  assert.equal(result.rankSnapshots[0].searchEngine, "google");
+  assert.equal(result.rankSnapshots[0].device, "desktop");
+});
+
+test("Baidu ranking uses the asynchronous provider flow and stores an isolated snapshot", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const previousLogin = process.env.DATAFORSEO_LOGIN;
+  const previousPassword = process.env.DATAFORSEO_PASSWORD;
+  process.env.DATAFORSEO_LOGIN = "test-login";
+  process.env.DATAFORSEO_PASSWORD = "test-password";
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/task_post")) {
+      return new Response(JSON.stringify({ status_code: 20000, cost: 0.001, tasks: [{ id: "baidu-task", status_code: 20100, cost: 0.001 }] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ status_code: 20000, tasks: [{ id: "baidu-task", status_code: 20000, result: [{ items: [{ type: "organic", url: "https://example.cn/page", title: "示例结果", rank_absolute: 3 }] }] }] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (previousLogin == null) delete process.env.DATAFORSEO_LOGIN; else process.env.DATAFORSEO_LOGIN = previousLogin;
+    if (previousPassword == null) delete process.env.DATAFORSEO_PASSWORD; else process.env.DATAFORSEO_PASSWORD = previousPassword;
+  });
+
+  const result = await generateSeo({ user: { id: "baidu-rank-user" }, connectionId: null, payload: { templateId: "keyword-ranking", locale: "zh-CN", values: { website: "https://example.cn", keywords: "面试题", searchEngine: "baidu", country: "中国", device: "mobile" } } });
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].url, /serp\/baidu\/organic\/task_post$/);
+  assert.match(calls[1].url, /task_get\/advanced\/baidu-task$/);
+  const posted = JSON.parse(calls[0].options.body)[0];
+  assert.equal(posted.language_name, "Chinese (Simplified)");
+  assert.equal(posted.device, "mobile");
+  assert.equal(posted.os, "android");
+  assert.equal(posted.get_website_url, true);
+  assert.match(result.output.markdown, /本次排名：3/);
+  assert.equal(result.output.dataSource, "dataforseo-baidu-serp");
+  assert.equal(result.rankSnapshots[0].searchEngine, "baidu");
+  assert.equal(result.rankSnapshots[0].device, "mobile");
 });
 
 test("SEO reports use persisted runs and ranking trends use only persisted rank snapshots", async (t) => {

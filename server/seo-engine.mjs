@@ -44,10 +44,12 @@ function normalize(payload) {
   const values = {};
   for (const definition of entry.fields) {
     const max = definition.type === "textarea" ? 60_000 : 2_000;
-    const value = clean(payload.values?.[definition.id], max);
+    const value = clean(payload.values?.[definition.id] ?? definition.defaultValue, max);
     if (definition.required && !value) throw error(`SEO_FIELD_REQUIRED_${definition.id.toUpperCase()}`, 422);
     values[definition.id] = value;
   }
+  if (values.searchEngine && !["google", "baidu"].includes(values.searchEngine)) throw error("SEO_SEARCH_ENGINE_INVALID", 422);
+  if (values.device && !["desktop", "mobile"].includes(values.device)) throw error("SEO_DEVICE_INVALID", 422);
   const status = seoDataSourceStatus();
   if (!["direct", "model", "history"].includes(entry.source) && !status[entry.source]) {
     throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: entry.source });
@@ -260,8 +262,12 @@ function runHistory(user, input) {
 
 function runRankHistory(user, input) {
   const requestedKeywords = input.values.keywords.split(/[,，\n]/).map((item) => item.trim().toLowerCase()).filter(Boolean);
-  let rows = db.prepare(`SELECT website, keyword, country, language, rank, result_url, source, observed_at FROM seo_rank_snapshots WHERE user_id = ? AND website = ? ORDER BY observed_at DESC LIMIT 500`).all(user.id, input.values.website);
+  const settings = providerSettings(input);
+  const { searchEngine: engine, device } = settings;
+  let rows = db.prepare(`SELECT website, keyword, country, language, search_engine, device, rank, result_url, source, observed_at FROM seo_rank_snapshots WHERE user_id = ? AND website = ? AND search_engine = ? AND device = ? ORDER BY observed_at DESC LIMIT 500`).all(user.id, input.values.website, engine, device);
   if (requestedKeywords.length) rows = rows.filter((row) => requestedKeywords.includes(row.keyword.toLowerCase()));
+  if (input.values.country) rows = rows.filter((row) => row.country === settings.location);
+  if (input.values.language) rows = rows.filter((row) => row.language === settings.languageName);
   if (!rows.length) throw error("SEO_RANK_HISTORY_EMPTY", 422);
   const groups = new Map();
   for (const row of rows) groups.set(row.keyword, [...(groups.get(row.keyword) || []), row]);
@@ -270,26 +276,203 @@ function runRankHistory(user, input) {
     return { keyword, latestRank: latest.rank, previousRank: observations[1]?.rank ?? null, oldestRank: oldest.rank, change: latest.rank != null && oldest.rank != null ? oldest.rank - latest.rank : null, observations: observations.length, source: latest.source, observedAt: latest.observed_at };
   });
   const trendLabel = input.entry.id === "ranking-trend" ? "排名趋势" : "排名历史";
-  const markdown = `# ${trendLabel}\n\n## 数据范围\n\n- 网站：${input.values.website}\n- 关键词：${trends.length} 个\n- 真实快照：${rows.length} 条\n\n## 最新趋势\n\n| 关键词 | 最新排名 | 最早排名 | 变化 | 观测次数 | 来源 |\n|---|---:|---:|---:|---:|---|\n${trends.map((row) => `| ${markdownCell(row.keyword)} | ${row.latestRank ?? "未进入观测范围"} | ${row.oldestRank ?? "—"} | ${row.change == null ? "—" : `${row.change > 0 ? "+" : ""}${row.change}`} | ${row.observations} | ${markdownCell(row.source)} |`).join("\n")}\n\n## 说明\n\n正数变化代表排名提升。这里只读取真实保存的 SERP 快照；不同国家、语言、设备或供应商的数据不应直接混合比较。`;
+  const markdown = `# ${trendLabel}\n\n## 数据范围\n\n- 网站：${input.values.website}\n- 搜索引擎：${engine === "baidu" ? "百度" : "Google"}\n- 设备：${device === "mobile" ? "移动端" : "电脑端"}\n- 关键词：${trends.length} 个\n- 真实快照：${rows.length} 条\n\n## 最新趋势\n\n| 关键词 | 最新排名 | 最早排名 | 变化 | 观测次数 | 来源 |\n|---|---:|---:|---:|---:|---|\n${trends.map((row) => `| ${markdownCell(row.keyword)} | ${row.latestRank ?? "未进入观测范围"} | ${row.oldestRank ?? "—"} | ${row.change == null ? "—" : `${row.change > 0 ? "+" : ""}${row.change}`} | ${row.observations} | ${markdownCell(row.source)} |`).join("\n")}\n\n## 说明\n\n正数变化代表排名提升。这里只读取相同搜索引擎、设备、国家和语言下保存的真实 SERP 快照，避免混合不可比较的数据。`;
   return { markdown, structured: { rows, trends }, dataSource: "rank-snapshots", dataQuality: "persisted-observations" };
 }
 
-async function dataForSeo(path, body) {
+function dataForSeoHeaders(credentials) {
+  const token = Buffer.from(`${credentials.login}:${credentials.password}`).toString("base64");
+  return { authorization: `Basic ${token}`, "content-type": "application/json", accept: "application/json" };
+}
+
+async function dataForSeoRaw(path, { method = "POST", body = null } = {}) {
   const credentials = dataForSeoCredentials();
   if (!credentials) throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: "dataforseo" });
-  const token = Buffer.from(`${credentials.login}:${credentials.password}`).toString("base64");
-  const response = await fetch(`https://api.dataforseo.com${path}`, { method: "POST", headers: { authorization: `Basic ${token}`, "content-type": "application/json" }, body: JSON.stringify([body]) });
+  let response;
+  try {
+    response = await fetch(`https://api.dataforseo.com${path}`, {
+      method,
+      headers: dataForSeoHeaders(credentials),
+      ...(body == null ? {} : { body: JSON.stringify([body]) }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw error("SEO_PROVIDER_UNREACHABLE", 502);
+  }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data.status_code !== 20000 || data.tasks?.[0]?.status_code !== 20000) throw error("SEO_PROVIDER_FAILED", 502);
-  return { result: data.tasks[0].result || [], cost: data.cost || data.tasks[0].cost || null };
+  if (!response.ok || Number(data.status_code) >= 40000) throw error("SEO_PROVIDER_FAILED", 502, { providerStatus: data.status_code || response.status });
+  return { data, task: data.tasks?.[0] || null };
+}
+
+async function dataForSeo(path, body) {
+  const { data, task } = await dataForSeoRaw(path, { body });
+  if (!task || Number(task.status_code) !== 20000) throw error("SEO_PROVIDER_FAILED", 502, { providerStatus: task?.status_code || null });
+  return { result: task.result || [], cost: data.cost || task.cost || null };
+}
+
+const waitFor = (milliseconds) => new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
+
+async function dataForSeoBaiduSerp(body) {
+  const posted = await dataForSeoRaw("/v3/serp/baidu/organic/task_post", { body: { ...body, priority: 2 } });
+  const taskId = posted.task?.id;
+  if (!taskId || Number(posted.task?.status_code) >= 40000) throw error("SEO_PROVIDER_FAILED", 502, { providerStatus: posted.task?.status_code || null });
+  const attempts = Math.max(1, Math.min(60, Number(process.env.SEO_BAIDU_POLL_ATTEMPTS || 40)));
+  const interval = Math.max(100, Math.min(5_000, Number(process.env.SEO_BAIDU_POLL_INTERVAL_MS || 1_500)));
+  for (let index = 0; index < attempts; index += 1) {
+    if (index) await waitFor(interval);
+    const fetched = await dataForSeoRaw(`/v3/serp/baidu/organic/task_get/advanced/${encodeURIComponent(taskId)}`, { method: "GET" });
+    const task = fetched.task;
+    if (Number(task?.status_code) === 20000 && Array.isArray(task.result) && task.result.length) {
+      return { result: task.result, cost: Number(posted.data.cost || posted.task.cost || 0) + Number(fetched.data.cost || task.cost || 0), taskId };
+    }
+    if (task && Number(task.status_code) >= 40000 && ![40401, 40501, 40601, 40602].includes(Number(task.status_code))) {
+      throw error("SEO_PROVIDER_FAILED", 502, { providerStatus: task.status_code });
+    }
+  }
+  throw error("SEO_PROVIDER_TIMEOUT", 504, { searchEngine: "baidu" });
+}
+
+const locationAliases = new Map([
+  ["中国", "China"], ["中国大陆", "China"], ["美国", "United States"], ["英国", "United Kingdom"],
+  ["加拿大", "Canada"], ["澳大利亚", "Australia"], ["日本", "Japan"], ["新加坡", "Singapore"],
+  ["北京", "Beijing,China"], ["上海", "Shanghai,China"], ["广东", "Guangdong,China"], ["深圳", "Shenzhen,Guangdong,China"],
+]);
+
+function providerSettings(input) {
+  const searchEngine = input.values.searchEngine || "google";
+  const device = input.values.device || "desktop";
+  const location = locationAliases.get(input.values.country) || input.values.country || (searchEngine === "baidu" ? "China" : "United States");
+  const languageName = searchEngine === "baidu" ? "Chinese (Simplified)" : (input.values.language || "English");
+  return { searchEngine, device, location, languageName, os: device === "mobile" ? "android" : "windows" };
+}
+
+function organicItems(result) {
+  return result.flatMap((entry) => entry?.items || []).filter((item) => item.type === "organic");
+}
+
+function hostOf(value) {
+  const candidate = clean(value, 2000);
+  if (/^[a-z0-9.-]+$/i.test(candidate)) return candidate.replace(/^www\./, "").toLowerCase();
+  try { return new URL(candidate).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+}
+
+function matchDomain(items, target) {
+  const targetHost = hostOf(target);
+  return items.find((item) => {
+    const host = hostOf(item.website_url || item.url || item.domain);
+    return host && targetHost && (host === targetHost || host.endsWith(`.${targetHost}`));
+  });
+}
+
+function relatedSearches(result) {
+  const found = [];
+  for (const entry of result) {
+    for (const item of entry?.items || []) {
+      if (item.type !== "related_searches") continue;
+      for (const candidate of item.items || item.related_searches || []) {
+        const value = clean(candidate.keyword || candidate.title || candidate.text, 300);
+        if (value) found.push(value);
+      }
+    }
+  }
+  return [...new Set(found)];
+}
+
+function baiduBody(keyword, settings) {
+  return {
+    keyword,
+    location_name: settings.location,
+    language_name: "Chinese (Simplified)",
+    device: settings.device,
+    os: settings.os,
+    depth: 10,
+    get_website_url: true,
+  };
+}
+
+function baiduCompetition(keyword, result) {
+  const organic = organicItems(result).slice(0, 10);
+  const lowered = keyword.toLowerCase();
+  const exactTitles = organic.filter((item) => clean(item.title, 500).toLowerCase().includes(lowered)).length;
+  const homepages = organic.filter((item) => { try { return new URL(item.url).pathname.replace(/\/+$/, "") === ""; } catch { return false; } }).length;
+  const uniqueDomains = new Set(organic.map((item) => hostOf(item.url)).filter(Boolean)).size;
+  const score = organic.length ? Math.min(100, Math.round((exactTitles / organic.length) * 45 + (homepages / organic.length) * 25 + (uniqueDomains / organic.length) * 30)) : null;
+  return { keyword, score, organicResults: organic.length, exactTitleMatches: exactTitles, homepageResults: homepages, uniqueDomains };
+}
+
+async function baiduSerpForKeywords(keywords, settings, limit = 5) {
+  const selected = [...new Set(keywords.map((item) => clean(item, 300)).filter(Boolean))].slice(0, limit);
+  return Promise.all(selected.map(async (keyword) => ({ keyword, response: await dataForSeoBaiduSerp(baiduBody(keyword, settings)) })));
+}
+
+async function runBaiduProvider(input, settings, keywordList, keyword) {
+  let observations;
+  if (["keyword-opportunity", "keyword-difficulty"].includes(input.entry.id)) {
+    const queried = await baiduSerpForKeywords(input.entry.id === "keyword-opportunity" ? [input.values.topic] : keywordList, settings);
+    const related = [...new Set(queried.flatMap((item) => relatedSearches(item.response.result)))];
+    const difficulty = queried.map((item) => baiduCompetition(item.keyword, item.response.result));
+    const rows = input.entry.id === "keyword-opportunity"
+      ? related.map((item) => ({ keyword: item, source: "百度相关搜索" }))
+      : difficulty;
+    observations = input.entry.id === "keyword-opportunity"
+      ? `## 百度机会关键词\n\n| 关键词 | 证据来源 |\n|---|---|\n${rows.map((row) => `| ${markdownCell(row.keyword)} | ${row.source} |`).join("\n") || "| 本次未返回相关搜索词 | — |"}`
+      : `## 百度 SERP 竞争度\n\n| 关键词 | 启发式竞争分 | 有机结果 | 标题精确覆盖 | 首页结果 | 独立域名 |\n|---|---:|---:|---:|---:|---:|\n${rows.map((row) => `| ${markdownCell(row.keyword)} | ${row.score ?? "—"} | ${row.organicResults} | ${row.exactTitleMatches} | ${row.homepageResults} | ${row.uniqueDomains} |`).join("\n")}`;
+    const cost = queried.reduce((sum, item) => sum + Number(item.response.cost || 0), 0);
+    return {
+      markdown: `# ${input.entry.label.zh}\n\n## 数据来源\n\n百度真实 SERP（DataForSEO 异步任务），电脑端/移动端按本次设置采集。\n\n${observations}\n\n## 数据边界\n\n百度相关搜索是可观察的关键词线索，不等于搜索量。竞争分只根据本次前 10 条结果的标题覆盖、首页占比和域名多样性计算，是可解释的 SERP 启发式评分，不是百度指数或官方关键词难度。`,
+      structured: { provider: "dataforseo", searchEngine: "baidu", rows, cost },
+      dataSource: "dataforseo-baidu-serp", dataQuality: "provider-observed",
+    };
+  }
+
+  const first = await dataForSeoBaiduSerp(baiduBody(keyword, settings));
+  let queries = [{ keyword, response: first }];
+  if (["competitor-keywords", "keyword-gap"].includes(input.entry.id)) {
+    const expansion = relatedSearches(first.result).slice(0, 4);
+    const extra = await baiduSerpForKeywords(expansion, settings, 4);
+    queries = [...queries, ...extra];
+  }
+  const firstOrganic = organicItems(first.result);
+  const matched = matchDomain(firstOrganic, input.values.website);
+  const source = `dataforseo-baidu-serp-${settings.device}`;
+  const rankSnapshots = ["keyword-ranking", "serp-monitor"].includes(input.entry.id) && keyword ? [{
+    website: input.values.website, keyword, country: settings.location, language: settings.languageName,
+    searchEngine: "baidu", device: settings.device,
+    rank: matched?.rank_absolute ?? matched?.rank_group ?? null,
+    resultUrl: matched?.website_url || matched?.url || null, source, observedAt: Date.now(),
+  }] : [];
+  let detail;
+  if (["keyword-ranking", "serp-monitor"].includes(input.entry.id)) {
+    detail = `## 观测结果\n\n- 关键词：${keyword}\n- 搜索引擎：百度\n- 设备：${settings.device === "mobile" ? "移动端" : "电脑端"}\n- 目标网站：${input.values.website}\n- 本次排名：${matched?.rank_absolute ?? matched?.rank_group ?? "未进入前 10 条观测范围"}\n- 匹配 URL：${matched?.url || "暂无"}\n- 有机结果样本：${firstOrganic.length} 条`;
+  } else if (input.entry.id === "serp-comparison") {
+    const domains = [input.values.website, ...input.values.competitors.split(/\n|,/).map((item) => item.trim()).filter(Boolean).slice(0, 3)];
+    const comparison = domains.map((url) => { const hit = matchDomain(firstOrganic, url); return { host: hostOf(url), rank: hit?.rank_absolute ?? hit?.rank_group ?? null, resultUrl: hit?.url || null }; });
+    detail = `## 百度 SERP 对比\n\n- 关键词：${keyword}\n- 地区：${settings.location}\n- 设备：${settings.device === "mobile" ? "移动端" : "电脑端"}\n\n| 网站 | 排名 | 命中 URL |\n|---|---:|---|\n${comparison.map((row) => `| ${markdownCell(row.host)} | ${row.rank ?? "未进入前 10 条"} | ${markdownCell(row.resultUrl)} |`).join("\n")}`;
+  } else {
+    const competitors = input.values.competitors.split(/\n|,/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
+    const coverage = queries.map(({ keyword: observedKeyword, response }) => {
+      const organic = organicItems(response.result);
+      const own = matchDomain(organic, input.values.website);
+      const rival = competitors.map((url) => ({ host: hostOf(url), hit: matchDomain(organic, url) })).find((item) => item.hit);
+      return { keyword: observedKeyword, ownRank: own?.rank_absolute ?? own?.rank_group ?? null, competitor: rival?.host || null, competitorRank: rival?.hit?.rank_absolute ?? rival?.hit?.rank_group ?? null };
+    });
+    detail = `## 百度关键词覆盖对比\n\n| 查询词 | 本站排名 | 命中竞品 | 竞品排名 |\n|---|---:|---|---:|\n${coverage.map((row) => `| ${markdownCell(row.keyword)} | ${row.ownRank ?? "未进入前 10 条"} | ${markdownCell(row.competitor)} | ${row.competitorRank ?? "—"} |`).join("\n")}`;
+  }
+  const cost = queries.reduce((sum, item) => sum + Number(item.response.cost || 0), 0);
+  return {
+    markdown: `# ${input.entry.label.zh}\n\n## 数据来源\n\n百度真实 SERP（DataForSEO 异步任务）${cost ? `，本次上游成本 ${cost}` : ""}。\n\n${detail}\n\n## 数据边界\n\n百度结果限定本次关键词、地区、设备和前 10 条观测范围。未进入范围不等于完全没有排名；竞品关键词与差距仅代表本次种子词及百度相关搜索扩展，不冒充完整关键词数据库。`,
+    structured: { provider: "dataforseo", searchEngine: "baidu", result: queries.map((item) => ({ keyword: item.keyword, result: item.response.result })), cost, rankSnapshots },
+    rankSnapshots, dataSource: "dataforseo-baidu-serp", dataQuality: "provider-observed",
+  };
 }
 
 async function runProvider(input) {
   if (!dataForSeoCredentials()) throw error("SEO_DATA_SOURCE_REQUIRED", 422, { source: input.entry.source });
   const keywordList = (input.values.keywords || input.values.topic).split(/[,，\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 100);
   const keyword = keywordList[0] || input.values.topic;
-  const location = input.values.country || "United States";
-  const languageName = input.values.language || "English";
+  const settings = providerSettings(input);
+  const { searchEngine, device, location, languageName, os } = settings;
+  if (searchEngine === "baidu" && input.entry.source !== "backlink-provider") return runBaiduProvider(input, settings, keywordList, keyword);
   let provider;
   if (input.entry.source === "backlink-provider") {
     const target = new URL(input.values.website).hostname.replace(/^www\./, "");
@@ -318,13 +501,13 @@ async function runProvider(input) {
     const gapItems = competitor.result.flatMap((entry) => entry?.items || []).filter((item) => !ownKeywords.has(keywordOf(item)));
     provider = { result: [{ items: gapItems, ownTarget, competitorTarget }], cost: Number(own.cost || 0) + Number(competitor.cost || 0) };
   } else {
-    provider = await dataForSeo("/v3/serp/google/organic/live/advanced", { keyword, location_name: location, language_name: languageName, depth: 100 });
+    provider = await dataForSeo("/v3/serp/google/organic/live/advanced", { keyword, location_name: location, language_name: languageName, device, os, depth: 100 });
   }
   const items = provider.result.flatMap((entry) => entry?.items || []);
   const targetHost = input.values.website ? new URL(input.values.website).hostname.replace(/^www\./, "") : "";
   const organic = items.filter((item) => item.type === "organic");
   const matched = organic.find((item) => { try { const host = new URL(item.url).hostname.replace(/^www\./, ""); return host === targetHost || host.endsWith(`.${targetHost}`); } catch { return false; } });
-  const rankSnapshots = ["keyword-ranking", "serp-monitor"].includes(input.entry.id) && keyword ? [{ website: input.values.website, keyword, country: location, language: languageName, rank: matched?.rank_absolute ?? matched?.rank_group ?? null, resultUrl: matched?.url || null, source: "dataforseo-serp", observedAt: Date.now() }] : [];
+  const rankSnapshots = ["keyword-ranking", "serp-monitor"].includes(input.entry.id) && keyword ? [{ website: input.values.website, keyword, country: location, language: languageName, searchEngine, device, rank: matched?.rank_absolute ?? matched?.rank_group ?? null, resultUrl: matched?.url || null, source: `dataforseo-${searchEngine}-serp-${device}`, observedAt: Date.now() }] : [];
   const keywordRows = items.map((item) => {
     const data = item.keyword_data || item;
     const info = data.keyword_info || {};

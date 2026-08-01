@@ -256,6 +256,11 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0013_seo_workbench.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0014_seo_provider_configs.sql"), "utf8"));
 
+  const rankSnapshotColumns = new Set(db.prepare("PRAGMA table_info(seo_rank_snapshots)").all().map((item) => item.name));
+  if (!rankSnapshotColumns.has("search_engine")) db.exec("ALTER TABLE seo_rank_snapshots ADD COLUMN search_engine TEXT NOT NULL DEFAULT 'google'");
+  if (!rankSnapshotColumns.has("device")) db.exec("ALTER TABLE seo_rank_snapshots ADD COLUMN device TEXT NOT NULL DEFAULT 'desktop'");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_seo_rank_engine_history ON seo_rank_snapshots(user_id, website, keyword, search_engine, device, observed_at DESC)");
+
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");
   if (!sessionColumns.has("user_agent")) db.exec("ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''");

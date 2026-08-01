@@ -213,10 +213,11 @@ function storeCompletedTask({ user, tool, input, output, resultFile, writingRun 
     for (const snapshot of rankSnapshots) {
       db.prepare(`
         INSERT INTO seo_rank_snapshots
-        (id, user_id, website, keyword, country, language, rank, result_url, source, observed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, user_id, website, keyword, country, language, search_engine, device, rank, result_url, source, observed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(randomUUID(), user.id, snapshot.website, snapshot.keyword, snapshot.country || null,
-        snapshot.language || null, snapshot.rank ?? null, snapshot.resultUrl || null,
+        snapshot.language || null, snapshot.searchEngine || "google", snapshot.device || "desktop",
+        snapshot.rank ?? null, snapshot.resultUrl || null,
         snapshot.source, snapshot.observedAt || timestamp);
     }
     db.exec("COMMIT");

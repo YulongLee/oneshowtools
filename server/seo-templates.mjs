@@ -1,9 +1,23 @@
-const field = (id, zh, en, type = "text", required = false, placeholderZh = "", placeholderEn = "") => ({ id, label: { zh, en }, type, required, placeholder: { zh: placeholderZh, en: placeholderEn } });
+const field = (id, zh, en, type = "text", required = false, placeholderZh = "", placeholderEn = "", extra = {}) => ({ id, label: { zh, en }, type, required, placeholder: { zh: placeholderZh, en: placeholderEn }, ...extra });
 const website = field("website", "网站 URL", "Website URL", "url", true, "https://example.com", "https://example.com");
 const topic = field("topic", "主题", "Topic", "text", true, "例如：AI 写作工具", "For example: AI writing tools");
 const keywords = field("keywords", "关键词", "Keywords", "tags", true, "用逗号分隔", "Separate with commas");
 const country = field("country", "目标国家/地区", "Country / region", "text", false, "中国、美国…", "China, United States…");
 const language = field("language", "目标语言", "Language", "text", false, "简体中文", "English");
+const searchEngine = field("searchEngine", "搜索引擎", "Search engine", "select", true, "", "", {
+  defaultValue: "google",
+  options: [
+    { value: "google", label: { zh: "Google（全球市场）", en: "Google (global markets)" } },
+    { value: "baidu", label: { zh: "百度（中国大陆）", en: "Baidu (Mainland China)" } },
+  ],
+});
+const device = field("device", "搜索设备", "Search device", "select", true, "", "", {
+  defaultValue: "desktop",
+  options: [
+    { value: "desktop", label: { zh: "电脑端", en: "Desktop" } },
+    { value: "mobile", label: { zh: "移动端", en: "Mobile" } },
+  ],
+});
 const content = field("content", "文章内容", "Content", "textarea", true, "粘贴需要分析的正文…", "Paste the content to analyze…");
 const competitors = field("competitors", "竞争网站", "Competitor URLs", "textarea", true, "每行一个 URL，最多 3 个", "One URL per line, up to 3");
 const t = (id, zh, en, descriptionZh, descriptionEn, fields, mode, source, rules = []) => ({ id, label: { zh, en }, description: { zh: descriptionZh, en: descriptionEn }, fields, mode, source, rules });
@@ -16,8 +30,8 @@ export const seoModules = [
     t("keyword-cluster", "关键词聚类", "Keyword Clusters", "按搜索任务和页面意图聚类", "Cluster by search task and page intent", [keywords, country, language], "model", "model"),
     t("search-intent", "搜索意图分析", "Search Intent", "识别信息、商业、交易与导航意图", "Classify informational, commercial, transactional, and navigational intent", [keywords, country, language], "model", "model"),
     t("question-keywords", "问题关键词", "Question Keywords", "发现用户会直接提出的问题", "Discover questions users are likely to ask", [topic, country, language], "model", "model"),
-    t("keyword-opportunity", "机会关键词", "Keyword Opportunities", "结合真实搜索数据寻找机会", "Find opportunities using measured search data", [website, topic, country, language], "provider", "keyword-provider"),
-    t("keyword-difficulty", "关键词难度", "Keyword Difficulty", "基于 SERP 与关键词数据评估难度", "Estimate difficulty from SERP and keyword data", [keywords, country, language], "provider", "keyword-provider"),
+    t("keyword-opportunity", "机会关键词", "Keyword Opportunities", "结合真实搜索数据寻找机会", "Find opportunities using measured search data", [website, topic, searchEngine, country, language, device], "provider", "keyword-provider"),
+    t("keyword-difficulty", "关键词难度", "Keyword Difficulty", "基于 SERP 与关键词数据评估难度", "Estimate difficulty from SERP and keyword data", [keywords, searchEngine, country, language, device], "provider", "keyword-provider"),
   ]),
   m("content-optimization", "内容优化", "Content Optimization", "Article", "green", "从搜索意图到页面结构优化已有内容", "Optimize existing content from intent through page structure", [
     t("seo-score", "SEO 评分", "SEO Score", "依据可解释检查项评估内容", "Score content with explainable checks", [content, keywords, language], "hybrid", "model"),
@@ -41,10 +55,10 @@ export const seoModules = [
     t("mobile-friendly", "移动端友好", "Mobile Friendly", "检查 viewport，并可结合 PageSpeed", "Check viewport and optionally PageSpeed", [website], "crawl", "direct"),
   ]),
   m("rank-tracking", "排名监控", "Rank Tracking", "TrendUp", "violet", "记录真实 SERP 或 Search Console 位置变化", "Track observed SERP or Search Console position changes", [
-    t("keyword-ranking", "关键词排名", "Keyword Ranking", "查询指定地区的真实结果位置", "Query an observed rank for a location", [website, keywords, country, language], "provider", "serp-provider"),
-    t("serp-monitor", "SERP 监控", "SERP Monitor", "保存 SERP 快照用于后续比较", "Save SERP snapshots for comparison", [website, keywords, country, language], "provider", "serp-provider"),
-    t("ranking-history", "排名历史", "Ranking History", "读取已保存的真实历史快照", "Read persisted rank observations", [website, keywords], "history", "history"),
-    t("ranking-trend", "排名趋势", "Ranking Trend", "计算历史排名变化趋势", "Calculate trends from saved observations", [website, keywords], "history", "history"),
+    t("keyword-ranking", "关键词排名", "Keyword Ranking", "查询指定地区的真实结果位置", "Query an observed rank for a location", [website, keywords, searchEngine, country, language, device], "provider", "serp-provider"),
+    t("serp-monitor", "SERP 监控", "SERP Monitor", "保存 SERP 快照用于后续比较", "Save SERP snapshots for comparison", [website, keywords, searchEngine, country, language, device], "provider", "serp-provider"),
+    t("ranking-history", "排名历史", "Ranking History", "读取已保存的真实历史快照", "Read persisted rank observations", [website, keywords, searchEngine, country, language, device], "history", "history"),
+    t("ranking-trend", "排名趋势", "Ranking Trend", "计算历史排名变化趋势", "Calculate trends from saved observations", [website, keywords, searchEngine, country, language, device], "history", "history"),
   ]),
   m("backlink-analysis", "外链分析", "Backlink Analysis", "Link", "cyan", "使用专业索引分析站外链接", "Analyze inbound links with a maintained backlink index", [
     ...[["backlink-overview","外链概览","Backlink Overview"],["broken-backlinks","失效外链","Broken Backlinks"],["lost-backlinks","丢失外链","Lost Backlinks"],["new-backlinks","新增外链","New Backlinks"],["anchor-text","锚文本","Anchor Text"]].map(([id,zh,en]) => t(id, zh, en, `${zh}报告`, `${en} report`, [website], "provider", "backlink-provider")),
@@ -53,7 +67,7 @@ export const seoModules = [
   m("competitor-analysis", "竞争对手分析", "Competitor Analysis", "Binoculars", "pink", "基于真实页面与可选搜索数据分析差距", "Compare real pages with optional search data", [
     t("competitor-content", "竞品内容", "Competitor Content", "抓取竞品页面并比较主题结构", "Crawl competitor pages and compare topic structure", [website, competitors, topic], "crawl-model", "direct"),
     t("content-gap", "内容差距", "Content Gap", "从抓取样本发现未覆盖的搜索任务", "Find uncovered search tasks in crawl samples", [website, competitors, topic], "crawl-model", "direct"),
-    ...[["competitor-keywords","竞品关键词","Competitor Keywords"],["keyword-gap","关键词差距","Keyword Gap"],["serp-comparison","SERP 对比","SERP Comparison"]].map(([id,zh,en]) => t(id, zh, en, `${zh}需要关键词或 SERP 数据源`, `${en} requires keyword or SERP data`, [website, competitors, topic, country, language], "provider", "keyword-provider")),
+    ...[["competitor-keywords","竞品关键词","Competitor Keywords"],["keyword-gap","关键词差距","Keyword Gap"],["serp-comparison","SERP 对比","SERP Comparison"]].map(([id,zh,en]) => t(id, zh, en, `${zh}需要关键词或 SERP 数据源`, `${en} requires keyword or SERP data`, [website, competitors, topic, searchEngine, country, language, device], "provider", "keyword-provider")),
   ]),
   m("seo-report", "SEO 报告", "SEO Reports", "FileText", "purple", "汇总已经完成的真实分析记录", "Summarize completed, real analysis runs", [
     ...[["seo-summary","SEO 摘要","SEO Summary"],["weekly-report","周报","Weekly Report"],["monthly-report","月报","Monthly Report"],["keyword-report","关键词报告","Keyword Report"],["website-report","网站报告","Website Report"]].map(([id,zh,en]) => t(id, zh, en, "从历史任务生成 Markdown 与 HTML 报告", "Generate Markdown and HTML from task history", [field("website", "网站（可选）", "Website (optional)", "url")], "report", "history")),
