@@ -21,6 +21,9 @@ test("SEO workbench exposes seven evidence-aware modules and locks unavailable p
   const ranking = catalog.modules.find((module) => module.id === "rank-tracking").templates.find((template) => template.id === "keyword-ranking");
   const engine = ranking.fields.find((field) => field.id === "searchEngine");
   assert.deepEqual(engine.options.map((option) => option.value), ["google", "baidu"]);
+  assert.equal(ranking.resultType, "ranking");
+  assert.equal(catalog.modules.find((module) => module.id === "content-optimization").templates.find((template) => template.id === "meta-title").resultType, "content");
+  assert.equal(catalog.modules.find((module) => module.id === "seo-report").templates.find((template) => template.id === "weekly-report").resultType, "report");
 });
 
 test("SEO website audit crawls real HTML evidence and returns an explainable score", async (t) => {
@@ -36,6 +39,9 @@ test("SEO website audit crawls real HTML evidence and returns an explainable sco
   const result = await generateSeo({ user: { id: "seo-test" }, connectionId: null, payload: { templateId: "canonical", locale: "zh-CN", values: { website: `http://127.0.0.1:${port}/` } } });
   assert.equal(result.output.mode, "seo-evidence");
   assert.equal(result.output.dataSource, "crawl");
+  assert.equal(result.output.presentation.type, "audit");
+  assert.ok(result.output.presentation.cards.length >= 2);
+  assert.ok(result.output.presentation.issues.length >= 1);
   assert.match(result.output.markdown, /实时网站抓取/);
   assert.ok(result.output.score < 100);
   assert.equal(result.seoRun.templateId, "canonical");
@@ -99,6 +105,8 @@ test("SERP provider output records a real rank snapshot for later trend reports"
   assert.equal(result.rankSnapshots.length, 1);
   assert.equal(result.rankSnapshots[0].rank, 4);
   assert.equal(result.output.dataQuality, "provider-observed");
+  assert.equal(result.output.presentation.type, "ranking");
+  assert.equal(result.output.presentation.rows[0].rank, 4);
   assert.equal(result.rankSnapshots[0].searchEngine, "google");
   assert.equal(result.rankSnapshots[0].device, "desktop");
 });
@@ -159,6 +167,8 @@ test("backlink providers do not require keyword fields", async (t) => {
   const result = await generateSeo({ user: { id: "backlink-user" }, connectionId: null, payload: { templateId: "backlink-overview", locale: "zh-CN", values: { website: "https://example.com" } } });
   assert.match(result.output.markdown, /外链总数 \| 12/);
   assert.equal(result.output.dataSource, "dataforseo");
+  assert.equal(result.output.presentation.type, "scorecard");
+  assert.equal(result.output.presentation.cards.find((item) => item.label === "外链总数").value, 12);
 });
 
 test("SEO reports use persisted runs and ranking trends use only persisted rank snapshots", async (t) => {
@@ -176,6 +186,9 @@ test("SEO reports use persisted runs and ranking trends use only persisted rank 
   const trend = await generateSeo({ user: { id: userId }, connectionId: null, payload: { templateId: "ranking-trend", locale: "zh-CN", values: { website: "https://example.com", keywords: "AI tools" } } });
   assert.match(report.output.markdown, /已完成分析：1 次/);
   assert.match(report.output.html, /<!doctype html>/);
+  assert.equal(report.output.presentation.type, "report");
+  assert.equal(trend.output.presentation.type, "ranking");
+  assert.equal(trend.output.presentation.rows[0].latestRank, 4);
   assert.equal(report.output.structured.summary.latestScore, 82);
   assert.match(trend.output.markdown, /\| AI tools \| 4 \| 8 \| \+4 \|/);
   assert.equal(trend.output.dataSource, "rank-snapshots");

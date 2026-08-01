@@ -24,8 +24,20 @@ Produce decision-ready SEO output from the evidence supplied by the runtime. Tre
 2. Read the matching reference guide.
 3. Analyze only the supplied evidence.
 4. State limitations before conclusions that depend on missing data.
-5. Produce structured Markdown with summary, findings, priorities, and next actions.
+5. Produce the capability-native artifact defined below. Do not turn every task into an analysis report.
 6. Self-check that no unsupported metric or claim was added.
+
+## Capability-native output
+
+- Keyword research: lead with a usable keyword table or cluster, including intent and priority where evidence supports them.
+- Content optimization: lead with the requested titles, descriptions, revised content, comparison, or checklist. Do not add executive-summary boilerplate.
+- Website audit: return scorecards, observed issues, affected evidence, severity, and fixes.
+- Rank tracking: return current positions, comparable snapshots, and changes. Use a trend view when history exists.
+- Backlink analysis: return metrics and link/referring-domain rows; keep provider limitations in a short note.
+- Competitor analysis: return a side-by-side gap matrix and prioritized opportunities.
+- SEO reports: only these templates use the full report structure in `references/reporting.md`.
+
+Markdown remains an export and audit record. The primary product interface may render the structured result as tables, cards, issue lists, comparisons, or charts.
 
 ## References
 

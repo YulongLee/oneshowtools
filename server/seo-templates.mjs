@@ -74,7 +74,17 @@ export const seoModules = [
   ]),
 ];
 
-export const seoTemplateMap = new Map(seoModules.flatMap((module) => module.templates.map((template) => [template.id, { ...template, module }])));
+export function seoResultType(moduleId, templateId) {
+  if (moduleId === "seo-report") return "report";
+  if (moduleId === "website-audit") return "audit";
+  if (moduleId === "rank-tracking") return "ranking";
+  if (moduleId === "backlink-analysis") return templateId === "backlink-overview" ? "scorecard" : "backlinks";
+  if (moduleId === "competitor-analysis") return "comparison";
+  if (moduleId === "content-optimization") return templateId === "seo-score" ? "scorecard" : "content";
+  return "keywords";
+}
+
+export const seoTemplateMap = new Map(seoModules.flatMap((module) => module.templates.map((template) => [template.id, { ...template, resultType: seoResultType(module.id, template.id), module }])));
 
 export function publicSeoCatalog(status = {}) {
   const sourceReady = (source) => source === "direct" || source === "model" || source === "history" || Boolean(status[source]);
@@ -83,7 +93,7 @@ export function publicSeoCatalog(status = {}) {
     dataSources: status,
     modules: seoModules.map(({ templates, ...module }) => ({
       ...module,
-      templates: templates.map(({ rules, ...template }) => ({ ...template, available: sourceReady(template.source), requirement: sourceReady(template.source) ? null : template.source })),
+      templates: templates.map(({ rules, ...template }) => ({ ...template, resultType: seoResultType(module.id, template.id), available: sourceReady(template.source), requirement: sourceReady(template.source) ? null : template.source })),
     })),
   };
 }
