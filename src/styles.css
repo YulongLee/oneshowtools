@@ -227,6 +227,9 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .image-tool-options input[type="range"] { width: 100%; accent-color: var(--blue); }
 .tool-inline-note { margin: 14px 0 0; padding: 11px 12px; display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; color: #5f6f86; background: #f3f7fc; font-size: 11px; line-height: 1.55; }
 .tool-inline-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--blue); }
+.pdf-question-field { margin-top: 16px; display: grid; gap: 8px; }
+.pdf-question-field > span { color: var(--navy); font-size: 11px; font-weight: 650; }
+.pdf-question-field textarea { width: 100%; min-height: 96px; resize: vertical; padding: 12px 13px; border: 1px solid #d8e1ed; border-radius: 9px; background: #fff; color: var(--navy); font: inherit; line-height: 1.6; }
 .tool-auth-notice { margin-top: 17px; padding: 12px; border: 1px solid #e3e8ef; border-radius: 9px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; color: #69778d; background: #fafbfd; font-size: 10px; }
 .tool-auth-notice svg { color: var(--blue); }
 .tool-auth-notice button { padding: 0; border: 0; color: var(--blue); background: transparent; font-weight: 700; }
@@ -243,6 +246,9 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .result-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
 .result-stats span { padding: 11px; border: 1px solid var(--line); border-radius: 9px; display: flex; flex-direction: column; color: var(--muted); font-size: 9px; }
 .result-stats strong { margin-top: 4px; color: var(--navy); font-size: 12px; }
+.pdf-result-meta { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.pdf-result-meta span { min-width: 82px; padding: 10px 12px; display: grid; gap: 3px; border: 1px solid var(--line); border-radius: 9px; background: #f8faff; color: var(--muted); font-size: 10px; }
+.pdf-result-meta strong { color: var(--navy); font-size: 15px; }
 .text-result pre { min-height: 340px; margin: 0 0 14px; padding: 17px; border: 1px solid var(--line); border-radius: 10px; color: #34445b; background: #f8fafc; white-space: pre-wrap; word-break: break-word; font: 12px/1.75 "DM Sans","Noto Sans SC",sans-serif; }
 .speech-pad { min-height: 150px; margin-bottom: 14px; border: 1px solid #dce5f1; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fbff; }
 .speech-pad button { border: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--blue); background: transparent; font-size: 11px; font-weight: 700; }

@@ -25,6 +25,7 @@ Marketplace cards and search results open stable, directly addressable routes:
 - `/tools/background-remover` — solid-color background removal with transparent PNG output.
 - `/tools/copy-polish` — local copy cleanup, upgraded through OneShowModel or a selected personal connection.
 - `/tools/pdf-summary` — PDF text extraction and local summary, upgraded through OneShowModel or a selected personal connection.
+- PDF suite — merge, split, page organization, scanned-document compression, images to PDF, PDF to JPG/PNG, text watermarks, page numbers, Chinese/English OCR, Markdown extraction, and table-to-Excel extraction. Every successful operation stores a real downloadable result in File Center.
 - `/tools/image-compressor` — real WebP image compression with quality controls and size statistics.
 - `/tools/speech-to-text` — browser speech recognition with an editable transcript.
 

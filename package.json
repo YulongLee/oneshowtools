@@ -17,25 +17,35 @@
     "openspec:validate": "openspec validate add-global-auth-and-billing --strict"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.3",
     "@openai/codex-sdk": "^0.146.0",
     "@phosphor-icons/react": "^2.1.10",
+    "@tesseract.js-data/chi_sim": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "@vitejs/plugin-react": "5.0.4",
     "ali-oss": "^6.23.0",
     "better-auth": "^1.6.25",
     "cheerio": "^1.1.2",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
     "nodemailer": "^9.0.3",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "sharp": "^0.35.3",
     "stripe": "^22.3.2",
+    "tesseract.js": "^7.0.0",
     "vite": "^6.4.3"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.25.12",
     "postcss": "^8.5.25"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

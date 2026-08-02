@@ -8,6 +8,7 @@ import { generateWriting } from "./writing-engine.mjs";
 import { generateSeo } from "./seo-engine.mjs";
 import { seoSpecialistBySlug } from "./seo-specialists.mjs";
 import { imageToolSlugs, processImageTool } from "./image-tools.mjs";
+import { pdfToolSlugSet, processPdfTool } from "./pdf-tools.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -29,6 +30,26 @@ function extractiveSummary(value, locale) {
   const title = locale === "en" ? "Document summary" : "文档摘要";
   const keyPoints = locale === "en" ? "Key points" : "核心要点";
   return `# ${title}\n\n${selected[0]}\n\n## ${keyPoints}\n\n${selected.slice(1).map((sentence) => `- ${sentence}`).join("\n") || `- ${selected[0]}`}`;
+}
+
+function extractiveAnswer(value, question, locale) {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (!text) throw toolError("PDF_TEXT_NOT_FOUND", 422);
+  const terms = [...new Set(String(question).toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])];
+  const passages = text.split(/(?<=[。！？.!?])\s*/).filter((item) => item.length >= 8);
+  const ranked = passages.map((passage, index) => ({
+    passage,
+    index,
+    score: terms.reduce((sum, term) => sum + (passage.toLowerCase().includes(term) ? Math.min(4, term.length) : 0), 0),
+  })).sort((a, b) => b.score - a.score || a.index - b.index);
+  const selected = ranked.filter((item) => item.score > 0).slice(0, 5);
+  if (!selected.length) {
+    return locale === "en"
+      ? "The document's text layer does not contain a passage that directly matches this question. Try a more specific term or use an AI model for semantic Q&A."
+      : "在文档文字层中没有找到与该问题直接匹配的内容。可以尝试使用更具体的关键词，或配置模型进行语义问答。";
+  }
+  const heading = locale === "en" ? "Relevant passages from the document" : "文档中的相关内容";
+  return `## ${heading}\n\n${selected.map((item) => `- ${item.passage}`).join("\n")}`;
 }
 
 async function modelText(user, instruction, text, connectionId = null, capability = "text") {
@@ -108,7 +129,7 @@ async function processCompression(file, form) {
   };
 }
 
-async function processPdf(file, locale, user, connectionId) {
+async function processPdf(file, locale, user, connectionId, question = "") {
   if (!file?.size || file.type !== "application/pdf") throw toolError("PDF_REQUIRED");
   const parser = new PDFParse({ data: new Uint8Array(await file.arrayBuffer()) });
   let result;
@@ -118,21 +139,27 @@ async function processPdf(file, locale, user, connectionId) {
     await parser.destroy();
   }
   const text = result.text?.slice(0, 120000) || "";
+  const userQuestion = String(question || "").trim().slice(0, 1000);
   const aiSummary = await modelText(
     user,
-    locale === "en"
-      ? "Summarize this document with a short overview and clear bullet-point key ideas."
-      : "请将这份文档整理为简洁摘要，包含概述和清晰的核心要点。",
+    userQuestion
+      ? (locale === "en"
+        ? `Answer the user's question using only the supplied document. State clearly when the document does not contain the answer. User question: ${userQuestion}`
+        : `请仅依据所提供的文档回答用户问题；如果文档没有答案，请明确说明。用户问题：${userQuestion}`)
+      : (locale === "en"
+        ? "Summarize this document with a short overview, key conclusions, and clear bullet-point ideas."
+        : "请将这份文档整理为结构清晰的摘要，包含概述、核心结论和清晰的要点。"),
     text,
     connectionId,
     "pdf-summary",
   );
   return {
     output: {
-      text: aiSummary?.text || extractiveSummary(text, locale),
+      text: aiSummary?.text || (userQuestion ? extractiveAnswer(text, userQuestion, locale) : extractiveSummary(text, locale)),
       pages: result.total || result.pages?.length || null,
       characters: text.length,
       mode: aiSummary ? "ai" : "local-extractive",
+      requestKind: userQuestion ? "question" : "summary",
       ...(aiSummary ? { route: aiSummary.route } : {}),
     },
   };
@@ -261,7 +288,8 @@ export async function runToolAction(request, user, tool) {
     if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
     else if (imageToolSlugs.has(tool.slug)) processed = await processImageTool(tool.slug, form);
-    else if (tool.slug === "pdf-summary") processed = await processPdf(file, user.locale, user, modelConnectionId);
+    else if (pdfToolSlugSet.has(tool.slug)) processed = await processPdfTool(tool.slug, form);
+    else if (tool.slug === "pdf-summary") processed = await processPdf(file, user.locale, user, modelConnectionId, form.get("question"));
     else throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
   } else {
     const payload = await request.json().catch(() => ({}));
