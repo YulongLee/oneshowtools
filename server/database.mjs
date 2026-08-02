@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { seoSpecialists } from "./seo-specialists.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 export const dataDirectory = resolve(projectRoot, process.env.DATA_DIR || "data");
@@ -279,6 +280,7 @@ export function initializeDatabase() {
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
     ["tool_seo_agent", "seo-agent", "OneShow SEO Agent", "OneShow SEO Agent", "持续发现 SEO 机会并输出可执行的修改建议，所有网站变更由用户自行完成。", "Continuously discover SEO opportunities and produce actionable recommendations for users to apply themselves.", "agent", "Robot", 20, "openai"],
+    ...seoSpecialists.map((agent) => [agent.id, agent.slug, agent.nameZh, agent.nameEn, agent.descriptionZh, agent.descriptionEn, "agent", agent.icon, agent.creditCost, agent.runtimeKind || "openai"]),
   ];
   const insertTool = db.prepare(`
     INSERT INTO tools (

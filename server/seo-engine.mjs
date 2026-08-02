@@ -6,6 +6,7 @@ import { invokeModel } from "./model-gateway.mjs";
 import { inspectPageSpeed, inspectSite } from "./seo-fetch.mjs";
 import { dataForSeoCredentials } from "./seo-provider-config.mjs";
 import { publicSeoCatalog, seoTemplateMap } from "./seo-templates.mjs";
+import { publicSeoSpecialists } from "./seo-specialists.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "skills/seo-workbench");
 const read = (path) => readFileSync(resolve(root, path), "utf8").trim();
@@ -17,6 +18,7 @@ const guides = {
   "rank-tracking": read("references/provider-data.md"),
   "backlink-analysis": read("references/provider-data.md"),
   "competitor-analysis": read("references/competitor-analysis.md"),
+  "agent-production": read("references/agent-production.md"),
   "seo-report": read("references/reporting.md"),
 };
 const clean = (value, max = 40_000) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
@@ -35,7 +37,10 @@ export function seoDataSourceStatus(env = process.env) {
   };
 }
 
-export function seoCatalog() { return publicSeoCatalog(seoDataSourceStatus()); }
+export function seoCatalog() {
+  const catalog = publicSeoCatalog(seoDataSourceStatus());
+  return { ...catalog, specialists: publicSeoSpecialists(catalog.modules) };
+}
 
 function normalize(payload) {
   const templateId = clean(payload.templateId, 80);

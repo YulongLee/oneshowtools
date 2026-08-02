@@ -20,6 +20,9 @@ const device = field("device", "搜索设备", "Search device", "select", true, 
 });
 const content = field("content", "文章内容", "Content", "textarea", true, "粘贴需要分析的正文…", "Paste the content to analyze…");
 const competitors = field("competitors", "竞争网站", "Competitor URLs", "textarea", true, "每行一个 URL，最多 3 个", "One URL per line, up to 3");
+const audience = field("audience", "目标用户", "Target audience", "text", true, "例如：中小企业营销负责人", "For example: marketing leaders at small businesses");
+const goal = field("goal", "业务目标", "Business goal", "text", true, "例如：获得产品试用注册", "For example: generate product trial sign-ups");
+const performanceData = field("performanceData", "真实表现数据", "Observed performance data", "textarea", true, "粘贴 GSC、GA4、百度统计或排名导出数据，并保留字段名…", "Paste an export from GSC, GA4, Baidu Analytics, or rank tracking with field names intact…");
 const t = (id, zh, en, descriptionZh, descriptionEn, fields, mode, source, rules = []) => ({ id, label: { zh, en }, description: { zh: descriptionZh, en: descriptionEn }, fields, mode, source, rules });
 const m = (id, zh, en, icon, accent, descriptionZh, descriptionEn, templates) => ({ id, label: { zh, en }, icon, accent, description: { zh: descriptionZh, en: descriptionEn }, templates });
 
@@ -69,6 +72,13 @@ export const seoModules = [
     t("content-gap", "内容差距", "Content Gap", "从抓取样本发现未覆盖的搜索任务", "Find uncovered search tasks in crawl samples", [website, competitors, topic], "crawl-model", "direct"),
     ...[["competitor-keywords","竞品关键词","Competitor Keywords"],["keyword-gap","关键词差距","Keyword Gap"],["serp-comparison","SERP 对比","SERP Comparison"]].map(([id,zh,en]) => t(id, zh, en, `${zh}需要关键词或 SERP 数据源`, `${en} requires keyword or SERP data`, [website, competitors, topic, searchEngine, country, language, device], "provider", "keyword-provider")),
   ]),
+  m("agent-production", "SEO 生产与运营", "SEO Production & Operations", "FileText", "purple", "将研究结果转化为可交付的内容、发布包和持续优化方案", "Turn research into deliverable content, publishing handoffs, and continuous improvement plans", [
+    t("content-brief", "SEO 内容 Brief", "SEO Content Brief", "生成包含意图、结构、证据要求和验收标准的写作 Brief", "Create a writing brief with intent, structure, evidence needs, and acceptance criteria", [topic, keywords, audience, goal, country, language], "model", "model", ["separate facts from hypotheses", "include acceptance criteria"]),
+    t("seo-article-draft", "SEO 文章初稿", "SEO Article Draft", "生成结构完整、可编辑且不虚构事实的 Markdown 初稿", "Create a complete, editable Markdown draft without fabricated facts", [topic, keywords, audience, goal, language, field("contentLength", "内容长度", "Content length", "select", true, "", "", { defaultValue: "standard", options: [{ value: "short", label: { zh: "精简", en: "Short" } }, { value: "standard", label: { zh: "标准", en: "Standard" } }, { value: "long", label: { zh: "深度", en: "In-depth" } }] }), field("tone", "写作语气", "Tone", "text", false, "专业、清晰", "Professional and clear")], "model", "model", ["return usable markdown", "flag claims requiring sources"]),
+    t("publishing-handoff", "发布交付包", "Publishing Handoff", "生成供用户自行发布的内容、Meta、内链和 CMS 操作清单", "Create content, metadata, internal-link, and CMS checklists for user-managed publishing", [website, field("targetUrl", "目标页面 URL", "Target page URL", "url", false, "https://example.com/page", "https://example.com/page"), content, keywords, language], "model", "model", ["never claim content was published", "include verification checklist"]),
+    t("analytics-insights", "SEO 数据解读", "SEO Analytics Insights", "基于用户提供的真实导出数据识别趋势、异常和下一步行动", "Use user-provided exports to identify trends, anomalies, and next actions", [website, performanceData, goal, language], "model", "model", ["never invent missing dates or metrics", "label insufficient samples"]),
+    t("content-refresh", "内容更新方案", "Content Refresh Plan", "结合原文和真实表现数据生成修改清单与复测指标", "Create a change list and remeasurement plan from original content and observed performance", [website, content, keywords, performanceData, audience, goal, language], "model", "model", ["preserve valid content", "show before and after plan", "define remeasurement window"]),
+  ]),
   m("seo-report", "SEO 报告", "SEO Reports", "FileText", "purple", "汇总已经完成的真实分析记录", "Summarize completed, real analysis runs", [
     ...[["seo-summary","SEO 摘要","SEO Summary"],["weekly-report","周报","Weekly Report"],["monthly-report","月报","Monthly Report"],["keyword-report","关键词报告","Keyword Report"],["website-report","网站报告","Website Report"]].map(([id,zh,en]) => t(id, zh, en, "从历史任务生成 Markdown 与 HTML 报告", "Generate Markdown and HTML from task history", [field("website", "网站（可选）", "Website (optional)", "url")], "report", "history")),
   ]),
@@ -81,6 +91,7 @@ export function seoResultType(moduleId, templateId) {
   if (moduleId === "backlink-analysis") return templateId === "backlink-overview" ? "scorecard" : "backlinks";
   if (moduleId === "competitor-analysis") return "comparison";
   if (moduleId === "content-optimization") return templateId === "seo-score" ? "scorecard" : "content";
+  if (moduleId === "agent-production") return templateId === "analytics-insights" ? "report" : "content";
   return "keywords";
 }
 

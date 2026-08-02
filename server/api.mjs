@@ -160,6 +160,15 @@ function toolSelect() {
     runtime_status AS runtimeStatus, active FROM tools`;
 }
 
+function storefrontTools() {
+  const specialists = new Map(seoCatalog().specialists.map((item) => [item.slug, item]));
+  return db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY name_en`).all().map((tool) => {
+    const specialist = specialists.get(tool.slug);
+    if (!specialist || specialist.ready) return tool;
+    return { ...tool, runtimeStatus: "configuration_required" };
+  });
+}
+
 async function handleAdmin(request, path) {
   const auth = requireAdmin(request);
   if (auth.response) return auth.response;
@@ -904,8 +913,7 @@ export async function handleApi(request) {
     return json({ user: cleanUser(currentUser(request)) });
   }
   if (path === "/api/tools" && request.method === "GET") {
-    const tools = db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY name_en`).all();
-    return json({ tools });
+    return json({ tools: storefrontTools() });
   }
   if (path === "/api/writing/catalog" && request.method === "GET") return json(writingCatalog());
   if (path === "/api/seo/catalog" && request.method === "GET") return json(seoCatalog());
@@ -1131,7 +1139,8 @@ export async function handleApi(request) {
     const preferences = listToolModelPreferences(user.id);
     return json({
       ...runtimeSummary(user.id),
-      tools: db.prepare(`${toolSelect()} WHERE active = 1 ORDER BY category, name_en`).all()
+      tools: storefrontTools()
+        .sort((left, right) => `${left.category}:${left.nameEn}`.localeCompare(`${right.category}:${right.nameEn}`))
         .map((tool) => ({
           ...tool,
           modelConfigurable: tool.runtimeKind === "openai",

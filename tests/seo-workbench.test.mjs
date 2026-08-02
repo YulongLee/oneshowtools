@@ -9,11 +9,16 @@ process.env.ALLOW_TEST_SEO_ENDPOINTS = "true";
 const { seoCatalog, seoDataSourceStatus, generateSeo } = await import("../server/seo-engine.mjs");
 const { safeSeoUrl } = await import("../server/seo-fetch.mjs");
 const { db } = await import("../server/database.mjs");
+const { seoSpecialists, filterCatalogForSpecialist } = await import("../server/seo-specialists.mjs");
+const { runToolAction } = await import("../server/tool-actions.mjs");
 
-test("SEO workbench exposes seven evidence-aware modules and locks unavailable provider tools", () => {
+test("SEO workbench exposes evidence-aware modules and fifteen specialist products", () => {
   const catalog = seoCatalog();
-  assert.equal(catalog.modules.length, 7);
-  assert.equal(catalog.modules.reduce((sum, module) => sum + module.templates.length, 0), 44);
+  assert.equal(catalog.modules.length, 8);
+  assert.equal(catalog.modules.reduce((sum, module) => sum + module.templates.length, 0), 49);
+  assert.equal(catalog.specialists.length, 15);
+  assert.equal(seoSpecialists.length, 15);
+  assert.equal(catalog.specialists.every((specialist) => specialist.totalCapabilities > 0), true);
   const backlink = catalog.modules.find((module) => module.id === "backlink-analysis");
   assert.equal(backlink.templates.every((template) => template.available === false), true);
   const audit = catalog.modules.find((module) => module.id === "website-audit");
@@ -24,6 +29,34 @@ test("SEO workbench exposes seven evidence-aware modules and locks unavailable p
   assert.equal(ranking.resultType, "ranking");
   assert.equal(catalog.modules.find((module) => module.id === "content-optimization").templates.find((template) => template.id === "meta-title").resultType, "content");
   assert.equal(catalog.modules.find((module) => module.id === "seo-report").templates.find((template) => template.id === "weekly-report").resultType, "report");
+});
+
+test("each specialist catalog exposes only its contracted capabilities", () => {
+  const catalog = seoCatalog();
+  for (const specialist of seoSpecialists) {
+    const filtered = filterCatalogForSpecialist(catalog, specialist.slug);
+    const exposed = filtered.modules.flatMap((module) => module.templates.map((template) => template.id));
+    assert.deepEqual(new Set(exposed), new Set(specialist.templateIds));
+    assert.equal(filtered.specialist.slug, specialist.slug);
+  }
+});
+
+test("specialist execution is billed to its own product and rejects capability crossover", async (t) => {
+  const userId = randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO users (id, name, email, password_hash, locale, email_verified, status, created_at, updated_at) VALUES (?, 'Agent Test', ?, 'hash', 'zh-CN', 1, 'active', ?, ?)")
+    .run(userId, `${userId}@example.test`, now, now);
+  db.prepare("INSERT INTO credit_ledger (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at) VALUES (?, ?, 'welcome', 200, '测试积分', 'Test credits', 'user', ?, ?)")
+    .run(randomUUID(), userId, userId, now);
+  t.after(() => db.prepare("DELETE FROM users WHERE id = ?").run(userId));
+
+  const row = db.prepare("SELECT id, slug, name_zh AS nameZh, name_en AS nameEn, credit_cost AS creditCost, runtime_kind AS runtimeKind FROM tools WHERE slug = 'seo-technical-agent'").get();
+  assert.ok(row);
+  await assert.rejects(
+    () => runToolAction(new Request("http://localhost/api/tool-actions/seo-technical-agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ templateId: "seo-article-draft", values: {}, modelConnectionId: "managed" }) }), { id: userId, locale: "zh-CN" }, row),
+    (error) => error.code === "SEO_AGENT_CAPABILITY_NOT_ALLOWED" && error.status === 403,
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM tasks WHERE user_id = ?").get(userId).count, 0);
 });
 
 test("SEO website audit crawls real HTML evidence and returns an explainable score", async (t) => {

@@ -6,6 +6,7 @@ import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { generateWriting } from "./writing-engine.mjs";
 import { generateSeo } from "./seo-engine.mjs";
+import { seoSpecialistBySlug } from "./seo-specialists.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -268,7 +269,11 @@ export async function runToolAction(request, user, tool) {
     if (tool.slug === "ai-writer") {
       processed = await generateWriting({ user, payload, connectionId: modelConnectionId });
       input = processed.safeInput;
-    } else if (tool.slug === "seo-workbench") {
+    } else if (tool.slug === "seo-workbench" || seoSpecialistBySlug.has(tool.slug)) {
+      const specialist = seoSpecialistBySlug.get(tool.slug);
+      if (specialist && !specialist.templateIds.includes(String(payload.templateId || ""))) {
+        throw toolError("SEO_AGENT_CAPABILITY_NOT_ALLOWED", 403);
+      }
       processed = await generateSeo({ user, payload, connectionId: modelConnectionId });
       input = processed.safeInput;
     } else {
