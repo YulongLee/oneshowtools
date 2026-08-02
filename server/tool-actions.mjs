@@ -7,6 +7,7 @@ import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { generateWriting } from "./writing-engine.mjs";
 import { generateSeo } from "./seo-engine.mjs";
 import { seoSpecialistBySlug } from "./seo-specialists.mjs";
+import { imageToolSlugs, processImageTool } from "./image-tools.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -251,13 +252,15 @@ export async function runToolAction(request, user, tool) {
   if (request.headers.get("content-type")?.includes("multipart/form-data")) {
     const form = await request.formData();
     const file = form.get("file");
+    const imageFiles = form.getAll("files").filter((item) => item?.size);
     const requestedModelConnectionId = String(form.get("modelConnectionId") || "") || null;
     const modelConnectionId = tool.runtimeKind === "openai"
       ? toolModelSelection(user.id, tool.id, requestedModelConnectionId)
       : null;
-    input = { fileName: file?.name || null, fileSize: file?.size || 0, modelConnectionId };
+    input = { fileName: file?.name || null, fileSize: file?.size || 0, fileNames: imageFiles.map((item) => item.name), fileCount: imageFiles.length || (file?.size ? 1 : 0), modelConnectionId };
     if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
+    else if (imageToolSlugs.has(tool.slug)) processed = await processImageTool(tool.slug, form);
     else if (tool.slug === "pdf-summary") processed = await processPdf(file, user.locale, user, modelConnectionId);
     else throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
   } else {

@@ -15,8 +15,19 @@ import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
-  Database, TrendUp, ChartBar, ArrowsClockwise,
+  Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
 };
+const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker"]);
+const imageToolFields = {
+  "image-format-converter": [{ id: "format", type: "select", zh: "输出格式", en: "Output format", options: [["jpeg", "JPG"], ["png", "PNG"], ["webp", "WebP"], ["avif", "AVIF"]] }],
+  "target-image-compressor": [{ id: "targetKb", type: "select", zh: "目标大小", en: "Target size", options: [["100", "100 KB"], ["200", "200 KB"], ["500", "500 KB"], ["1000", "1 MB"]] }],
+  "batch-image-resizer": [{ id: "width", type: "number", zh: "最大宽度", en: "Max width", min: 16, max: 8000 }, { id: "height", type: "number", zh: "最大高度（可选）", en: "Max height (optional)", min: 16, max: 8000 }],
+  "social-image-resizer": [{ id: "preset", type: "select", zh: "平台尺寸", en: "Platform preset", options: [["xiaohongshu-cover", "小红书封面 · 1242×1660"], ["wechat-cover", "公众号封面 · 900×383"], ["instagram-square", "Instagram · 1080×1080"], ["youtube-thumbnail", "YouTube · 1280×720"]] }],
+  "og-image-generator": [{ id: "title", type: "text", zh: "主标题", en: "Headline" }, { id: "subtitle", type: "text", zh: "副标题", en: "Subtitle" }, { id: "brand", type: "text", zh: "品牌名称", en: "Brand" }, { id: "accent", type: "color", zh: "品牌颜色", en: "Accent color" }],
+  "image-watermark": [{ id: "watermark", type: "text", zh: "水印文字", en: "Watermark text" }, { id: "opacity", type: "range", zh: "透明度", en: "Opacity", min: 10, max: 100 }, { id: "fontSize", type: "number", zh: "字号", en: "Font size", min: 12, max: 180 }],
+  "id-photo-maker": [{ id: "preset", type: "select", zh: "证件照尺寸", en: "Photo size", options: [["one-inch", "一寸 · 295×413"], ["two-inch", "二寸 · 413×579"], ["passport", "护照方图 · 600×600"]] }, { id: "background", type: "color", zh: "背景颜色", en: "Background" }, { id: "tolerance", type: "range", zh: "背景识别容差", en: "Background tolerance", min: 18, max: 100 }],
+};
+const imageToolInitial = { format: "webp", targetKb: "200", width: "1200", height: "", preset: "xiaohongshu-cover", title: "一个网站，解决每天的小需求", subtitle: "简单、好用的 AI 工具平台", brand: "OneShowTools", accent: "#1769e8", watermark: "OneShowTools", opacity: "55", fontSize: "48", background: "#ffffff", tolerance: "48" };
 const writingIconMap = { Article, ArrowsClockwise, TrendUp, MegaphoneSimple, ShareNetwork, Briefcase, Palette };
 const seoIconMap = { MagnifyingGlass, Article, Pulse: ChartLineUp, TrendUp, Link: ShareNetwork, Binoculars, FileText };
 const seoSpecialistFor = (catalog, slug) => catalog?.specialists?.find((item) => item.slug === slug) || null;
@@ -612,6 +623,8 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const t = dictionary[locale];
   const Icon = iconMap[tool.icon] || Wrench;
   const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [imageSettings, setImageSettings] = useState(imageToolInitial);
   const [text, setText] = useState("");
   const [quality, setQuality] = useState(75);
   const [tolerance, setTolerance] = useState(48);
@@ -624,20 +637,25 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const recognitionRef = useRef(null);
   const name = locale === "en" ? tool.nameEn : tool.nameZh;
   const description = locale === "en" ? tool.descriptionEn : tool.descriptionZh;
-  const isImage = ["background-remover", "image-compressor"].includes(tool.slug);
-  const isFile = isImage || tool.slug === "pdf-summary";
+  const isImage = imageToolSlugs.has(tool.slug);
+  const imageNeedsFile = isImage && tool.slug !== "og-image-generator";
+  const isFile = imageNeedsFile || tool.slug === "pdf-summary";
   const isText = tool.slug === "copy-polish";
   const isSpeech = tool.slug === "speech-to-text";
   const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
 
   useEffect(() => () => recognitionRef.current?.stop?.(), []);
   useEffect(() => {
+    setFiles([]); setFile(null); setResult(null); setError("");
+    setImageSettings({ ...imageToolInitial, preset: tool.slug === "id-photo-maker" ? "one-inch" : "xiaohongshu-cover" });
+  }, [tool.id, tool.slug]);
+  useEffect(() => {
     setModelConnectionId(runtimeTool?.modelConnectionId || "managed");
   }, [runtimeTool?.modelConnectionId, tool.id]);
 
   const run = async () => {
     if (!authenticated) return onAuth();
-    if ((isFile && !file) || (!isFile && !text.trim())) return setError(t.inputRequired);
+    if ((isFile && tool.slug === "batch-image-resizer" && !files.length) || (isFile && tool.slug !== "batch-image-resizer" && !file) || (!isFile && !isImage && !text.trim())) return setError(t.inputRequired);
     setBusy(true);
     setError("");
     setResult(null);
@@ -645,10 +663,16 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
       let options;
       if (isFile) {
         const form = new FormData();
-        form.append("file", file);
+        if (tool.slug === "batch-image-resizer") files.forEach((item) => form.append("files", item));
+        else form.append("file", file);
         if (modelConnectionId) form.append("modelConnectionId", modelConnectionId);
         if (tool.slug === "background-remover") form.append("tolerance", String(tolerance));
         if (tool.slug === "image-compressor") form.append("quality", String(quality));
+        (imageToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(imageSettings[field.id] ?? "")));
+        options = { method: "POST", body: form };
+      } else if (tool.slug === "og-image-generator") {
+        const form = new FormData();
+        (imageToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(imageSettings[field.id] ?? "")));
         options = { method: "POST", body: form };
       } else {
         options = jsonOptions("POST", { text, modelConnectionId });
@@ -710,8 +734,10 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
     <header className="tool-page-header"><span className={`tool-icon large ${tool.category}`}><Icon size={31} /></span><div><p className="eyebrow">{t.toolWorkspace}</p><h1>{name}</h1><p>{description}</p></div><div className="tool-run-meta"><StatusPill status={tool.runtimeStatus} locale={locale} /><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span></div></header>
     <div className="tool-workspace-grid">
       <section className="surface tool-input-panel">
-        <h2>{isImage ? t.imageInput : tool.slug === "pdf-summary" ? t.pdfInput : isSpeech ? t.speechInput : t.textInput}</h2>
-        {isFile && <label className={`tool-dropzone ${file ? "selected" : ""}`}><input type="file" accept={isImage ? "image/*" : "application/pdf"} onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{file ? formatBytes(file.size) : isImage ? "PNG · JPG · WEBP" : "PDF"}</span></label>}
+        <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : tool.slug === "pdf-summary" ? t.pdfInput : isSpeech ? t.speechInput : t.textInput}</h2>
+        {isFile && <label className={`tool-dropzone ${(file || files.length) ? "selected" : ""}`}><input type="file" multiple={tool.slug === "batch-image-resizer"} accept={isImage ? "image/*,.heic,.heif" : "application/pdf"} onChange={(event) => { const selected = [...(event.target.files || [])]; setFiles(selected); setFile(selected[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{tool.slug === "batch-image-resizer" && files.length ? `${t.selectedFile}: ${files.length} ${locale === "en" ? "images" : "张图片"}` : file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{tool.slug === "batch-image-resizer" && files.length ? formatBytes(files.reduce((sum, item) => sum + item.size, 0)) : file ? formatBytes(file.size) : isImage ? "HEIC · PNG · JPG · WEBP · AVIF" : "PDF"}</span></label>}
+        {isImage && (imageToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{imageToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{imageSettings[field.id]}</strong>}</span>{field.type === "select" ? <select value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })}>{field.options.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} />}</label>)}</div>}
+        {tool.slug === "id-photo-maker" && <p className="tool-inline-note"><ShieldCheck size={16} />{locale === "en" ? "Solid-color backgrounds are supported now. Advanced hair-level AI matting will be added after a vision API is connected." : "当前支持纯色背景证件照；发丝级智能抠图将在接入视觉模型后升级。"}</p>}
         {isText && <textarea className="tool-textarea" rows={12} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} />}
         {isSpeech && <><div className={`speech-pad ${recording ? "recording" : ""}`}><button onClick={toggleSpeech}>{recording ? <StopCircle size={28} weight="fill" /> : <Microphone size={28} weight="fill" />}<span>{recording ? t.stopSpeech : t.startSpeech}</span></button></div><textarea className="tool-textarea" rows={7} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} /></>}
         {authenticated && tool.runtimeKind === "openai" && <label className="model-select-field"><span>{t.selectModel}</span><select value={modelConnectionId} onChange={(event) => changeModel(event.target.value)}><option value="managed">{t.useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}

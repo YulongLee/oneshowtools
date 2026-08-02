@@ -87,6 +87,18 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   assert.equal(compressionResult.task.status, "completed");
   assert.equal(compressionResult.file.mimeType, "image/webp");
 
+  const ogForm = new FormData();
+  ogForm.append("title", "OneShowTools Image Suite");
+  ogForm.append("subtitle", "Real generated social assets");
+  ogForm.append("brand", "OneShowTools");
+  ogForm.append("accent", "#1769e8");
+  const ogResponse = await handleApi(authenticated("/api/tool-actions/og-image-generator", cookie, { method: "POST", body: ogForm }));
+  assert.equal(ogResponse.status, 201);
+  const ogResult = await ogResponse.json();
+  assert.equal(ogResult.task.status, "completed");
+  assert.equal(ogResult.file.mimeType, "image/png");
+  assert.deepEqual([ogResult.output.width, ogResult.output.height], [1200, 630]);
+
   const form = new FormData();
   form.append("file", new File(["real file content"], "platform.txt", { type: "text/plain" }));
   const upload = await handleApi(authenticated("/api/files", cookie, { method: "POST", body: form }));

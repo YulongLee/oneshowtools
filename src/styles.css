@@ -218,6 +218,15 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .range-field span { display: flex; justify-content: space-between; color: #5d6a7f; font-size: 11px; }
 .range-field strong { color: var(--blue); }
 .range-field input { width: 100%; accent-color: var(--blue); }
+.image-tool-options { margin-top: 18px; padding: 16px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px; border: 1px solid #e1e8f2; border-radius: 11px; background: #f8faff; }
+.image-tool-options label { min-width: 0; display: grid; gap: 7px; color: #5d6a7f; font-size: 11px; }
+.image-tool-options label > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.image-tool-options label strong { color: var(--blue); }
+.image-tool-options input:not([type="range"]), .image-tool-options select { width: 100%; min-width: 0; height: 40px; padding: 0 11px; border: 1px solid #d8e1ed; border-radius: 8px; color: #26344a; background: #fff; }
+.image-tool-options input[type="color"] { padding: 4px; }
+.image-tool-options input[type="range"] { width: 100%; accent-color: var(--blue); }
+.tool-inline-note { margin: 14px 0 0; padding: 11px 12px; display: flex; align-items: flex-start; gap: 8px; border-radius: 8px; color: #5f6f86; background: #f3f7fc; font-size: 11px; line-height: 1.55; }
+.tool-inline-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--blue); }
 .tool-auth-notice { margin-top: 17px; padding: 12px; border: 1px solid #e3e8ef; border-radius: 9px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; color: #69778d; background: #fafbfd; font-size: 10px; }
 .tool-auth-notice svg { color: var(--blue); }
 .tool-auth-notice button { padding: 0; border: 0; color: var(--blue); background: transparent; font-weight: 700; }
@@ -1065,6 +1074,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .market-first-party-panel > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 760px) {
+  .image-tool-options { grid-template-columns: 1fr; }
   .admin-v2-main { padding: 0 14px 35px; }
   .admin-v2-header { min-height: 76px; }
   .admin-v2-header-actions button { width: 35px; padding: 0; }
