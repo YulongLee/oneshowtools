@@ -119,7 +119,7 @@ function projectView(row) {
     siteOrigin: row.site_origin,
     status: row.status,
     ownershipStatus: row.ownership_status,
-    automationMode: row.automation_mode,
+    automationMode: ["recommend", "approval"].includes(row.automation_mode) ? row.automation_mode : "approval",
     dailyCreditLimit: row.daily_credit_limit,
     scanHour: row.scan_hour,
     scanMinute: row.scan_minute,
@@ -178,7 +178,7 @@ function deriveOpportunities(scan) {
   const titleIssues = pages.filter((page) => !page.title || page.title.length < 15 || page.title.length > 65);
   if (titleIssues.length) add({
     kind: "title", titleZh: `优化 ${titleIssues.length} 个异常页面标题`, titleEn: `Improve ${titleIssues.length} abnormal page titles`,
-    summaryZh: "页面标题缺失、过短或过长。建议先审核标题草稿，再交由已连接的 CMS 写入。", summaryEn: "Page titles are missing, too short, or too long. Review drafts before sending them to a connected CMS.",
+    summaryZh: "页面标题缺失、过短或过长。系统生成标题草稿和定位信息，由用户审核后自行修改网站。", summaryEn: "Page titles are missing, too short, or too long. The system provides drafts and locations for the user to apply manually.",
     evidence: { source: "live-crawl", urls: titleIssues.map((page) => page.finalUrl), observed: titleIssues.map((page) => ({ url: page.finalUrl, length: page.title?.length || 0 })) },
     proposal: { changes: titleIssues.map((page) => ({ url: page.finalUrl, field: "title", before: page.title || "", after: titleDraft(page) })) },
   });
@@ -212,7 +212,7 @@ function deriveOpportunities(scan) {
   });
   if (!scan.sitemaps?.some((item) => item.status >= 200 && item.status < 400)) add({
     kind: "sitemap", titleZh: "创建或修复 XML Sitemap", titleEn: "Create or repair the XML sitemap",
-    summaryZh: "实时抓取未找到可用 Sitemap；需由网站生成器或 CMS 提供实际 URL 清单。", summaryEn: "No usable sitemap was found. The site generator or CMS must provide the real URL inventory.",
+    summaryZh: "实时抓取未找到可用 Sitemap；建议用户根据网站实际 URL 清单自行创建或修复。", summaryEn: "No usable sitemap was found. The user should create or repair it from the site's real URL inventory.",
     risk: "medium", confidence: 85, creditCost: 6,
     evidence: { source: "live-crawl", sitemaps: scan.sitemaps }, proposal: { changes: [], requiresCmsInventory: true },
   });
@@ -293,26 +293,30 @@ async function postConnector(connector, payload) {
   } finally { clearTimeout(timer); }
 }
 
-async function approveOpportunity(user, opportunityId) {
-  const opportunity = db.prepare("SELECT o.*, p.site_url, p.site_origin FROM seo_agent_opportunities o JOIN seo_agent_projects p ON p.id = o.project_id WHERE o.id = ? AND o.user_id = ?").get(opportunityId, user.id);
+async function approveOpportunity(user, opportunityId, deliveryMode = "manual") {
+  const opportunity = db.prepare("SELECT * FROM seo_agent_opportunities WHERE id = ? AND user_id = ?").get(opportunityId, user.id);
   if (!opportunity) throw agentError("SEO_AGENT_OPPORTUNITY_NOT_FOUND", 404);
   if (opportunity.status !== "detected") throw agentError("SEO_AGENT_OPPORTUNITY_NOT_ACTIONABLE", 409);
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance);
   if (available < opportunity.credit_cost) throw agentError("INSUFFICIENT_CREDITS", 402);
-  const connector = db.prepare("SELECT * FROM seo_agent_connectors WHERE project_id = ? AND provider = 'cms_webhook' AND status = 'connected'").get(opportunity.project_id);
   const taskId = randomUUID();
   const actionId = randomUUID();
   const timestamp = Date.now();
-  let status = connector ? "executing" : "draft_ready";
+  const automatic = deliveryMode === "automatic";
+  const connector = automatic
+    ? db.prepare("SELECT * FROM seo_agent_connectors WHERE project_id = ? AND provider = 'cms_webhook' AND status = 'connected'").get(opportunity.project_id)
+    : null;
+  if (automatic && !connector) throw agentError("SEO_AGENT_CONNECTOR_REQUIRED", 409);
+  let status = "draft_ready";
   let providerResponse = {};
   let rollbackToken = null;
   let errorCode = null;
-  if (connector) {
+  if (automatic) {
     try {
       providerResponse = await postConnector(connector, {
         type: "apply",
         actionId,
-        project: { id: opportunity.project_id, siteUrl: opportunity.site_url },
+        project: { id: opportunity.project_id },
         opportunity: opportunityView(opportunity),
       });
       if (!providerResponse.applied) throw agentError("SEO_AGENT_CONNECTOR_NOT_APPLIED", 502);
@@ -325,22 +329,21 @@ async function approveOpportunity(user, opportunityId) {
   }
   db.exec("BEGIN IMMEDIATE");
   try {
-    const taskStatus = status === "failed" ? "failed" : "completed";
     db.prepare(`INSERT INTO tasks (id, user_id, tool_id, status, input_json, output_json, error_code, credit_cost, created_at, updated_at, completed_at)
       VALUES (?, ?, 'tool_seo_agent', ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(taskId, user.id, taskStatus, JSON.stringify({ opportunityId }), JSON.stringify({ actionId, status, proposal: parse(opportunity.proposal_json) }), errorCode, opportunity.credit_cost, timestamp, timestamp, timestamp);
+      .run(taskId, user.id, status === "failed" ? "failed" : "completed", JSON.stringify({ opportunityId, deliveryMode: automatic ? "automatic" : "manual" }), JSON.stringify({ actionId, status, proposal: parse(opportunity.proposal_json) }), errorCode, opportunity.credit_cost, timestamp, timestamp, timestamp);
     db.prepare(`INSERT INTO seo_agent_actions
       (id, opportunity_id, project_id, user_id, task_id, status, execution_kind, before_json, after_json, provider_response_json, rollback_token, error_code, approved_at, executed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?)`)
-      .run(actionId, opportunity.id, opportunity.project_id, user.id, taskId, status, connector ? "cms_webhook" : "draft", opportunity.proposal_json, JSON.stringify(providerResponse), rollbackToken, errorCode, timestamp, status === "executed" ? timestamp : null);
+      .run(actionId, opportunity.id, opportunity.project_id, user.id, taskId, status, automatic ? "cms_webhook" : "recommendation", opportunity.proposal_json, JSON.stringify(providerResponse), rollbackToken, errorCode, timestamp, status === "executed" ? timestamp : null);
     db.prepare("UPDATE seo_agent_opportunities SET status = ?, updated_at = ? WHERE id = ?").run(status, timestamp, opportunity.id);
     if (status !== "failed" && opportunity.credit_cost > 0) db.prepare(`INSERT INTO credit_ledger
       (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
-      VALUES (?, ?, 'consumption', ?, 'OneShowSEO 行动', 'OneShowSEO action', 'task', ?, ?)`)
-      .run(randomUUID(), user.id, -opportunity.credit_cost, taskId, timestamp);
+      VALUES (?, ?, 'consumption', ?, ?, ?, 'task', ?, ?)`)
+      .run(randomUUID(), user.id, -opportunity.credit_cost, automatic ? "OneShowSEO 自动修改" : "OneShowSEO 修改建议", automatic ? "OneShowSEO automatic change" : "OneShowSEO recommendation plan", taskId, timestamp);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  audit(user.id, "seo_agent.opportunity.approved", "seo_agent_action", actionId, { opportunityId, status, connector: connector ? "cms_webhook" : null });
+  audit(user.id, automatic ? "seo_agent.change.executed" : "seo_agent.recommendation.saved", "seo_agent_action", actionId, { opportunityId, status, deliveryMode: automatic ? "automatic" : "manual" });
   if (status === "failed") throw agentError(errorCode, 502);
   return actionView(db.prepare("SELECT * FROM seo_agent_actions WHERE id = ?").get(actionId));
 }
@@ -354,8 +357,7 @@ async function rollbackAction(user, actionId) {
   const result = await postConnector(connector, { type: "rollback", actionId: action.id, rollbackToken: action.rollback_token });
   if (!result.rolledBack) throw agentError("SEO_AGENT_ROLLBACK_REJECTED", 502);
   const timestamp = Date.now();
-  db.prepare("UPDATE seo_agent_actions SET status = 'rolled_back', provider_response_json = ?, rolled_back_at = ? WHERE id = ?")
-    .run(JSON.stringify(result), timestamp, action.id);
+  db.prepare("UPDATE seo_agent_actions SET status = 'rolled_back', provider_response_json = ?, rolled_back_at = ? WHERE id = ?").run(JSON.stringify(result), timestamp, action.id);
   db.prepare("UPDATE seo_agent_opportunities SET status = 'rolled_back', updated_at = ? WHERE id = ?").run(timestamp, action.opportunity_id);
   audit(user.id, "seo_agent.action.rolled_back", "seo_agent_action", action.id, {});
   return actionView(db.prepare("SELECT * FROM seo_agent_actions WHERE id = ?").get(action.id));
@@ -376,7 +378,8 @@ function dashboard(userId) {
       scheduledScan: true,
       creditsLedger: true,
       auditTrail: true,
-      cmsWebhook: Boolean(process.env.SEO_AGENT_CREDENTIAL_ENCRYPTION_KEY || process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY),
+      manualRecommendations: true,
+      siteWrite: Boolean(process.env.SEO_AGENT_CREDENTIAL_ENCRYPTION_KEY || process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY),
       gsc: false,
       ga4: false,
       baidu: false,
@@ -411,7 +414,7 @@ export async function handleSeoAgent(request, user, path) {
     if (match && request.method === "PATCH") {
       const project = projectRow(user.id, match[1]);
       const payload = await requestBody(request);
-      const mode = ["recommend", "approval", "auto_low_risk"].includes(payload.mode) ? payload.mode : project.automation_mode;
+      const mode = ["recommend", "approval"].includes(payload.mode) ? payload.mode : (["recommend", "approval"].includes(project.automation_mode) ? project.automation_mode : "approval");
       const limit = clamp(payload.dailyCreditLimit ?? project.daily_credit_limit, 0, 100000);
       const hour = clamp(payload.scanHour ?? project.scan_hour, 0, 23);
       const minute = clamp(payload.scanMinute ?? project.scan_minute, 0, 59);
@@ -443,13 +446,16 @@ export async function handleSeoAgent(request, user, path) {
       const connector = db.prepare("SELECT * FROM seo_agent_connectors WHERE id = ?").get(id);
       let testStatus = "failed";
       try { const result = await postConnector(connector, { type: "health", project: { id: project.id, siteUrl: project.site_url } }); testStatus = result.ok === false ? "failed" : "passed"; } catch { testStatus = "failed"; }
-      db.prepare("UPDATE seo_agent_connectors SET status = ?, last_test_status = ?, last_tested_at = ?, updated_at = ? WHERE id = ?")
-        .run(testStatus === "passed" ? "connected" : "error", testStatus, Date.now(), Date.now(), id);
+      db.prepare("UPDATE seo_agent_connectors SET status = ?, last_test_status = ?, last_tested_at = ?, updated_at = ? WHERE id = ?").run(testStatus === "passed" ? "connected" : "error", testStatus, Date.now(), Date.now(), id);
       audit(user.id, "seo_agent.connector.updated", "seo_agent_project", project.id, { provider: "cms_webhook", testStatus });
       return json({ connector: connectorView(db.prepare("SELECT * FROM seo_agent_connectors WHERE id = ?").get(id)) }, testStatus === "passed" ? 200 : 422);
     }
     match = path.match(/^\/api\/seo-agent\/opportunities\/([^/]+)\/approve$/);
-    if (match && request.method === "POST") return json({ action: await approveOpportunity(user, match[1]) }, 201);
+    if (match && request.method === "POST") {
+      const payload = await requestBody(request);
+      const deliveryMode = payload.deliveryMode === "automatic" ? "automatic" : "manual";
+      return json({ action: await approveOpportunity(user, match[1], deliveryMode) }, 201);
+    }
     match = path.match(/^\/api\/seo-agent\/actions\/([^/]+)\/rollback$/);
     if (match && request.method === "POST") return json({ action: await rollbackAction(user, match[1]) });
     return json({ error: { code: "NOT_FOUND" } }, 404);

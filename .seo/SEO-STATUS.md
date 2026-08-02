@@ -3,8 +3,9 @@
 ## Current status
 
 The product now has a real read-only discovery and commercial accounting loop.
-CMS execution is available only through a tested owner-configured webhook and
-stays visibly unconnected otherwise.
+Each opportunity can be saved as a recommendation for manual editing. Optional
+automatic execution is available only through a tested owner-configured webhook
+and stays visibly disabled otherwise.
 
 ## Data limitations
 

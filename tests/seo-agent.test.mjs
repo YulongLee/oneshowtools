@@ -5,6 +5,7 @@ import test from "node:test";
 
 process.env.NODE_ENV = "test";
 process.env.ALLOW_TEST_SEO_ENDPOINTS = "true";
+process.env.SEO_AGENT_CREDENTIAL_ENCRYPTION_KEY = "11".repeat(32);
 
 const { db } = await import("../server/database.mjs");
 const { handleSeoAgent, runSeoAgentScan } = await import("../server/seo-agent.mjs");
@@ -17,6 +18,19 @@ const req = (path, options = {}) => new Request(`http://localhost${path}`, {
 test("SEO Agent persists a real crawl, evidence-based opportunities, credits, tasks, and draft actions", async (t) => {
   let origin = "";
   const site = createServer((request, response) => {
+    if (request.url === "/cms-webhook" && request.method === "POST") {
+      let raw = "";
+      request.on("data", (chunk) => { raw += chunk; });
+      return request.on("end", () => {
+        const payload = JSON.parse(raw || "{}");
+        response.setHeader("content-type", "application/json");
+        if (payload.type === "health") return response.end(JSON.stringify({ ok: true }));
+        if (payload.type === "apply") return response.end(JSON.stringify({ applied: true, rollbackToken: "test-rollback" }));
+        if (payload.type === "rollback") return response.end(JSON.stringify({ rolledBack: true }));
+        response.statusCode = 400;
+        return response.end(JSON.stringify({ ok: false }));
+      });
+    }
     if (request.url === "/robots.txt") return response.end(`User-agent: *\nSitemap: ${origin}/sitemap.xml`);
     if (request.url === "/sitemap.xml") {
       response.setHeader("content-type", "application/xml");
@@ -56,6 +70,7 @@ test("SEO Agent persists a real crawl, evidence-based opportunities, credits, ta
   assert.equal(dashboard.opportunities.some((item) => item.kind === "meta_description"), true);
   assert.equal(dashboard.opportunities[0].evidence.source, "live-crawl");
   assert.equal(dashboard.capabilities.gsc, false);
+  assert.equal(dashboard.capabilities.manualRecommendations, true);
 
   const opportunity = dashboard.opportunities.find((item) => item.kind === "meta_description");
   const approved = await handleSeoAgent(req(`/api/seo-agent/opportunities/${opportunity.id}/approve`, { method: "POST" }), user, `/api/seo-agent/opportunities/${opportunity.id}/approve`);
@@ -65,6 +80,27 @@ test("SEO Agent persists a real crawl, evidence-based opportunities, credits, ta
   assert.ok(action.after.changes.length >= 2);
   assert.equal(db.prepare("SELECT status FROM tasks WHERE id = ?").get(action.taskId).status, "completed");
   assert.equal(Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance), 200 - opportunity.creditCost);
+
+  const connectorResponse = await handleSeoAgent(req(`/api/seo-agent/projects/${project.id}/connectors/cms-webhook`, {
+    method: "PUT",
+    body: JSON.stringify({ endpoint: `${origin}/cms-webhook`, secret: "test-secret" }),
+  }), user, `/api/seo-agent/projects/${project.id}/connectors/cms-webhook`);
+  assert.equal(connectorResponse.status, 200);
+  assert.equal((await connectorResponse.json()).connector.status, "connected");
+
+  const automaticOpportunity = dashboard.opportunities.find((item) => item.id !== opportunity.id);
+  const automaticResponse = await handleSeoAgent(req(`/api/seo-agent/opportunities/${automaticOpportunity.id}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ deliveryMode: "automatic" }),
+  }), user, `/api/seo-agent/opportunities/${automaticOpportunity.id}/approve`);
+  assert.equal(automaticResponse.status, 201);
+  const automaticAction = (await automaticResponse.json()).action;
+  assert.equal(automaticAction.status, "executed");
+  assert.equal(automaticAction.executionKind, "cms_webhook");
+
+  const rollbackResponse = await handleSeoAgent(req(`/api/seo-agent/actions/${automaticAction.id}/rollback`, { method: "POST" }), user, `/api/seo-agent/actions/${automaticAction.id}/rollback`);
+  assert.equal(rollbackResponse.status, 200);
+  assert.equal((await rollbackResponse.json()).action.status, "rolled_back");
 });
 
 test("SEO Agent automation policy is persisted and bounded", async () => {
@@ -77,11 +113,11 @@ test("SEO Agent automation policy is persisted and bounded", async () => {
     .run(projectId, userId, now, now);
   const response = await handleSeoAgent(req(`/api/seo-agent/projects/${projectId}/automation`, {
     method: "PATCH",
-    body: JSON.stringify({ mode: "auto_low_risk", dailyCreditLimit: 42, scanHour: 6, scanMinute: 15 }),
+    body: JSON.stringify({ mode: "approval", dailyCreditLimit: 42, scanHour: 6, scanMinute: 15 }),
   }), { id: userId }, `/api/seo-agent/projects/${projectId}/automation`);
   assert.equal(response.status, 200);
   const project = (await response.json()).project;
-  assert.equal(project.automationMode, "auto_low_risk");
+  assert.equal(project.automationMode, "approval");
   assert.equal(project.dailyCreditLimit, 42);
   assert.equal(project.scanHour, 6);
   assert.equal(project.scanMinute, 15);

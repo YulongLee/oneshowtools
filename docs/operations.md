@@ -123,7 +123,7 @@ archives, logs, support tickets, exports, database backups, or audit metadata.
 ## OneShowSEO Agent
 
 OneShowSEO stores website projects, live crawl evidence, opportunities,
-approvals, tasks, credit charges, and action history in SQLite. The scheduler is
+delivery choices, tasks, credit charges, and action history in SQLite. The scheduler is
 enabled by default and checks due projects every five minutes. Set
 `SEO_AGENT_SCHEDULER_ENABLED=false` for an emergency stop without deleting
 projects or evidence.
@@ -133,7 +133,10 @@ non-HTTP protocols, oversized responses, and unsafe redirects. Search Console,
 GA4, Baidu, and CMS status must remain unconnected until a real authorization is
 present; unknown traffic and ranking metrics must never be estimated.
 
-Optional website writes use an owner-provided HTTPS CMS webhook. Store its
+Every opportunity offers two explicit delivery choices. **Save recommendation**
+creates a persisted plan for the user to apply manually and never requires site
+credentials. **Automatic change** is disabled until the owner configures and
+successfully tests an HTTPS CMS webhook. Store its
 Bearer secret with `SEO_AGENT_CREDENTIAL_ENCRYPTION_KEY` (or the existing model
 credential key). The connector must pass a health request before it becomes
 active. An apply response must contain `applied: true`; reversible executions

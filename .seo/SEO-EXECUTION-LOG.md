@@ -8,6 +8,8 @@
   robots, and sitemap opportunities.
 - Connected approvals to the real task table, credit ledger, and audit events.
 - Added encrypted CMS webhook testing, execution, and rollback contracts.
+- Exposed manual recommendation and automatic change as two explicit choices;
+  manual delivery is the default and requires no site write authorization.
 - Added a recurring due-project scanner and persisted automation policy.
 - Replaced fixed frontend metrics and fake source states with API data.
 - Verified a live crawl of `https://mianshiwen.cn/` locally: 2 pages parsed,
