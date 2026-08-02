@@ -62,6 +62,20 @@ test("SEO Agent persists a real crawl, evidence-based opportunities, credits, ta
   assert.equal(dashboard.capabilities.manualRecommendations, true);
   assert.equal(dashboard.capabilities.siteWrite, false);
 
+  const reportPath = `/api/seo-agent/projects/${project.id}/reports/latest/download`;
+  const reportResponse = await handleSeoAgent(req(`${reportPath}?locale=zh-CN`), user, reportPath);
+  assert.equal(reportResponse.status, 200);
+  assert.match(reportResponse.headers.get("content-type"), /text\/markdown/);
+  assert.match(reportResponse.headers.get("content-disposition"), /attachment/);
+  const reportMarkdown = await reportResponse.text();
+  assert.match(reportMarkdown, /SEO 巡检与整改建议报告/);
+  assert.match(reportMarkdown, /优先整改方案/);
+  assert.match(reportMarkdown, /具体修改清单/);
+  assert.match(reportMarkdown, /Test Site/);
+
+  const unauthorizedReport = await handleSeoAgent(req(reportPath), { id: randomUUID(), locale: "zh-CN" }, reportPath);
+  assert.equal(unauthorizedReport.status, 404);
+
   const connectorResponse = await handleSeoAgent(req(`/api/seo-agent/projects/${project.id}/connectors/cms-webhook`, {
     method: "PUT",
     body: JSON.stringify({ endpoint: `${origin}/cms-webhook`, secret: "unused" }),

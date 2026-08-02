@@ -77,7 +77,23 @@ function scanReport(evidence, healthScoreValue, opportunityCount, checkedAt = Da
   const validH1 = pages.filter((page) => page.h1Count === 1).length;
   const imagesWithAlt = images.filter((image) => Boolean(image.alt)).length;
   const brokenLinks = (evidence?.checkedLinks || []).filter((item) => item.status >= 400 || item.errorCode).length;
-  const check = (code, passed, passedCount, totalCount, detail = {}) => ({ code, passed, passedCount, totalCount, ...detail });
+  const recommendations = {
+    title: { zh: "为每个异常页面补充唯一、准确且长度适中的标题，优先处理首页和核心落地页。", en: "Give every affected page a unique, accurate title of an appropriate length, starting with the homepage and key landing pages." },
+    description: { zh: "为缺失页面编写独立的 Meta Description，概括页面价值并自然包含核心主题。", en: "Write a unique meta description for each affected page that summarizes its value and naturally includes the core topic." },
+    canonical: { zh: "为页面声明正确的 Canonical URL，避免重复地址造成搜索信号分散。", en: "Declare the correct canonical URL for each page to prevent duplicate URLs from splitting search signals." },
+    h1: { zh: "确保每个页面只有一个清晰的 H1，并让它准确描述页面的主要内容。", en: "Use one clear H1 per page and make it accurately describe the page's primary content." },
+    image_alt: { zh: "为承载内容含义的图片补充准确的替代文本；装饰性图片应使用空 alt。", en: "Add accurate alternative text to meaningful images and use an empty alt attribute for decorative images." },
+    broken_links: { zh: "逐项确认失效链接，将其更新到有效页面、设置合理跳转或移除无效入口。", en: "Review each broken link and update it, redirect it appropriately, or remove the invalid reference." },
+    robots: { zh: "检查 robots.txt 是否可公开访问，并确认没有误拦截需要收录的页面和资源。", en: "Make robots.txt publicly accessible and confirm it does not block pages or assets that should be indexed." },
+    sitemap: { zh: "创建或修复 XML Sitemap，只保留规范且可收录的 URL，并在搜索引擎平台提交。", en: "Create or repair the XML sitemap, include only canonical indexable URLs, and submit it to search engines." },
+  };
+  const check = (code, passed, passedCount, totalCount, detail = {}) => ({
+    code, passed, passedCount, totalCount,
+    severity: passed ? "passed" : (["robots", "sitemap", "broken_links"].includes(code) ? "high" : "medium"),
+    recommendationZh: passed ? "当前抓取范围内无需修改，后续巡检继续监控。" : recommendations[code].zh,
+    recommendationEn: passed ? "No change is needed in the current crawl scope; keep monitoring in future scans." : recommendations[code].en,
+    ...detail,
+  });
   return {
     conclusion: opportunityCount > 0 ? "needs_attention" : "healthy",
     healthScore: healthScoreValue,
@@ -94,6 +110,78 @@ function scanReport(evidence, healthScoreValue, opportunityCount, checkedAt = Da
       check("sitemap", Boolean(evidence?.sitemaps?.some((item) => item.status >= 200 && item.status < 400)), evidence?.sitemaps?.some((item) => item.status >= 200 && item.status < 400) ? 1 : 0, 1),
     ],
   };
+}
+
+const markdownValue = (value) => String(value ?? "—").replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim() || "—";
+
+function latestReportDownload(userId, projectId, locale = "zh-CN") {
+  const project = projectRow(userId, projectId);
+  const latest = db.prepare("SELECT * FROM seo_agent_scans WHERE project_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1").get(project.id);
+  if (!latest) throw agentError("SEO_AGENT_REPORT_NOT_FOUND", 404);
+  const evidence = parse(latest.evidence_json);
+  const opportunities = db.prepare("SELECT * FROM seo_agent_opportunities WHERE scan_id = ? ORDER BY CASE impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, confidence DESC").all(latest.id).map(opportunityView);
+  const report = scanReport(evidence, latest.health_score, opportunities.length, latest.completed_at);
+  const english = locale === "en";
+  const labels = english ? {
+    title: "SEO Inspection & Improvement Report", summary: "Executive summary", scope: "Inspection scope", checks: "Rule checks",
+    issues: "Prioritized improvement plan", passed: "Passed checks", next: "Recommended next steps", healthy: "No covered issue was found in this crawl.",
+    attention: `${opportunities.length} actionable improvement opportunities were found.`, status: "Status", result: "Observed result", recommendation: "Recommendation",
+    pass: "Passed", fail: "Needs improvement", pages: "Pages parsed", links: "Links checked", sitemap: "Sitemap URLs found", score: "Technical health score",
+    evidence: "Evidence", changes: "Suggested changes", current: "Current", suggested: "Suggested", limitation: "This report is based on publicly accessible pages crawled during this inspection. It is not a complete search-engine index, traffic, or ranking report.",
+  } : {
+    title: "SEO 巡检与整改建议报告", summary: "执行摘要", scope: "巡检范围", checks: "规则检查结果",
+    issues: "优先整改方案", passed: "已通过检查", next: "建议执行顺序", healthy: "本次抓取范围内未发现当前规则覆盖的明显问题。",
+    attention: `本次发现 ${opportunities.length} 项可处理的优化机会。`, status: "状态", result: "检查结果", recommendation: "修改建议",
+    pass: "通过", fail: "需完善", pages: "已解析页面", links: "已检查链接", sitemap: "发现的 Sitemap URL", score: "技术健康度",
+    evidence: "真实证据", changes: "具体修改清单", current: "当前内容", suggested: "建议内容", limitation: "本报告基于巡检时可公开访问并成功抓取的页面，不等同于搜索引擎完整收录、流量或排名报告。",
+  };
+  const checkName = (code) => (english ? {
+    title: "Page titles", description: "Meta descriptions", canonical: "Canonical URLs", h1: "H1 structure", image_alt: "Image alt text", broken_links: "Link availability", robots: "Robots.txt", sitemap: "XML Sitemap",
+  } : {
+    title: "页面标题", description: "搜索摘要", canonical: "Canonical 地址", h1: "H1 结构", image_alt: "图片替代文本", broken_links: "链接可访问性", robots: "Robots.txt", sitemap: "XML Sitemap",
+  })[code] || code;
+  const coverage = parse(latest.coverage_json);
+  const lines = [
+    `# ${labels.title}`, "", `**${english ? "Project" : "项目"}：** ${markdownValue(project.name)}`,
+    `**${english ? "Website" : "网站"}：** ${markdownValue(project.site_url)}`,
+    `**${english ? "Inspection time" : "巡检时间"}：** ${new Date(latest.completed_at).toISOString()}`,
+    `**${labels.score}：** ${latest.health_score}/100`, "", `## ${labels.summary}`, "",
+    report.conclusion === "healthy" ? labels.healthy : labels.attention, "", `> ${labels.limitation}`, "", `## ${labels.scope}`, "",
+    `- ${labels.pages}：${coverage.pagesParsed ?? 0}`,
+    `- ${labels.links}：${coverage.linksChecked ?? 0}`,
+    `- ${labels.sitemap}：${coverage.sitemapUrlsFound ?? 0}`, "", `## ${labels.checks}`, "",
+    `| ${english ? "Check" : "检查项"} | ${labels.status} | ${labels.result} | ${labels.recommendation} |`,
+    "|---|---|---:|---|",
+    ...report.checks.map((item) => `| ${checkName(item.code)} | ${item.passed ? labels.pass : labels.fail} | ${item.passedCount}/${item.totalCount} | ${markdownValue(english ? item.recommendationEn : item.recommendationZh)} |`),
+  ];
+  const failed = report.checks.filter((item) => !item.passed);
+  if (opportunities.length) {
+    lines.push("", `## ${labels.issues}`, "");
+    opportunities.forEach((item, index) => {
+      lines.push(`### P${index + 1}. ${english ? item.titleEn : item.titleZh}`, "", english ? item.summaryEn : item.summaryZh, "",
+        `- ${english ? "Impact" : "影响"}：${item.impact}`,
+        `- ${english ? "Risk" : "风险"}：${item.risk}`,
+        `- ${english ? "Confidence" : "置信度"}：${item.confidence}%`, "", `**${labels.evidence}**`, "", "```json", JSON.stringify(item.evidence, null, 2), "```", "");
+      const changes = item.proposal?.changes || [];
+      if (changes.length) {
+        lines.push(`**${labels.changes}**`, "");
+        changes.slice(0, 100).forEach((change) => lines.push(
+          `- ${markdownValue(change.url)} · ${markdownValue(change.field)}`,
+          `  - ${labels.current}：${markdownValue(change.before)}`,
+          `  - ${labels.suggested}：${markdownValue(change.after ?? (english ? "Manual decision required" : "需要人工确认"))}`,
+        ));
+        lines.push("");
+      }
+    });
+  } else {
+    lines.push("", `## ${labels.passed}`, "", ...report.checks.map((item) => `- ${checkName(item.code)}：${item.passedCount}/${item.totalCount}`), "");
+  }
+  lines.push(`## ${labels.next}`, "");
+  if (failed.length) lines.push(...failed.map((item, index) => `${index + 1}. ${markdownValue(english ? item.recommendationEn : item.recommendationZh)}`));
+  else lines.push(english ? "1. Keep the current configuration and run the next scheduled inspection to monitor regressions." : "1. 保持当前配置，并按计划继续巡检，及时发现回归问题。");
+  lines.push("", "---", english ? "Generated by OneShowSEO. Recommendations only; no website changes were performed." : "由 OneShowSEO 生成。本报告仅提供建议，平台未对网站执行任何修改。", "");
+  const slug = project.site_origin.replace(/^https?:\/\//, "").replace(/[^a-zA-Z0-9.-]+/g, "-").slice(0, 80) || "website";
+  return { markdown: lines.join("\n"), filename: `oneshowseo-${slug}-${new Date(latest.completed_at).toISOString().slice(0, 10)}.md`, scanId: latest.id };
 }
 
 function projectView(row) {
@@ -339,6 +427,19 @@ export async function handleSeoAgent(request, user, path) {
     }
     let match = path.match(/^\/api\/seo-agent\/projects\/([^/]+)\/scan$/);
     if (match && request.method === "POST") return json(await runSeoAgentScan(match[1], user.id), 201);
+    match = path.match(/^\/api\/seo-agent\/projects\/([^/]+)\/reports\/latest\/download$/);
+    if (match && request.method === "GET") {
+      const locale = new URL(request.url).searchParams.get("locale") === "en" ? "en" : "zh-CN";
+      const result = latestReportDownload(user.id, match[1], locale);
+      audit(user.id, "seo_agent.report.downloaded", "seo_agent_project", match[1], { scanId: result.scanId, format: "markdown", locale });
+      return new Response(result.markdown, {
+        headers: {
+          "content-type": "text/markdown; charset=utf-8",
+          "content-disposition": `attachment; filename="${result.filename}"`,
+          "cache-control": "private, no-store",
+        },
+      });
+    }
     match = path.match(/^\/api\/seo-agent\/projects\/([^/]+)\/automation$/);
     if (match && request.method === "PATCH") {
       const project = projectRow(user.id, match[1]);
