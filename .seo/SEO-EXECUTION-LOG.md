@@ -2,14 +2,14 @@
 
 ## 2026-08-02
 
-- Added persistent projects, connectors, scans, opportunities, and actions.
+- Added persistent projects, scans, opportunities, and recommendation actions.
 - Reused the SSRF-protected live crawler for observed website evidence.
 - Added evidence-derived title, description, canonical, image-alt, broken-link,
   robots, and sitemap opportunities.
 - Connected approvals to the real task table, credit ledger, and audit events.
-- Added encrypted CMS webhook testing, execution, and rollback contracts.
-- Exposed manual recommendation and automatic change as two explicit choices;
-  manual delivery is the default and requires no site write authorization.
+- Removed website write configuration, automatic execution, and rollback from
+  the public product. The API rejects automatic-change requests and legacy
+  connector records are disabled for audit-only compatibility.
 - Added a recurring due-project scanner and persisted automation policy.
 - Replaced fixed frontend metrics and fake source states with API data.
 - Verified a live crawl of `https://mianshiwen.cn/` locally: 2 pages parsed,
@@ -21,4 +21,3 @@ Deferred because authorization was not supplied:
 - Google Search Console OAuth
 - GA4 OAuth
 - Baidu Search Resource Platform authorization
-- A production CMS write connector and real rollback token

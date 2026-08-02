@@ -256,6 +256,8 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0013_seo_workbench.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0014_seo_provider_configs.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0015_seo_agent.sql"), "utf8"));
+  db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
+  db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
   const rankSnapshotColumns = new Set(db.prepare("PRAGMA table_info(seo_rank_snapshots)").all().map((item) => item.name));
   if (!rankSnapshotColumns.has("search_engine")) db.exec("ALTER TABLE seo_rank_snapshots ADD COLUMN search_engine TEXT NOT NULL DEFAULT 'google'");
@@ -276,7 +278,7 @@ export function initializeDatabase() {
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
-    ["tool_seo_agent", "seo-agent", "OneShow SEO Agent", "OneShow SEO Agent", "持续发现 SEO 机会，可保存建议自行修改，也可选择安全的自动修改。", "Continuously discover SEO opportunities, save recommendations for manual editing, or choose secure automatic changes.", "agent", "Robot", 20, "openai"],
+    ["tool_seo_agent", "seo-agent", "OneShow SEO Agent", "OneShow SEO Agent", "持续发现 SEO 机会并输出可执行的修改建议，所有网站变更由用户自行完成。", "Continuously discover SEO opportunities and produce actionable recommendations for users to apply themselves.", "agent", "Robot", 20, "openai"],
   ];
   const insertTool = db.prepare(`
     INSERT INTO tools (

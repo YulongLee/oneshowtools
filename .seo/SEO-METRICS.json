@@ -14,7 +14,7 @@
   },
   "keyword_groups": [],
   "limitations": [
-    "Search Console, GA4, Baidu, and CMS are not authorized.",
+    "Search Console, GA4, and Baidu are not authorized; website write access is intentionally unsupported.",
     "Live crawl coverage is not an index count."
   ]
 }

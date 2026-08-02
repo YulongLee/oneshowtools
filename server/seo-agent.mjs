@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { audit, db } from "./database.mjs";
 import { inspectSite, safeSeoUrl } from "./seo-fetch.mjs";
 
@@ -19,46 +19,6 @@ function projectRow(userId, projectId) {
   const row = db.prepare("SELECT * FROM seo_agent_projects WHERE id = ? AND user_id = ?").get(projectId, userId);
   if (!row) throw agentError("SEO_AGENT_PROJECT_NOT_FOUND", 404);
   return row;
-}
-
-function encryptionKey() {
-  const value = String(process.env.SEO_AGENT_CREDENTIAL_ENCRYPTION_KEY || process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY || "");
-  let key = Buffer.alloc(0);
-  if (/^[0-9a-f]{64}$/i.test(value)) key = Buffer.from(value, "hex");
-  else { try { key = Buffer.from(value, "base64"); } catch { key = Buffer.alloc(0); } }
-  if (key.length !== 32) throw agentError("SEO_AGENT_CREDENTIAL_STORAGE_UNAVAILABLE", 503);
-  return key;
-}
-
-function credentialAad(userId, connectorId, version) {
-  return Buffer.from(`oneshowseo:${userId}:${connectorId}:${version}`, "utf8");
-}
-
-function encryptSecret(secret, userId, connectorId, version = 1) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  cipher.setAAD(credentialAad(userId, connectorId, version));
-  const ciphertext = Buffer.concat([cipher.update(String(secret), "utf8"), cipher.final()]);
-  return { ciphertext: ciphertext.toString("base64"), iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64") };
-}
-
-function decryptSecret(row) {
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(row.secret_iv, "base64"));
-  decipher.setAAD(credentialAad(row.user_id, row.id, row.secret_version));
-  decipher.setAuthTag(Buffer.from(row.secret_tag, "base64"));
-  return Buffer.concat([decipher.update(Buffer.from(row.secret_ciphertext, "base64")), decipher.final()]).toString("utf8");
-}
-
-function connectorView(row) {
-  return row && {
-    id: row.id,
-    provider: row.provider,
-    status: row.status,
-    config: parse(row.config_json),
-    configured: Boolean(row.secret_ciphertext),
-    lastTestStatus: row.last_test_status,
-    lastTestedAt: row.last_tested_at,
-  };
 }
 
 function opportunityView(row) {
@@ -110,7 +70,6 @@ function nextScan(timestamp, hour = 8, minute = 30) {
 
 function projectView(row) {
   const latest = db.prepare("SELECT * FROM seo_agent_scans WHERE project_id = ? ORDER BY started_at DESC LIMIT 1").get(row.id);
-  const connectors = db.prepare("SELECT * FROM seo_agent_connectors WHERE project_id = ? ORDER BY provider").all(row.id).map(connectorView);
   const counts = db.prepare("SELECT status, COUNT(*) AS count FROM seo_agent_opportunities WHERE project_id = ? GROUP BY status").all(row.id);
   return {
     id: row.id,
@@ -135,7 +94,6 @@ function projectView(row) {
       startedAt: latest.started_at,
       completedAt: latest.completed_at,
     } : null,
-    connectors,
     opportunityCounts: Object.fromEntries(counts.map((item) => [item.status, Number(item.count)])),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -269,31 +227,7 @@ export async function runSeoAgentScan(projectId, userId, { fetchImpl = fetch } =
   }
 }
 
-async function postConnector(connector, payload) {
-  const config = parse(connector.config_json);
-  const endpoint = await safeSeoUrl(config.endpoint);
-  const secret = decryptSecret(connector);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      redirect: "error",
-      signal: controller.signal,
-      headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, "user-agent": "OneShowSEO-Agent/1.0" },
-      body: JSON.stringify(payload),
-    });
-    const text = (await response.text()).slice(0, 200_000);
-    const data = parse(text, { message: text.slice(0, 500) });
-    if (!response.ok) throw agentError("SEO_AGENT_CONNECTOR_REJECTED", 502);
-    return data;
-  } catch (error) {
-    if (error.name === "AbortError") throw agentError("SEO_AGENT_CONNECTOR_TIMEOUT", 504);
-    throw error;
-  } finally { clearTimeout(timer); }
-}
-
-async function approveOpportunity(user, opportunityId, deliveryMode = "manual") {
+async function approveOpportunity(user, opportunityId) {
   const opportunity = db.prepare("SELECT * FROM seo_agent_opportunities WHERE id = ? AND user_id = ?").get(opportunityId, user.id);
   if (!opportunity) throw agentError("SEO_AGENT_OPPORTUNITY_NOT_FOUND", 404);
   if (opportunity.status !== "detected") throw agentError("SEO_AGENT_OPPORTUNITY_NOT_ACTIONABLE", 409);
@@ -302,65 +236,25 @@ async function approveOpportunity(user, opportunityId, deliveryMode = "manual") 
   const taskId = randomUUID();
   const actionId = randomUUID();
   const timestamp = Date.now();
-  const automatic = deliveryMode === "automatic";
-  const connector = automatic
-    ? db.prepare("SELECT * FROM seo_agent_connectors WHERE project_id = ? AND provider = 'cms_webhook' AND status = 'connected'").get(opportunity.project_id)
-    : null;
-  if (automatic && !connector) throw agentError("SEO_AGENT_CONNECTOR_REQUIRED", 409);
-  let status = "draft_ready";
-  let providerResponse = {};
-  let rollbackToken = null;
-  let errorCode = null;
-  if (automatic) {
-    try {
-      providerResponse = await postConnector(connector, {
-        type: "apply",
-        actionId,
-        project: { id: opportunity.project_id },
-        opportunity: opportunityView(opportunity),
-      });
-      if (!providerResponse.applied) throw agentError("SEO_AGENT_CONNECTOR_NOT_APPLIED", 502);
-      rollbackToken = String(providerResponse.rollbackToken || "") || null;
-      status = "executed";
-    } catch (error) {
-      status = "failed";
-      errorCode = error.code || "SEO_AGENT_EXECUTION_FAILED";
-    }
-  }
+  const status = "draft_ready";
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare(`INSERT INTO tasks (id, user_id, tool_id, status, input_json, output_json, error_code, credit_cost, created_at, updated_at, completed_at)
       VALUES (?, ?, 'tool_seo_agent', ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(taskId, user.id, status === "failed" ? "failed" : "completed", JSON.stringify({ opportunityId, deliveryMode: automatic ? "automatic" : "manual" }), JSON.stringify({ actionId, status, proposal: parse(opportunity.proposal_json) }), errorCode, opportunity.credit_cost, timestamp, timestamp, timestamp);
+      .run(taskId, user.id, "completed", JSON.stringify({ opportunityId, deliveryMode: "recommendation" }), JSON.stringify({ actionId, status, proposal: parse(opportunity.proposal_json) }), null, opportunity.credit_cost, timestamp, timestamp, timestamp);
     db.prepare(`INSERT INTO seo_agent_actions
       (id, opportunity_id, project_id, user_id, task_id, status, execution_kind, before_json, after_json, provider_response_json, rollback_token, error_code, approved_at, executed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, ?)`)
-      .run(actionId, opportunity.id, opportunity.project_id, user.id, taskId, status, automatic ? "cms_webhook" : "recommendation", opportunity.proposal_json, JSON.stringify(providerResponse), rollbackToken, errorCode, timestamp, status === "executed" ? timestamp : null);
+      .run(actionId, opportunity.id, opportunity.project_id, user.id, taskId, status, "recommendation", opportunity.proposal_json, "{}", null, null, timestamp, null);
     db.prepare("UPDATE seo_agent_opportunities SET status = ?, updated_at = ? WHERE id = ?").run(status, timestamp, opportunity.id);
-    if (status !== "failed" && opportunity.credit_cost > 0) db.prepare(`INSERT INTO credit_ledger
+    if (opportunity.credit_cost > 0) db.prepare(`INSERT INTO credit_ledger
       (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
       VALUES (?, ?, 'consumption', ?, ?, ?, 'task', ?, ?)`)
-      .run(randomUUID(), user.id, -opportunity.credit_cost, automatic ? "OneShowSEO 自动修改" : "OneShowSEO 修改建议", automatic ? "OneShowSEO automatic change" : "OneShowSEO recommendation plan", taskId, timestamp);
+      .run(randomUUID(), user.id, -opportunity.credit_cost, "OneShowSEO 修改建议", "OneShowSEO recommendation plan", taskId, timestamp);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  audit(user.id, automatic ? "seo_agent.change.executed" : "seo_agent.recommendation.saved", "seo_agent_action", actionId, { opportunityId, status, deliveryMode: automatic ? "automatic" : "manual" });
-  if (status === "failed") throw agentError(errorCode, 502);
+  audit(user.id, "seo_agent.recommendation.saved", "seo_agent_action", actionId, { opportunityId, status, siteWrite: false });
   return actionView(db.prepare("SELECT * FROM seo_agent_actions WHERE id = ?").get(actionId));
-}
-
-async function rollbackAction(user, actionId) {
-  const action = db.prepare("SELECT * FROM seo_agent_actions WHERE id = ? AND user_id = ?").get(actionId, user.id);
-  if (!action) throw agentError("SEO_AGENT_ACTION_NOT_FOUND", 404);
-  if (action.status !== "executed" || !action.rollback_token) throw agentError("SEO_AGENT_ACTION_NOT_ROLLBACKABLE", 409);
-  const connector = db.prepare("SELECT * FROM seo_agent_connectors WHERE project_id = ? AND provider = 'cms_webhook' AND status = 'connected'").get(action.project_id);
-  if (!connector) throw agentError("SEO_AGENT_CONNECTOR_REQUIRED", 409);
-  const result = await postConnector(connector, { type: "rollback", actionId: action.id, rollbackToken: action.rollback_token });
-  if (!result.rolledBack) throw agentError("SEO_AGENT_ROLLBACK_REJECTED", 502);
-  const timestamp = Date.now();
-  db.prepare("UPDATE seo_agent_actions SET status = 'rolled_back', provider_response_json = ?, rolled_back_at = ? WHERE id = ?").run(JSON.stringify(result), timestamp, action.id);
-  db.prepare("UPDATE seo_agent_opportunities SET status = 'rolled_back', updated_at = ? WHERE id = ?").run(timestamp, action.opportunity_id);
-  audit(user.id, "seo_agent.action.rolled_back", "seo_agent_action", action.id, {});
-  return actionView(db.prepare("SELECT * FROM seo_agent_actions WHERE id = ?").get(action.id));
 }
 
 function dashboard(userId) {
@@ -379,7 +273,7 @@ function dashboard(userId) {
       creditsLedger: true,
       auditTrail: true,
       manualRecommendations: true,
-      siteWrite: Boolean(process.env.SEO_AGENT_CREDENTIAL_ENCRYPTION_KEY || process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY),
+      siteWrite: false,
       gsc: false,
       ga4: false,
       baidu: false,
@@ -424,40 +318,12 @@ export async function handleSeoAgent(request, user, path) {
       audit(user.id, "seo_agent.automation.updated", "seo_agent_project", project.id, { mode, dailyCreditLimit: limit, scanHour: hour, scanMinute: minute });
       return json({ project: projectView(projectRow(user.id, project.id)) });
     }
-    match = path.match(/^\/api\/seo-agent\/projects\/([^/]+)\/connectors\/cms-webhook$/);
-    if (match && request.method === "PUT") {
-      const project = projectRow(user.id, match[1]);
-      const payload = await requestBody(request);
-      const endpoint = await safeSeoUrl(payload.endpoint);
-      const secret = String(payload.secret || "").trim();
-      if (!secret) throw agentError("SEO_AGENT_CONNECTOR_SECRET_REQUIRED", 400);
-      const existing = db.prepare("SELECT * FROM seo_agent_connectors WHERE project_id = ? AND provider = 'cms_webhook'").get(project.id);
-      const id = existing?.id || randomUUID();
-      const version = Number(existing?.secret_version || 0) + 1;
-      const encrypted = encryptSecret(secret, user.id, id, version);
-      const timestamp = Date.now();
-      db.prepare(`INSERT INTO seo_agent_connectors
-        (id, project_id, user_id, provider, status, config_json, secret_ciphertext, secret_iv, secret_tag, secret_version, created_at, updated_at)
-        VALUES (?, ?, ?, 'cms_webhook', 'pending', ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(project_id, provider) DO UPDATE SET status = 'pending', config_json = excluded.config_json,
-          secret_ciphertext = excluded.secret_ciphertext, secret_iv = excluded.secret_iv, secret_tag = excluded.secret_tag,
-          secret_version = excluded.secret_version, updated_at = excluded.updated_at`)
-        .run(id, project.id, user.id, JSON.stringify({ endpoint: endpoint.href }), encrypted.ciphertext, encrypted.iv, encrypted.tag, version, timestamp, timestamp);
-      const connector = db.prepare("SELECT * FROM seo_agent_connectors WHERE id = ?").get(id);
-      let testStatus = "failed";
-      try { const result = await postConnector(connector, { type: "health", project: { id: project.id, siteUrl: project.site_url } }); testStatus = result.ok === false ? "failed" : "passed"; } catch { testStatus = "failed"; }
-      db.prepare("UPDATE seo_agent_connectors SET status = ?, last_test_status = ?, last_tested_at = ?, updated_at = ? WHERE id = ?").run(testStatus === "passed" ? "connected" : "error", testStatus, Date.now(), Date.now(), id);
-      audit(user.id, "seo_agent.connector.updated", "seo_agent_project", project.id, { provider: "cms_webhook", testStatus });
-      return json({ connector: connectorView(db.prepare("SELECT * FROM seo_agent_connectors WHERE id = ?").get(id)) }, testStatus === "passed" ? 200 : 422);
-    }
     match = path.match(/^\/api\/seo-agent\/opportunities\/([^/]+)\/approve$/);
     if (match && request.method === "POST") {
       const payload = await requestBody(request);
-      const deliveryMode = payload.deliveryMode === "automatic" ? "automatic" : "manual";
-      return json({ action: await approveOpportunity(user, match[1], deliveryMode) }, 201);
+      if (payload.deliveryMode === "automatic") throw agentError("SEO_AGENT_AUTOMATIC_CHANGES_DISABLED", 409);
+      return json({ action: await approveOpportunity(user, match[1]) }, 201);
     }
-    match = path.match(/^\/api\/seo-agent\/actions\/([^/]+)\/rollback$/);
-    if (match && request.method === "POST") return json({ action: await rollbackAction(user, match[1]) });
     return json({ error: { code: "NOT_FOUND" } }, 404);
   } catch (error) {
     return json({ error: { code: error.code || "SEO_AGENT_FAILED" } }, error.status || 500);

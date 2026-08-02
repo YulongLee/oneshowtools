@@ -3,9 +3,9 @@
 ## Objective
 
 Deliver an evidence-driven SEO Agent loop inside OneShowTools: live crawl,
-prioritized opportunity, an explicit manual-recommendation or automatic-change
-choice, task and credit settlement, optional CMS execution, rollback, and
-recurring scans.
+prioritized opportunity, actionable recommendations, task and credit
+settlement, recommendation history, and recurring scans. Users apply every
+website change themselves.
 
 ## Baseline
 
@@ -21,7 +21,7 @@ recurring scans.
 | SEOA-01 | Projects and crawl | High | High | Medium | Public website | Platform | Existing safe crawler | A saved project produces persisted crawl evidence |
 | SEOA-02 | Opportunities | High | High | Medium | SEOA-01 | Agent | Observed page fields | Every opportunity includes URLs and observed evidence |
 | SEOA-03 | Approval and credits | High | High | Medium | Ledger | Platform | Existing immutable ledger | Approval creates one task and one idempotent charge |
-| SEOA-04 | Delivery choice | High | High | High | Owner connector for automatic mode | Tool integration | Manual mode needs no credential | Every opportunity can be saved as a manual plan; only a tested connector enables automatic execution |
+| SEOA-04 | Recommendation delivery | High | High | Medium | SEOA-02 | Tool integration | No write credential required | Every opportunity can be saved as a detailed manual plan; all write endpoints reject requests |
 | SEOA-05 | Monitoring | Medium | High | Medium | Scheduler | Agent | Persisted scan timestamps | Due projects are scanned without inventing traffic data |
 
 ## Measurement
