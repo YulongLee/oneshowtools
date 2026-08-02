@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 process.env.NODE_ENV = "test";
 process.env.ALLOW_TEST_SEO_ENDPOINTS = "true";
 
-const { seoCatalog, seoDataSourceStatus, generateSeo } = await import("../server/seo-engine.mjs");
+const { compactCompetitorEvidence, seoCatalog, seoDataSourceStatus, generateSeo } = await import("../server/seo-engine.mjs");
 const { safeSeoUrl } = await import("../server/seo-fetch.mjs");
 const { db } = await import("../server/database.mjs");
 const { seoSpecialists, filterCatalogForSpecialist } = await import("../server/seo-specialists.mjs");
@@ -82,6 +82,32 @@ test("SEO website audit crawls real HTML evidence and returns an explainable sco
 
 test("SEO crawler blocks embedded credentials", async () => {
   await assert.rejects(() => safeSeoUrl("https://user:pass@example.com"), { code: "SEO_URL_BLOCKED" });
+});
+
+test("competitor evidence is bounded before it is sent to the model", () => {
+  const longText = "首段竞争信号 ".repeat(2_000) + "末段转化信号";
+  const sites = [{
+    origin: "https://competitor.example",
+    coverage: { pagesParsed: 5, pagesRequested: 5 },
+    pages: Array.from({ length: 5 }, (_, pageIndex) => ({
+      evidenceId: `P${pageIndex + 1}`,
+      finalUrl: `https://competitor.example/page-${pageIndex + 1}`,
+      status: 200,
+      title: "页面标题".repeat(100),
+      description: "页面描述".repeat(200),
+      headings: Array.from({ length: 24 }, (_, headingIndex) => ({ level: "H2", text: `标题 ${headingIndex} `.repeat(50) })),
+      textSample: longText,
+    })),
+  }];
+
+  const compacted = compactCompetitorEvidence(sites);
+  assert.equal(compacted[0].pages.length, 4);
+  assert.equal(compacted[0].pages[0].headings.length, 16);
+  assert.ok(compacted[0].pages[0].title.length <= 240);
+  assert.ok(compacted[0].pages[0].description.length <= 420);
+  assert.ok(compacted[0].pages[0].textSample.length <= 1_505);
+  assert.match(compacted[0].pages[0].textSample, /末段转化信号$/);
+  assert.ok(JSON.stringify(compacted).length < 30_000);
 });
 
 test("technical SEO templates return capability-specific evidence instead of one generic report", async (t) => {

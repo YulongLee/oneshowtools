@@ -328,6 +328,29 @@ const seoResultNames = {
   en: { keywords: "Keyword results", content: "Content deliverable", audit: "Audit findings", ranking: "Ranking data", backlinks: "Backlink data", comparison: "Gap comparison", scorecard: "Scorecard", report: "SEO report" },
 };
 
+function seoFailureMessage(caught, locale) {
+  const zh = locale !== "en";
+  const messages = {
+    MODEL_TIMEOUT: zh ? "模型分析超时，本次不会扣除积分。请点击重试。" : "Model analysis timed out. No credits were charged; please retry.",
+    SEO_PROVIDER_TIMEOUT: zh ? "SEO 数据供应商响应超时，本次不会扣除积分。请稍后重试。" : "The SEO data provider timed out. No credits were charged; please retry later.",
+    SEO_DATA_SOURCE_REQUIRED: zh ? "该功能所需的数据源尚未配置，请联系管理员。" : "The required data source is not configured. Contact an administrator.",
+    SEO_PROVIDER_UNREACHABLE: zh ? "暂时无法连接 SEO 数据供应商，请稍后重试。" : "The SEO data provider is temporarily unreachable. Please retry later.",
+    SEO_PROVIDER_FAILED: zh ? "SEO 数据供应商返回异常，本次不会扣除积分。" : "The SEO data provider returned an error. No credits were charged.",
+    SEO_INVALID_URL: zh ? "网址格式不正确，请输入完整的 HTTP 或 HTTPS 地址。" : "The URL is invalid. Enter a complete HTTP or HTTPS address.",
+    SEO_HTTP_REQUIRED: zh ? "仅支持公开的 HTTP 或 HTTPS 网站。" : "Only public HTTP or HTTPS websites are supported.",
+    SEO_URL_BLOCKED: zh ? "该网址不符合安全抓取规则，请使用公开的 HTTP 或 HTTPS 网站。" : "This URL does not meet safe-crawling rules. Use a public HTTP or HTTPS website.",
+    SEO_HOST_NOT_FOUND: zh ? "无法找到该网站，请检查域名是否填写正确。" : "The website could not be found. Check the domain name.",
+    SEO_FETCH_TIMEOUT: zh ? "网站抓取超时，本次不会扣除积分。请稍后重试。" : "Website crawling timed out. No credits were charged; please retry later.",
+    SEO_FETCH_FAILED: zh ? "网站暂时无法访问，请检查网址或网站的访问限制。" : "The website could not be reached. Check its URL or access restrictions.",
+    SEO_HTML_REQUIRED: zh ? "该地址不是可分析的网页，请输入网站页面地址。" : "This address is not an analyzable web page. Enter a website page URL.",
+    SEO_RESPONSE_TOO_LARGE: zh ? "网页内容过大，暂时无法完成分析。" : "The page is too large to analyze.",
+    SEO_REDIRECT_LIMIT: zh ? "网站重定向次数过多，请检查最终访问地址。" : "The website redirects too many times. Check its final URL.",
+    ONESHOW_MODEL_UNAVAILABLE: zh ? "OneShowModel 当前不可用，可稍后重试或选择个人模型。" : "OneShowModel is unavailable. Retry later or select a personal model.",
+  };
+  if (caught?.status === 402) return dictionary[locale].insufficient;
+  return messages[caught?.message] || (zh ? "运行失败，未扣除积分。请检查输入后重试。" : "The run failed and no credits were charged. Check the inputs and retry.");
+}
+
 function seoCell(value, zh) {
   if (value == null || value === "") return "—";
   if (typeof value === "boolean") return value ? (zh ? "是" : "Yes") : (zh ? "否" : "No");
@@ -414,7 +437,7 @@ function SeoWorkbenchPage({ tool, catalog, locale, authenticated, runtime, onBac
     if (activeTemplate.fields.some((field) => field.required && !String(resolvedValues[field.id] || "").trim())) return setError(labels.required);
     setBusy(true); setElapsed(0); setError("");
     try { const response = await api(`/api/tool-actions/${tool.slug}`, jsonOptions("POST", { templateId: activeTemplate.id, values: resolvedValues, locale, customInstructions, modelConnectionId })); setResultsByTemplate((previous) => ({ ...previous, [activeTemplate.id]: response.output })); onCompleted?.(response); requestAnimationFrame(() => document.querySelector(".seo-result")?.scrollIntoView({ behavior: "smooth", block: "start" })); }
-    catch (caught) { setError(caught.status === 402 ? dictionary[locale].insufficient : labels.error); } finally { setBusy(false); }
+    catch (caught) { setError(seoFailureMessage(caught, locale)); } finally { setBusy(false); }
   };
   const copy = async () => { await navigator.clipboard.writeText(result?.markdown || ""); setCopied(true); setTimeout(() => setCopied(false), 1400); };
   const download = () => { const blob = new Blob([result?.markdown || ""], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${activeTemplate?.id || "seo-report"}.md`; a.click(); URL.revokeObjectURL(url); };

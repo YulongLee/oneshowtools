@@ -51,6 +51,7 @@ const {
   listModelConnections,
   listPlatformModelConfigurations,
   listToolModelPreferences,
+  resolveModelRequestTimeout,
   runtimeSummary,
   savePlatformModelConfiguration,
   setToolModelPreference,
@@ -71,6 +72,14 @@ function addUser(email) {
   `).run(id, email, timestamp, timestamp);
   return id;
 }
+
+test("model requests support a longer capability-specific timeout with safety bounds", () => {
+  assert.equal(resolveModelRequestTimeout(null, {}), 45_000);
+  assert.equal(resolveModelRequestTimeout(120_000, {}), 120_000);
+  assert.equal(resolveModelRequestTimeout(1_000, {}), 5_000);
+  assert.equal(resolveModelRequestTimeout(900_000, {}), 180_000);
+  assert.equal(resolveModelRequestTimeout(null, { MODEL_REQUEST_TIMEOUT_MS: "not-a-number" }), 45_000);
+});
 
 test("managed runtime returns a provider-neutral result and redacted status", async () => {
   const userId = addUser("managed@example.com");

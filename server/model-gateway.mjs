@@ -473,9 +473,15 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, wo
   };
 }
 
-async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, signal }) {
+export function resolveModelRequestTimeout(timeoutMs = null, env = process.env) {
+  const configuredTimeout = Number(timeoutMs ?? env.MODEL_REQUEST_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  return Math.min(180_000, Math.max(5_000, Number.isFinite(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT_MS));
+}
+
+async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, signal, timeoutMs = null }) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(process.env.MODEL_REQUEST_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
+  const requestTimeout = resolveModelRequestTimeout(timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), requestTimeout);
   signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     const safeBase = await assertSafeEndpoint(baseUrl);
@@ -637,6 +643,7 @@ export async function invokeModel({
   text,
   connectionId = null,
   signal,
+  timeoutMs = null,
 }) {
   const route = resolveRoute(userId, connectionId);
   const invocationId = randomUUID();
@@ -647,7 +654,7 @@ export async function invokeModel({
     VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
   `).run(invocationId, taskId, userId, route.routeKind, route.connectionId, capability, startedAt);
   try {
-    const result = await requestModel({ ...route, instruction, text, signal });
+    const result = await requestModel({ ...route, instruction, text, signal, timeoutMs });
     db.prepare(`
       UPDATE model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,
         latency_ms = ?, completed_at = ? WHERE id = ?
