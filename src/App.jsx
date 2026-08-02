@@ -16,6 +16,7 @@ const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
+  Code, Megaphone,
 };
 const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker"]);
 const pdfToolSlugs = new Set(["pdf-merge", "pdf-split", "pdf-compress", "pdf-organizer", "images-to-pdf", "pdf-to-images", "pdf-watermark", "pdf-page-numbers", "pdf-ocr", "pdf-to-markdown", "pdf-table-to-excel", "pdf-summary"]);
@@ -40,6 +41,25 @@ const pdfToolFields = {
   "pdf-ocr": [{ id: "language", type: "select", zh: "识别语言", en: "Recognition language", options: [["chi_sim+eng", "简体中文 + English"], ["chi_sim", "简体中文"], ["eng", "English"]] }],
 };
 const pdfToolInitial = { pages: "", splitMode: "individual", quality: "72", scale: "1.25", order: "", rotate: "0", format: "png", watermark: "OneShowTools", opacity: "22", fontSize: "42", color: "#1769e8", start: "1", position: "bottom-center", language: "chi_sim+eng", question: "" };
+const utilityToolSlugs = new Set(["json-formatter", "data-format-converter", "jwt-decoder", "timestamp-converter", "base64-url-codec", "regex-tester", "text-diff", "meta-title-generator", "meta-description-generator", "schema-generator", "serp-preview", "robots-generator", "sitemap-checker", "xiaohongshu-copy", "content-repurposer"]);
+const utilityToolFields = {
+  "json-formatter": [{ id: "source", type: "textarea", zh: "JSON 内容", en: "JSON input" }, { id: "mode", type: "select", zh: "处理方式", en: "Mode", options: [["format", "格式化", "Format"], ["minify", "压缩", "Minify"]] }],
+  "data-format-converter": [{ id: "source", type: "textarea", zh: "结构化数据", en: "Structured data" }, { id: "inputFormat", type: "select", zh: "输入格式", en: "Input format", options: [["json", "JSON"], ["yaml", "YAML"], ["xml", "XML"]] }, { id: "outputFormat", type: "select", zh: "输出格式", en: "Output format", options: [["yaml", "YAML"], ["json", "JSON"], ["xml", "XML"]] }],
+  "jwt-decoder": [{ id: "token", type: "textarea", zh: "JWT Token", en: "JWT token", sensitive: true }],
+  "timestamp-converter": [{ id: "value", type: "text", zh: "时间或时间戳", en: "Date or timestamp", placeholderZh: "例如：1722470400 或 2026-08-03T10:00:00Z", placeholderEn: "e.g. 1722470400 or 2026-08-03T10:00:00Z" }],
+  "base64-url-codec": [{ id: "source", type: "textarea", zh: "待处理内容", en: "Source text", sensitive: true }, { id: "operation", type: "select", zh: "操作", en: "Operation", options: [["base64-encode", "Base64 编码"], ["base64-decode", "Base64 解码"], ["url-encode", "URL 编码"], ["url-decode", "URL 解码"]] }],
+  "regex-tester": [{ id: "pattern", type: "text", zh: "正则表达式", en: "Regular expression", placeholderZh: "例如：(\\w+)@(\\w+\\.\\w+)", placeholderEn: "e.g. (\\w+)@(\\w+\\.\\w+)" }, { id: "flags", type: "text", zh: "Flags", en: "Flags", placeholderZh: "例如：gi", placeholderEn: "e.g. gi" }, { id: "source", type: "textarea", zh: "测试文本", en: "Test text" }],
+  "text-diff": [{ id: "before", type: "textarea", zh: "原始文本", en: "Original text" }, { id: "after", type: "textarea", zh: "修改后文本", en: "Revised text" }],
+  "meta-title-generator": [{ id: "keyword", type: "text", zh: "目标关键词", en: "Target keyword" }, { id: "brand", type: "text", zh: "品牌名称（可选）", en: "Brand (optional)" }],
+  "meta-description-generator": [{ id: "keyword", type: "text", zh: "目标关键词", en: "Target keyword" }, { id: "benefit", type: "textarea", zh: "页面价值与用户收益", en: "Page value and user benefit" }],
+  "schema-generator": [{ id: "schemaType", type: "select", zh: "Schema 类型", en: "Schema type", options: [["Article", "Article"], ["Product", "Product"], ["Organization", "Organization"], ["BreadcrumbList", "BreadcrumbList"]] }, { id: "name", type: "text", zh: "名称 / 标题", en: "Name / title", placeholderZh: "面包屑请用 > 分隔", placeholderEn: "Use > between breadcrumb items" }, { id: "url", type: "url", zh: "页面 URL", en: "Page URL" }, { id: "description", type: "textarea", zh: "描述", en: "Description" }, { id: "author", type: "text", zh: "作者（Article）", en: "Author (Article)" }, { id: "brand", type: "text", zh: "品牌（Product）", en: "Brand (Product)" }],
+  "serp-preview": [{ id: "title", type: "text", zh: "页面标题", en: "Page title" }, { id: "url", type: "url", zh: "页面 URL", en: "Page URL" }, { id: "description", type: "textarea", zh: "Meta Description", en: "Meta description" }],
+  "robots-generator": [{ id: "website", type: "url", zh: "网站地址", en: "Website URL" }, { id: "allow", type: "textarea", zh: "允许路径（每行一个，可选）", en: "Allowed paths (one per line, optional)" }, { id: "disallow", type: "textarea", zh: "禁止路径（每行一个）", en: "Disallowed paths (one per line)" }, { id: "sitemap", type: "url", zh: "Sitemap 地址（可选）", en: "Sitemap URL (optional)" }],
+  "sitemap-checker": [{ id: "website", type: "url", zh: "网站或 Sitemap 地址", en: "Website or sitemap URL", placeholderZh: "https://example.com 或 https://example.com/sitemap.xml", placeholderEn: "https://example.com or https://example.com/sitemap.xml" }],
+  "xiaohongshu-copy": [{ id: "topic", type: "textarea", zh: "主题、卖点或素材", en: "Topic, benefits, or source material" }, { id: "audience", type: "text", zh: "目标人群", en: "Target audience" }, { id: "tone", type: "select", zh: "文案语气", en: "Tone", options: [["真实分享", "真实分享", "Authentic"], ["专业干货", "专业干货", "Expert"], ["轻松种草", "轻松种草", "Conversational"]] }],
+  "content-repurposer": [{ id: "source", type: "textarea", zh: "原始内容", en: "Source content" }, { id: "platforms", type: "text", zh: "目标平台", en: "Target platforms", placeholderZh: "例如：小红书、公众号、LinkedIn、X", placeholderEn: "e.g. Xiaohongshu, WeChat, LinkedIn, X" }],
+};
+const utilityToolInitial = { source: "", mode: "format", inputFormat: "json", outputFormat: "yaml", token: "", value: "", operation: "base64-encode", pattern: "", flags: "gi", before: "", after: "", keyword: "", brand: "", benefit: "", schemaType: "Article", name: "", url: "", description: "", author: "", website: "", allow: "/", disallow: "/admin\n/private", sitemap: "", title: "", topic: "", audience: "", tone: "真实分享", platforms: "小红书、公众号、LinkedIn、X" };
 const writingIconMap = { Article, ArrowsClockwise, TrendUp, MegaphoneSimple, ShareNetwork, Briefcase, Palette };
 const seoIconMap = { MagnifyingGlass, Article, Pulse: ChartLineUp, TrendUp, Link: ShareNetwork, Binoculars, FileText };
 const seoSpecialistFor = (catalog, slug) => catalog?.specialists?.find((item) => item.slug === slug) || null;
@@ -638,6 +658,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const [files, setFiles] = useState([]);
   const [imageSettings, setImageSettings] = useState(imageToolInitial);
   const [pdfSettings, setPdfSettings] = useState(pdfToolInitial);
+  const [utilitySettings, setUtilitySettings] = useState(utilityToolInitial);
   const [text, setText] = useState("");
   const [quality, setQuality] = useState(75);
   const [tolerance, setTolerance] = useState(48);
@@ -652,6 +673,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const description = locale === "en" ? tool.descriptionEn : tool.descriptionZh;
   const isImage = imageToolSlugs.has(tool.slug);
   const isPdf = pdfToolSlugs.has(tool.slug);
+  const isUtility = utilityToolSlugs.has(tool.slug);
   const pdfMultiple = multiFilePdfSlugs.has(tool.slug);
   const imageNeedsFile = isImage && tool.slug !== "og-image-generator";
   const isFile = imageNeedsFile || isPdf;
@@ -664,6 +686,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
     setFiles([]); setFile(null); setResult(null); setError("");
     setImageSettings({ ...imageToolInitial, preset: tool.slug === "id-photo-maker" ? "one-inch" : "xiaohongshu-cover" });
     setPdfSettings({ ...pdfToolInitial });
+    setUtilitySettings({ ...utilityToolInitial });
   }, [tool.id, tool.slug]);
   useEffect(() => {
     setModelConnectionId(runtimeTool?.modelConnectionId || "managed");
@@ -671,7 +694,8 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
 
   const run = async () => {
     if (!authenticated) return onAuth();
-    if ((isFile && (tool.slug === "batch-image-resizer" || pdfMultiple) && !files.length) || (isFile && tool.slug !== "batch-image-resizer" && !pdfMultiple && !file) || (!isFile && !isImage && !text.trim())) return setError(t.inputRequired);
+    const utilityHasInput = !isUtility || (utilityToolFields[tool.slug] || []).some((field) => !["select"].includes(field.type) && String(utilitySettings[field.id] || "").trim());
+    if ((isFile && (tool.slug === "batch-image-resizer" || pdfMultiple) && !files.length) || (isFile && tool.slug !== "batch-image-resizer" && !pdfMultiple && !file) || (!isFile && !isImage && !isUtility && !text.trim()) || !utilityHasInput) return setError(t.inputRequired);
     setBusy(true);
     setError("");
     setResult(null);
@@ -692,6 +716,8 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
         const form = new FormData();
         (imageToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(imageSettings[field.id] ?? "")));
         options = { method: "POST", body: form };
+      } else if (isUtility) {
+        options = jsonOptions("POST", { ...utilitySettings, modelConnectionId });
       } else {
         options = jsonOptions("POST", { text, modelConnectionId });
       }
@@ -752,7 +778,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
     <header className="tool-page-header"><span className={`tool-icon large ${tool.category}`}><Icon size={31} /></span><div><p className="eyebrow">{t.toolWorkspace}</p><h1>{name}</h1><p>{description}</p></div><div className="tool-run-meta"><StatusPill status={tool.runtimeStatus} locale={locale} /><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span></div></header>
     <div className="tool-workspace-grid">
       <section className="surface tool-input-panel">
-        <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : isPdf ? (tool.slug === "images-to-pdf" ? (locale === "en" ? "Upload images" : "上传图片") : t.pdfInput) : isSpeech ? t.speechInput : t.textInput}</h2>
+        <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : isPdf ? (tool.slug === "images-to-pdf" ? (locale === "en" ? "Upload images" : "上传图片") : t.pdfInput) : isUtility ? (locale === "en" ? "Tool input" : "工具输入") : isSpeech ? t.speechInput : t.textInput}</h2>
         {isFile && <label className={`tool-dropzone ${(file || files.length) ? "selected" : ""}`}><input type="file" multiple={tool.slug === "batch-image-resizer" || pdfMultiple} accept={isImage || tool.slug === "images-to-pdf" ? "image/*,.heic,.heif" : "application/pdf"} onChange={(event) => { const selected = [...(event.target.files || [])]; setFiles(selected); setFile(selected[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{(tool.slug === "batch-image-resizer" || pdfMultiple) && files.length ? `${t.selectedFile}: ${files.length} ${locale === "en" ? "files" : "个文件"}` : file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{(tool.slug === "batch-image-resizer" || pdfMultiple) && files.length ? formatBytes(files.reduce((sum, item) => sum + item.size, 0)) : file ? formatBytes(file.size) : isImage || tool.slug === "images-to-pdf" ? "HEIC · PNG · JPG · WEBP · AVIF" : "PDF · 25 MB"}</span></label>}
         {isImage && (imageToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{imageToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{imageSettings[field.id]}</strong>}</span>{field.type === "select" ? <select value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })}>{field.options.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} />}</label>)}</div>}
         {isPdf && (pdfToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options pdf-tool-options">{pdfToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{pdfSettings[field.id]}{field.id === "opacity" ? "%" : ""}</strong>}</span>{field.type === "select" ? <select value={pdfSettings[field.id]} onChange={(event) => setPdfSettings({ ...pdfSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} value={pdfSettings[field.id]} onChange={(event) => setPdfSettings({ ...pdfSettings, [field.id]: event.target.value })} />}</label>)}</div>}
@@ -760,6 +786,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
         {tool.slug === "pdf-compress" && <p className="tool-inline-note"><Warning size={16} />{locale === "en" ? "Compression rebuilds pages as optimized images. It works best for scanned PDFs and does not preserve searchable text." : "压缩会将页面重建为优化图片，适合扫描件和图片型 PDF，但不会保留可搜索文字层。"}</p>}
         {tool.slug === "pdf-ocr" && <p className="tool-inline-note"><FileText size={16} />{locale === "en" ? "Recognizes up to 12 pages per run and exports editable text." : "单次最多识别 12 页，完成后导出可编辑文字文件。"}</p>}
         {tool.slug === "id-photo-maker" && <p className="tool-inline-note"><ShieldCheck size={16} />{locale === "en" ? "Solid-color backgrounds are supported now. Advanced hair-level AI matting will be added after a vision API is connected." : "当前支持纯色背景证件照；发丝级智能抠图将在接入视觉模型后升级。"}</p>}
+        {isUtility && <div className="utility-tool-fields">{(utilityToolFields[tool.slug] || []).map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.sensitive && <small>{locale === "en" ? "Not stored in task history" : "不会写入任务记录"}</small>}</span>{field.type === "select" ? <select value={utilitySettings[field.id]} onChange={(event) => setUtilitySettings({ ...utilitySettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option key={value} value={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : field.type === "textarea" ? <textarea rows={field.id === "source" || field.id === "before" || field.id === "after" || field.id === "topic" ? 8 : 4} value={utilitySettings[field.id]} onChange={(event) => setUtilitySettings({ ...utilitySettings, [field.id]: event.target.value })} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} /> : <input type={field.type || "text"} value={utilitySettings[field.id]} onChange={(event) => setUtilitySettings({ ...utilitySettings, [field.id]: event.target.value })} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} />}</label>)}</div>}
         {isText && <textarea className="tool-textarea" rows={12} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} />}
         {isSpeech && <><div className={`speech-pad ${recording ? "recording" : ""}`}><button onClick={toggleSpeech}>{recording ? <StopCircle size={28} weight="fill" /> : <Microphone size={28} weight="fill" />}<span>{recording ? t.stopSpeech : t.startSpeech}</span></button></div><textarea className="tool-textarea" rows={7} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.inputPlaceholder} /></>}
         {authenticated && tool.runtimeKind === "openai" && <label className="model-select-field"><span>{t.selectModel}</span><select value={modelConnectionId} onChange={(event) => changeModel(event.target.value)}><option value="managed">{t.useManaged}</option>{runtime?.connections?.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.keyHint}</option>)}</select></label>}

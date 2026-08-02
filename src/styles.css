@@ -230,6 +230,14 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .pdf-question-field { margin-top: 16px; display: grid; gap: 8px; }
 .pdf-question-field > span { color: var(--navy); font-size: 11px; font-weight: 650; }
 .pdf-question-field textarea { width: 100%; min-height: 96px; resize: vertical; padding: 12px 13px; border: 1px solid #d8e1ed; border-radius: 9px; background: #fff; color: var(--navy); font: inherit; line-height: 1.6; }
+.utility-tool-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 15px; }
+.utility-tool-fields label { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.utility-tool-fields label:has(textarea) { grid-column: 1 / -1; }
+.utility-tool-fields label > span { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #4b5d78; font-size: 12px; font-weight: 650; }
+.utility-tool-fields label > span small { color: #258460; font-size: 10px; font-weight: 600; }
+.utility-tool-fields input, .utility-tool-fields select, .utility-tool-fields textarea { width: 100%; min-width: 0; border: 1px solid #d7e0ed; border-radius: 9px; background: #fff; color: #17233b; padding: 11px 12px; font: inherit; outline: none; resize: vertical; }
+.utility-tool-fields textarea { min-height: 104px; line-height: 1.6; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; }
+.utility-tool-fields input:focus, .utility-tool-fields select:focus, .utility-tool-fields textarea:focus { border-color: #2371e8; box-shadow: 0 0 0 3px rgba(35,113,232,.09); }
 .tool-auth-notice { margin-top: 17px; padding: 12px; border: 1px solid #e3e8ef; border-radius: 9px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; color: #69778d; background: #fafbfd; font-size: 10px; }
 .tool-auth-notice svg { color: var(--blue); }
 .tool-auth-notice button { padding: 0; border: 0; color: var(--blue); background: transparent; font-weight: 700; }
@@ -1097,6 +1105,8 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .market-source-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) {
+  .utility-tool-fields { grid-template-columns: 1fr; }
+  .utility-tool-fields label, .utility-tool-fields label:has(textarea) { grid-column: 1; }
   .admin-v2-metrics, .admin-v2-metrics-three, .admin-health-metric-grid { grid-template-columns: 1fr; }
   .admin-data-freshness { align-items: flex-start; flex-wrap: wrap; padding-block: 11px; }
   .admin-data-freshness span { width: 100%; margin-left: 27px; }

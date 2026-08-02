@@ -9,6 +9,7 @@ import { generateSeo } from "./seo-engine.mjs";
 import { seoSpecialistBySlug } from "./seo-specialists.mjs";
 import { imageToolSlugs, processImageTool } from "./image-tools.mjs";
 import { pdfToolSlugSet, processPdfTool } from "./pdf-tools.mjs";
+import { processUtilityTool, utilityToolSlugs } from "./utility-tools.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -306,6 +307,14 @@ export async function runToolAction(request, user, tool) {
         throw toolError("SEO_AGENT_CAPABILITY_NOT_ALLOWED", 403);
       }
       processed = await generateSeo({ user, payload, connectionId: modelConnectionId });
+      input = processed.safeInput;
+    } else if (utilityToolSlugs.has(tool.slug)) {
+      processed = await processUtilityTool({
+        slug: tool.slug,
+        payload,
+        locale: user.locale,
+        modelText: (instruction, source, capability) => modelText(user, instruction, source, modelConnectionId, capability),
+      });
       input = processed.safeInput;
     } else {
       input = { text: String(payload.text || "").slice(0, 50000), modelConnectionId };
