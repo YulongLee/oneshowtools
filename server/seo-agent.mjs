@@ -68,9 +68,39 @@ function nextScan(timestamp, hour = 8, minute = 30) {
   return next.getTime();
 }
 
+function scanReport(evidence, healthScoreValue, opportunityCount, checkedAt = Date.now()) {
+  const pages = (evidence?.pages || []).filter((page) => page.status >= 200 && page.status < 400);
+  const images = pages.flatMap((page) => page.images || []);
+  const validTitles = pages.filter((page) => page.title && page.title.length >= 15 && page.title.length <= 65).length;
+  const descriptions = pages.filter((page) => Boolean(page.description)).length;
+  const canonicals = pages.filter((page) => Boolean(page.canonical)).length;
+  const validH1 = pages.filter((page) => page.h1Count === 1).length;
+  const imagesWithAlt = images.filter((image) => Boolean(image.alt)).length;
+  const brokenLinks = (evidence?.checkedLinks || []).filter((item) => item.status >= 400 || item.errorCode).length;
+  const check = (code, passed, passedCount, totalCount, detail = {}) => ({ code, passed, passedCount, totalCount, ...detail });
+  return {
+    conclusion: opportunityCount > 0 ? "needs_attention" : "healthy",
+    healthScore: healthScoreValue,
+    opportunityCount,
+    checkedAt,
+    checks: [
+      check("title", pages.length > 0 && validTitles === pages.length, validTitles, pages.length),
+      check("description", pages.length > 0 && descriptions === pages.length, descriptions, pages.length),
+      check("canonical", pages.length > 0 && canonicals === pages.length, canonicals, pages.length),
+      check("h1", pages.length > 0 && validH1 === pages.length, validH1, pages.length),
+      check("image_alt", images.length === 0 || imagesWithAlt === images.length, imagesWithAlt, images.length),
+      check("broken_links", brokenLinks === 0, Math.max(0, (evidence?.checkedLinks || []).length - brokenLinks), (evidence?.checkedLinks || []).length, { issueCount: brokenLinks }),
+      check("robots", Boolean(evidence?.robots?.status >= 200 && evidence?.robots?.status < 400), evidence?.robots?.status >= 200 && evidence?.robots?.status < 400 ? 1 : 0, 1),
+      check("sitemap", Boolean(evidence?.sitemaps?.some((item) => item.status >= 200 && item.status < 400)), evidence?.sitemaps?.some((item) => item.status >= 200 && item.status < 400) ? 1 : 0, 1),
+    ],
+  };
+}
+
 function projectView(row) {
   const latest = db.prepare("SELECT * FROM seo_agent_scans WHERE project_id = ? ORDER BY started_at DESC LIMIT 1").get(row.id);
   const counts = db.prepare("SELECT status, COUNT(*) AS count FROM seo_agent_opportunities WHERE project_id = ? GROUP BY status").all(row.id);
+  const latestEvidence = latest ? parse(latest.evidence_json) : null;
+  const latestOpportunityCount = latest ? Number(db.prepare("SELECT COUNT(*) AS count FROM seo_agent_opportunities WHERE scan_id = ?").get(latest.id).count) : 0;
   return {
     id: row.id,
     name: row.name,
@@ -90,6 +120,7 @@ function projectView(row) {
       source: latest.source,
       healthScore: latest.health_score,
       coverage: parse(latest.coverage_json),
+      report: latest.status === "completed" ? scanReport(latestEvidence, latest.health_score, latestOpportunityCount, latest.completed_at) : null,
       errorCode: latest.error_code,
       startedAt: latest.started_at,
       completedAt: latest.completed_at,
@@ -219,7 +250,7 @@ export async function runSeoAgentScan(projectId, userId, { fetchImpl = fetch } =
       db.exec("COMMIT");
     } catch (error) { db.exec("ROLLBACK"); throw error; }
     audit(userId, "seo_agent.scan.completed", "seo_agent_project", project.id, { scanId, healthScore: score, opportunities: opportunities.length, coverage: evidence.coverage });
-    return { scanId, healthScore: score, opportunities: opportunities.length, coverage: evidence.coverage };
+    return { scanId, healthScore: score, opportunities: opportunities.length, coverage: evidence.coverage, report: scanReport(evidence, score, opportunities.length, completedAt) };
   } catch (error) {
     db.prepare("UPDATE seo_agent_scans SET status = 'failed', error_code = ?, completed_at = ? WHERE id = ?").run(error.code || "SEO_AGENT_SCAN_FAILED", Date.now(), scanId);
     audit(userId, "seo_agent.scan.failed", "seo_agent_project", project.id, { scanId, errorCode: error.code || "SEO_AGENT_SCAN_FAILED" });
@@ -257,9 +288,10 @@ async function approveOpportunity(user, opportunityId) {
   return actionView(db.prepare("SELECT * FROM seo_agent_actions WHERE id = ?").get(actionId));
 }
 
-function dashboard(userId) {
+function dashboard(userId, requestedProjectId = null) {
   const projects = db.prepare("SELECT * FROM seo_agent_projects WHERE user_id = ? ORDER BY updated_at DESC").all(userId).map(projectView);
-  const project = projects[0] || null;
+  const project = (requestedProjectId ? projects.find((item) => item.id === requestedProjectId) : projects[0]) || null;
+  if (requestedProjectId && !project) throw agentError("SEO_AGENT_PROJECT_NOT_FOUND", 404);
   const opportunities = project ? db.prepare("SELECT * FROM seo_agent_opportunities WHERE project_id = ? AND status NOT IN ('superseded') ORDER BY CASE impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, confidence DESC, created_at DESC LIMIT 30").all(project.id).map(opportunityView) : [];
   const actions = project ? db.prepare("SELECT * FROM seo_agent_actions WHERE project_id = ? ORDER BY approved_at DESC LIMIT 30").all(project.id).map(actionView) : [];
   return {
@@ -283,7 +315,10 @@ function dashboard(userId) {
 
 export async function handleSeoAgent(request, user, path) {
   try {
-    if (path === "/api/seo-agent" && request.method === "GET") return json(dashboard(user.id));
+    if (path === "/api/seo-agent" && request.method === "GET") {
+      const projectId = new URL(request.url).searchParams.get("projectId");
+      return json(dashboard(user.id, projectId));
+    }
     if (path === "/api/seo-agent/projects" && request.method === "POST") {
       const payload = await requestBody(request);
       const url = await safeSeoUrl(payload.siteUrl);

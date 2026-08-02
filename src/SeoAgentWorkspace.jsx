@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, ArrowRight, ChartLineUp, CheckCircle, Clock, Coins, Database,
-  FileText, Globe, LockKey, MagicWand, Play, PlugsConnected,
+  FileText, Globe, LockKey, MagicWand, Play, PlugsConnected, Plus,
   Robot, ShieldCheck, SpinnerGap, Warning, X,
 } from "@phosphor-icons/react";
 
@@ -28,6 +28,7 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
   const [mode, setMode] = useState("approval");
   const [dailyLimit, setDailyLimit] = useState(100);
   const [scanTime, setScanTime] = useState("08:30");
+  const [scanFeedback, setScanFeedback] = useState(null);
 
   const copy = zh ? {
     back: "返回工具市场", kicker: "SEO 增长驾驶舱", title: "OneShowSEO", sub: "使用真实网站证据持续发现、审批和追踪 SEO 行动。",
@@ -40,6 +41,8 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
     realOnly: "只读建议模式", realOnlySub: "平台只分析网站并输出具体修改建议，所有网站变更均由用户自行完成。",
     automationTitle: "自动巡检策略", automationSub: "设置每日扫描时间和分析预算。系统只会自动发现问题并生成建议。", recommend: "发现问题", approval: "生成建议", limit: "每日积分上限", time: "每日巡检时间", save: "保存自动化策略", saved: "策略已保存",
     historyTitle: "已保存的修改建议", historySub: "每条建议都关联任务编号、真实证据和积分记录，用户可据此自行修改网站。", noHistory: "还没有保存修改建议。", draft: "修改建议", task: "任务",
+    switchProject: "切换网站项目", addProject: "添加网站", reportTitle: "最近一次巡检报告", reportHealthy: "巡检完成，当前规则未发现明显问题", reportIssues: "巡检完成，已发现可处理的问题", checkedAt: "完成时间", checksPassed: "检查项通过", reportCoverage: "本次只代表已抓取范围，不等同于搜索引擎完整收录情况。",
+    checkLabels: { title: "页面标题", description: "搜索摘要", canonical: "Canonical", h1: "H1 结构", image_alt: "图片替代文本", broken_links: "链接可访问性", robots: "Robots.txt", sitemap: "XML Sitemap" },
     error: "操作失败", projectExists: "该网站已经添加。", invalidUrl: "请输入可访问的 HTTP 或 HTTPS 网站地址。", insufficient: "积分不足。", scanFailed: "网站抓取失败，请确认网站可以公开访问。",
   } : {
     back: "Back to marketplace", kicker: "SEO GROWTH COMMAND CENTER", title: "OneShowSEO", sub: "Continuously discover, approve, and track SEO actions using live website evidence.",
@@ -52,11 +55,13 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
     realOnly: "Read-only recommendations", realOnlySub: "The platform analyzes and recommends only. Users make every change to their own websites.",
     automationTitle: "Automated scan policy", automationSub: "Set the daily scan time and analysis budget. Automation only finds issues and produces recommendations.", recommend: "Find issues", approval: "Generate plans", limit: "Daily credit limit", time: "Daily scan time", save: "Save policy", saved: "Policy saved",
     historyTitle: "Saved recommendations", historySub: "Each recommendation links to a task ID, real evidence, and a credit record so the user can update the site.", noHistory: "No saved recommendations yet.", draft: "Recommendation", task: "Task",
+    switchProject: "Switch website project", addProject: "Add website", reportTitle: "Latest inspection report", reportHealthy: "Inspection complete. No covered issue was found.", reportIssues: "Inspection complete. Actionable issues were found.", checkedAt: "Completed", checksPassed: "checks passed", reportCoverage: "This result covers crawled pages only and is not a complete search-engine index report.",
+    checkLabels: { title: "Page titles", description: "Search descriptions", canonical: "Canonical", h1: "H1 structure", image_alt: "Image alt text", broken_links: "Link availability", robots: "Robots.txt", sitemap: "XML Sitemap" },
     error: "Operation failed", projectExists: "This website is already added.", invalidUrl: "Enter a reachable HTTP or HTTPS website URL.", insufficient: "Insufficient credits.", scanFailed: "The website crawl failed. Confirm the site is publicly reachable.",
   };
 
-  const load = useCallback(async () => {
-    const next = await request("/api/seo-agent");
+  const load = useCallback(async (projectId = null) => {
+    const next = await request(projectId ? `/api/seo-agent?projectId=${encodeURIComponent(projectId)}` : "/api/seo-agent");
     setData(next);
     const project = next.activeProject;
     if (project) {
@@ -84,9 +89,10 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
     setBusy("create"); setError("");
     try {
       const result = await request("/api/seo-agent/projects", json("POST", { name: siteName, siteUrl }));
-      await request(`/api/seo-agent/projects/${result.project.id}/scan`, { method: "POST" });
+      const scanResult = await request(`/api/seo-agent/projects/${result.project.id}/scan`, { method: "POST" });
       setSetupOpen(false); setSiteUrl(""); setSiteName("");
-      await load();
+      setScanFeedback(scanResult.report || null);
+      await load(result.project.id);
     } catch (cause) { setError(cause.code); }
     finally { setBusy(""); }
   }
@@ -94,7 +100,7 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
   async function scan() {
     if (!project) return;
     setBusy("scan"); setError("");
-    try { await request(`/api/seo-agent/projects/${project.id}/scan`, { method: "POST" }); await load(); }
+    try { const result = await request(`/api/seo-agent/projects/${project.id}/scan`, { method: "POST" }); setScanFeedback(result.report || null); await load(project.id); }
     catch (cause) { setError(cause.code); }
     finally { setBusy(""); }
   }
@@ -103,7 +109,7 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
     setBusy(item.id); setError("");
     try {
       await request(`/api/seo-agent/opportunities/${item.id}/approve`, json("POST", { deliveryMode: "recommendation" }));
-      await Promise.all([load(), onCompleted?.()]);
+      await Promise.all([load(project.id), onCompleted?.()]);
       setSelected(null);
     } catch (cause) { setError(cause.code); }
     finally { setBusy(""); }
@@ -114,8 +120,15 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
     setBusy("automation"); setError("");
     try {
       await request(`/api/seo-agent/projects/${project.id}/automation`, json("PATCH", { mode, dailyCreditLimit: Number(dailyLimit), scanHour, scanMinute }));
-      await load();
+      await load(project.id);
     } catch (cause) { setError(cause.code); }
+    finally { setBusy(""); }
+  }
+
+  async function switchProject(projectId) {
+    setBusy("switch"); setError(""); setSelected(null); setScanFeedback(null); setTab("overview");
+    try { await load(projectId); }
+    catch (cause) { setError(cause.code); }
     finally { setBusy(""); }
   }
 
@@ -132,7 +145,7 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
     {!project ? <section className="seo-agent-onboarding">
       <span><Globe size={34} weight="duotone" /></span><h2>{copy.noProject}</h2><p>{copy.noProjectSub}</p><button onClick={() => setSetupOpen(true)}><PlugsConnected size={17} />{copy.addSite}</button>
     </section> : <>
-      <div className="seo-growth-projectbar"><div><small>{zh ? "网站项目" : "Website project"}</small><strong>{project.name}</strong><span><CheckCircle size={14} weight="fill" />{project.siteOrigin}</span></div><p><ShieldCheck size={15} />{copy.realOnly}</p></div>
+      <div className="seo-growth-projectbar"><div className="seo-agent-project-picker"><label><small>{copy.switchProject}</small><select value={project.id} onChange={(event) => switchProject(event.target.value)} disabled={busy === "switch"}>{(data.projects || []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.siteOrigin}</option>)}</select></label><button onClick={() => setSetupOpen(true)}><Plus size={15} />{copy.addProject}</button></div><p><ShieldCheck size={15} />{copy.realOnly}</p></div>
       <section className="seo-growth-sources"><div><strong>{copy.sources}</strong><small>{copy.sourceSub}</small></div><ul>
         <li className="ready"><i />{copy.liveCrawl}<span>{copy.available}</span></li>
         <li className="ready"><i />{copy.ledger}<span>{copy.available}</span></li>
@@ -146,6 +159,7 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
           <div><small>{copy.links}</small><strong>{project.latestScan?.coverage?.linksChecked ?? "—"}</strong></div>
           <div><small>{copy.sitemap}</small><strong>{project.latestScan?.coverage?.sitemapUrlsFound ?? "—"}</strong></div>
         </section>
+        <ScanReport report={scanFeedback || project.latestScan?.report} copy={copy} locale={locale} />
         <section className="seo-growth-queue"><header><div><strong>{copy.opportunityTitle}</strong><small>{copy.opportunitySub}</small></div><button onClick={() => setTab("opportunities")}>{copy.opportunities}<ArrowRight size={14} /></button></header>
           {detected.slice(0, 3).map((item) => <OpportunityRow key={item.id} item={item} zh={zh} copy={copy} onSelect={setSelected} />)}
           {!detected.length && <div className="seo-agent-empty-real"><CheckCircle size={22} />{copy.empty}</div>}
@@ -176,4 +190,15 @@ export function SeoAgentWorkspace({ locale, account, onBack, onCompleted }) {
 
 function OpportunityRow({ item, zh, copy, onSelect }) {
   return <div><span className={item.risk}><FileText size={18} /></span><div><small>{item.kind}</small><strong>{zh ? item.titleZh : item.titleEn}</strong><p>{zh ? item.summaryZh : item.summaryEn}</p></div><em>{item.creditCost} {copy.cost}</em><button onClick={() => onSelect(item)}>{copy.inspect}<ArrowRight size={14} /></button></div>;
+}
+
+function ScanReport({ report, copy, locale }) {
+  if (!report) return null;
+  const passed = (report.checks || []).filter((item) => item.passed).length;
+  const healthy = report.conclusion === "healthy";
+  return <section className={`seo-agent-scan-report ${healthy ? "healthy" : "attention"}`}>
+    <header><span>{healthy ? <CheckCircle size={21} weight="fill" /> : <Warning size={21} weight="fill" />}</span><div><small>{copy.reportTitle}</small><strong>{healthy ? copy.reportHealthy : copy.reportIssues}</strong></div><em>{passed}/{(report.checks || []).length} {copy.checksPassed}</em></header>
+    <div>{(report.checks || []).map((item) => <span key={item.code} className={item.passed ? "passed" : "failed"}>{item.passed ? <CheckCircle size={14} weight="fill" /> : <Warning size={14} weight="fill" />}<strong>{copy.checkLabels[item.code] || item.code}</strong><small>{item.passedCount}/{item.totalCount}</small></span>)}</div>
+    <footer><span>{copy.checkedAt}：{fmt(report.checkedAt, locale)}</span><p>{copy.reportCoverage}</p></footer>
+  </section>;
 }

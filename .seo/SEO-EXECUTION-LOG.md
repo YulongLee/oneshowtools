@@ -11,6 +11,8 @@
   the public product. The API rejects automatic-change requests and legacy
   connector records are disabled for audit-only compatibility.
 - Added a recurring due-project scanner and persisted automation policy.
+- Added owner-scoped multi-site project switching and an always-visible scan
+  report, including explicit successful output when no issue is detected.
 - Replaced fixed frontend metrics and fake source states with API data.
 - Verified a live crawl of `https://mianshiwen.cn/` locally: 2 pages parsed,
   2 links checked, 1 sitemap URL observed, and no covered issue detected.

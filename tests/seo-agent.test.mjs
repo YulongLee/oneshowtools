@@ -50,9 +50,12 @@ test("SEO Agent persists a real crawl, evidence-based opportunities, credits, ta
   assert.equal(scan.coverage.pagesParsed, 2);
   assert.ok(scan.healthScore < 100);
   assert.ok(scan.opportunities >= 2);
+  assert.equal(scan.report.conclusion, "needs_attention");
+  assert.equal(scan.report.checks.length, 8);
 
   const dashboard = await (await handleSeoAgent(req("/api/seo-agent"), user, "/api/seo-agent")).json();
   assert.equal(dashboard.activeProject.latestScan.status, "completed");
+  assert.equal(dashboard.activeProject.latestScan.report.opportunityCount, scan.opportunities);
   assert.equal(dashboard.opportunities.some((item) => item.kind === "meta_description"), true);
   assert.equal(dashboard.opportunities[0].evidence.source, "live-crawl");
   assert.equal(dashboard.capabilities.gsc, false);
@@ -102,5 +105,17 @@ test("SEO Agent automation policy is persisted and bounded", async () => {
   assert.equal(project.dailyCreditLimit, 42);
   assert.equal(project.scanHour, 6);
   assert.equal(project.scanMinute, 15);
+
+  const secondProjectId = randomUUID();
+  db.prepare("INSERT INTO seo_agent_projects (id, user_id, name, site_url, site_origin, created_at, updated_at) VALUES (?, ?, 'Second Site', 'https://second.example.com/', 'https://second.example.com', ?, ?)")
+    .run(secondProjectId, userId, now + 1, now + 1);
+  const selectedResponse = await handleSeoAgent(req(`/api/seo-agent?projectId=${secondProjectId}`), { id: userId }, "/api/seo-agent");
+  assert.equal(selectedResponse.status, 200);
+  const selectedDashboard = await selectedResponse.json();
+  assert.equal(selectedDashboard.projects.length, 2);
+  assert.equal(selectedDashboard.activeProject.id, secondProjectId);
+
+  const missingResponse = await handleSeoAgent(req(`/api/seo-agent?projectId=${randomUUID()}`), { id: userId }, "/api/seo-agent");
+  assert.equal(missingResponse.status, 404);
   db.prepare("DELETE FROM users WHERE id = ?").run(userId);
 });

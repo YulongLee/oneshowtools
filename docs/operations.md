@@ -128,6 +128,12 @@ enabled by default and checks due projects every five minutes. Set
 `SEO_AGENT_SCHEDULER_ENABLED=false` for an emergency stop without deleting
 projects or evidence.
 
+An account may manage multiple website projects. Dashboard reads accept an
+owner-scoped `projectId` and must reject IDs belonging to another user. Every
+completed scan returns and persists a visible report containing crawl coverage,
+health score, opportunity count, and eight deterministic checks. A zero-issue
+scan is still a successful result and must never render as an empty action.
+
 Live crawling is read-only and blocks credentials, private network addresses,
 non-HTTP protocols, oversized responses, and unsafe redirects. Search Console,
 GA4, and Baidu status must remain unconnected until a real read authorization is

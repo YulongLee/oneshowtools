@@ -5,6 +5,8 @@
 The product now has a real read-only discovery and commercial accounting loop.
 Each opportunity can be saved as a recommendation for manual editing. Website
 write configuration, automatic execution, and rollback endpoints are disabled.
+Users can switch among multiple website projects, and every completed crawl
+produces a visible coverage and check summary even when it finds zero issues.
 
 ## Data limitations
 
