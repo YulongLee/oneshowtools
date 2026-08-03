@@ -1,4 +1,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import ExcelJS from "exceljs";
+import QRCode from "qrcode";
+import { load as loadHtml } from "cheerio";
 import { fetchSeoResource } from "./seo-fetch.mjs";
 
 const fail = (code, status = 400) => Object.assign(new Error(code), { code, status });
@@ -9,6 +12,98 @@ const required = (value, code = "TEXT_REQUIRED") => {
   return result;
 };
 const pretty = (value) => JSON.stringify(value, null, 2);
+
+function parseCsv(source, delimiter = ",") {
+  const rows = []; let row = []; let cell = ""; let quoted = false;
+  const input = String(source || "").replace(/^\uFEFF/, "");
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === '"') {
+      if (quoted && input[index + 1] === '"') { cell += '"'; index += 1; }
+      else quoted = !quoted;
+    } else if (char === delimiter && !quoted) { row.push(cell); cell = ""; }
+    else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && input[index + 1] === "\n") index += 1;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += char;
+  }
+  if (quoted) throw fail("CSV_INVALID");
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((item) => item.some((value) => String(value).trim()));
+}
+
+function csvEscape(value, delimiter = ",") {
+  const output = String(value ?? "");
+  return /["\r\n]/.test(output) || output.includes(delimiter) ? `"${output.replace(/"/g, '""')}"` : output;
+}
+
+function csvToObjects(source, delimiter = ",") {
+  const rows = parseCsv(source, delimiter);
+  if (!rows.length) throw fail("CSV_REQUIRED");
+  const headers = rows[0].map((item, index) => String(item).trim() || `column_${index + 1}`);
+  return { headers, rows: rows.slice(1), objects: rows.slice(1).map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]))) };
+}
+
+function jsonToCsv(source, delimiter = ",") {
+  let value;
+  try { value = JSON.parse(source); } catch { throw fail("JSON_INVALID"); }
+  const records = Array.isArray(value) ? value : [value];
+  if (!records.length || records.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw fail("JSON_TABLE_REQUIRED");
+  const headers = [...new Set(records.flatMap((item) => Object.keys(item)))];
+  return [headers, ...records.map((item) => headers.map((header) => item[header] ?? ""))].map((row) => row.map((item) => csvEscape(typeof item === "object" ? JSON.stringify(item) : item, delimiter)).join(delimiter)).join("\n");
+}
+
+function textStatistics(source, locale) {
+  const value = required(source);
+  const characters = [...value].length;
+  const charactersNoSpaces = [...value.replace(/\s/g, "")].length;
+  const chineseCharacters = (value.match(/[\u3400-\u9fff]/g) || []).length;
+  const latinWords = value.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || [];
+  const words = chineseCharacters + latinWords.length;
+  const sentences = (value.match(/[.!?。！？]+(?=\s|$|[^.!?。！？])/g) || []).length || 1;
+  const paragraphs = value.split(/\n\s*\n/).filter((item) => item.trim()).length;
+  const readingMinutes = Math.max(1, Math.ceil(chineseCharacters / 400 + latinWords.length / 220));
+  const lines = value.split(/\r?\n/).length;
+  const labels = locale === "en"
+    ? [["Words", words], ["Characters", characters], ["Characters without spaces", charactersNoSpaces], ["Sentences", sentences], ["Paragraphs", paragraphs], ["Lines", lines], ["Estimated reading time", `${readingMinutes} min`]]
+    : [["字词数", words], ["字符数", characters], ["不含空格字符", charactersNoSpaces], ["句子数", sentences], ["段落数", paragraphs], ["行数", lines], ["预计阅读时间", `${readingMinutes} 分钟`]];
+  return { text: labels.map(([label, value]) => `${label}：${value}`).join("\n"), words, characters, charactersNoSpaces, sentences, paragraphs, lines, readingMinutes };
+}
+
+function markdownToHtml(source) {
+  const inline = (value) => xmlEscape(value).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
+  const lines = required(source).split(/\r?\n/); const output = []; let list = null;
+  const closeList = () => { if (list) { output.push(`</${list}>`); list = null; } };
+  for (const line of lines) {
+    const heading = line.match(/^(#{1,6})\s+(.+)$/); const bullet = line.match(/^\s*[-*+]\s+(.+)$/); const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (heading) { closeList(); output.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`); }
+    else if (bullet || ordered) { const tag = bullet ? "ul" : "ol"; if (list !== tag) { closeList(); list = tag; output.push(`<${tag}>`); } output.push(`<li>${inline((bullet || ordered)[1])}</li>`); }
+    else if (!line.trim()) closeList();
+    else { closeList(); output.push(`<p>${inline(line)}</p>`); }
+  }
+  closeList(); return output.join("\n");
+}
+
+function htmlToMarkdown(source) {
+  const $ = loadHtml(required(source), null, false);
+  $("script,style,noscript").remove();
+  $("br").replaceWith("\n");
+  $("a").each((_, element) => { const node = $(element); node.replaceWith(`[${node.text().trim()}](${node.attr("href") || ""})`); });
+  $("strong,b").each((_, element) => { const node = $(element); node.replaceWith(`**${node.text()}**`); });
+  $("em,i").each((_, element) => { const node = $(element); node.replaceWith(`*${node.text()}*`); });
+  $("code").each((_, element) => { const node = $(element); node.replaceWith(`\`${node.text()}\``); });
+  $("li").each((_, element) => { const node = $(element); node.replaceWith(`- ${node.text().trim()}\n`); });
+  for (let level = 1; level <= 6; level += 1) $(`h${level}`).each((_, element) => { const node = $(element); node.replaceWith(`${"#".repeat(level)} ${node.text().trim()}\n\n`); });
+  $("p,div,section,article,blockquote,ul,ol").each((_, element) => { const node = $(element); node.append("\n\n"); });
+  return $.root().text().replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function buildUtm(payload) {
+  const url = new URL(normalizeUrl(payload.url));
+  const values = { utm_source: required(payload.source, "UTM_SOURCE_REQUIRED"), utm_medium: required(payload.medium, "UTM_MEDIUM_REQUIRED"), utm_campaign: required(payload.campaign, "UTM_CAMPAIGN_REQUIRED"), utm_term: text(payload.term, 200), utm_content: text(payload.content, 200) };
+  Object.entries(values).forEach(([key, value]) => { if (value) url.searchParams.set(key, value); });
+  return url.href;
+}
 
 function xmlEscape(value) {
   return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -193,7 +288,8 @@ const aiPrompts = {
 export const utilityToolSlugs = new Set([
   "json-formatter", "data-format-converter", "jwt-decoder", "timestamp-converter", "base64-url-codec", "regex-tester", "text-diff",
   "meta-title-generator", "meta-description-generator", "schema-generator", "serp-preview", "robots-generator", "sitemap-checker",
-  "xiaohongshu-copy", "content-repurposer",
+  "xiaohongshu-copy", "content-repurposer", "qr-code-generator", "text-statistics", "csv-json-converter", "csv-cleaner",
+  "csv-to-excel", "markdown-html-converter", "rich-text-cleaner", "utm-builder",
 ]);
 
 export async function processUtilityTool({ slug, payload, locale = "zh-CN", modelText, fetchImpl }) {
@@ -241,6 +337,45 @@ export async function processUtilityTool({ slug, payload, locale = "zh-CN", mode
     output = { text: `${title}\n${url}\n${description}\n\n标题长度：${title.length} · 描述长度：${description.length}`, preview: { title, description, url }, titleLength: title.length, descriptionLength: description.length };
   } else if (slug === "robots-generator") output = { text: robots(payload), format: "robots.txt" };
   else if (slug === "sitemap-checker") output = await sitemapCheck(payload, fetchImpl);
+  else if (slug === "qr-code-generator") {
+    const content = required(payload.content, "QR_CONTENT_REQUIRED");
+    const width = Math.min(1600, Math.max(160, Number(payload.size) || 640));
+    const level = ["L", "M", "Q", "H"].includes(payload.errorCorrection) ? payload.errorCorrection : "M";
+    const buffer = await QRCode.toBuffer(content, { type: "png", width, margin: 3, errorCorrectionLevel: level, color: { dark: "#111827", light: "#ffffff" } });
+    return { buffer, name: "oneshowtools-qrcode.png", mimeType: "image/png", output: { text: content, mode: "local", width, errorCorrection: level }, safeInput: { content: text(content, 4000), size: width, errorCorrection: level } };
+  } else if (slug === "text-statistics") output = { ...textStatistics(payload.source, locale), mode: "local" };
+  else if (slug === "csv-json-converter") {
+    const delimiter = payload.delimiter === "tab" ? "\t" : payload.delimiter === "semicolon" ? ";" : ",";
+    if (payload.direction === "json-to-csv") output = { text: jsonToCsv(required(payload.source), delimiter), direction: "json-to-csv", mode: "local" };
+    else { const parsed = csvToObjects(required(payload.source), delimiter); output = { text: pretty(parsed.objects), direction: "csv-to-json", rows: parsed.rows.length, columns: parsed.headers.length, mode: "local" }; }
+  } else if (slug === "csv-cleaner") {
+    const delimiter = payload.delimiter === "tab" ? "\t" : payload.delimiter === "semicolon" ? ";" : ",";
+    const rows = parseCsv(required(payload.source), delimiter);
+    if (!rows.length) throw fail("CSV_REQUIRED");
+    const normalized = rows.map((row) => row.map((cell) => payload.trimCells === "no" ? cell : cell.trim()));
+    const header = normalized[0]; const body = normalized.slice(1); const seen = new Set();
+    const cleaned = payload.deduplicate === "no" ? body : body.filter((row) => { const key = JSON.stringify(row); if (seen.has(key)) return false; seen.add(key); return true; });
+    const csv = [header, ...cleaned].map((row) => row.map((cell) => csvEscape(cell, delimiter)).join(delimiter)).join("\n");
+    output = { text: csv, rowsBefore: body.length, rowsAfter: cleaned.length, duplicatesRemoved: body.length - cleaned.length, mode: "local" };
+  } else if (slug === "csv-to-excel") {
+    const delimiter = payload.delimiter === "tab" ? "\t" : payload.delimiter === "semicolon" ? ";" : ",";
+    const rows = parseCsv(required(payload.source), delimiter);
+    if (!rows.length) throw fail("CSV_REQUIRED");
+    const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet("Data");
+    rows.forEach((row) => worksheet.addRow(row)); worksheet.getRow(1).font = { bold: true }; worksheet.views = [{ state: "frozen", ySplit: 1 }];
+    worksheet.columns.forEach((column) => { column.width = Math.min(50, Math.max(10, ...column.values.slice(1).map((value) => String(value ?? "").length + 2))); });
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    return { buffer, name: "oneshowtools-data.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output: { text: `${rows.length - 1} ${locale === "en" ? "data rows exported" : "行数据已导出"}`, rows: rows.length - 1, columns: rows[0].length, mode: "local" }, safeInput: { rows: rows.length - 1, columns: rows[0].length, sourceStored: false } };
+  } else if (slug === "markdown-html-converter") {
+    const direction = payload.direction === "html-to-markdown" ? "html-to-markdown" : "markdown-to-html";
+    output = { text: direction === "html-to-markdown" ? htmlToMarkdown(payload.source) : markdownToHtml(payload.source), direction, mode: "local" };
+  } else if (slug === "rich-text-cleaner") {
+    const $ = loadHtml(required(payload.source), null, false); $("script,style,noscript,iframe,object").remove();
+    const cleaned = $.root().text().replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
+    output = { text: cleaned, characters: [...cleaned].length, mode: "local" };
+  } else if (slug === "utm-builder") {
+    const url = buildUtm(payload); output = { text: url, url, campaign: text(payload.campaign, 200), mode: "local" };
+  }
   else if (aiPrompts[slug]) {
     const result = await modelText(aiPrompts[slug](payload, locale), text(payload.source || payload.topic, 30_000), slug);
     if (!result) throw fail("ONESH​OW_MODEL_UNAVAILABLE".replace("\u200b", ""), 503);

@@ -1,5 +1,11 @@
 import sharp from "sharp";
 import JSZip from "jszip";
+import jsQR from "jsqr";
+import { copyFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { createWorker } from "tesseract.js";
+import engData from "@tesseract.js-data/eng";
+import chiSimData from "@tesseract.js-data/chi_sim";
 
 const imageError = (code, status = 422) => Object.assign(new Error(code), { code, status });
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -182,7 +188,40 @@ async function idPhoto(file, form) {
   return { buffer, extension: ".jpg", mimeType: "image/jpeg", name: `${safeName(file.name)}-${preset.label}.jpg`, output: { mode: "local-solid-background", ...preset, background, advancedAiAvailable: false } };
 }
 
-export const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker"]);
+async function prepareOcrLanguages() {
+  const directory = join(process.env.DATA_DIR || "data", "ocr-languages");
+  await mkdir(directory, { recursive: true });
+  await Promise.all([
+    copyFile(join(engData.langPath, "eng.traineddata.gz"), join(directory, "eng.traineddata.gz")).catch((error) => { if (error.code !== "EEXIST") throw error; }),
+    copyFile(join(chiSimData.langPath, "chi_sim.traineddata.gz"), join(directory, "chi_sim.traineddata.gz")).catch((error) => { if (error.code !== "EEXIST") throw error; }),
+  ]);
+  return directory;
+}
+
+async function imageOcr(file, form) {
+  const input = await fileBuffer(file);
+  const language = String(form.get("language") || "chi_sim+eng");
+  if (!["chi_sim+eng", "eng", "chi_sim"].includes(language)) throw imageError("OCR_LANGUAGE_INVALID", 400);
+  const langPath = await prepareOcrLanguages(); const cachePath = join(process.env.DATA_DIR || "data", "ocr-cache");
+  await mkdir(cachePath, { recursive: true });
+  const worker = await createWorker(language, 1, { langPath, cachePath, gzip: true, logger: () => {} });
+  let result;
+  try { result = await worker.recognize(input); } finally { await worker.terminate(); }
+  const recognized = String(result?.data?.text || "").trim();
+  if (!recognized) throw imageError("IMAGE_TEXT_NOT_FOUND");
+  const buffer = Buffer.from(recognized, "utf8");
+  return { buffer, name: `${safeName(file.name)}-ocr.txt`, mimeType: "text/plain; charset=utf-8", output: { text: recognized.slice(0, 40000), language, confidence: Math.round(Number(result.data.confidence || 0)), mode: "ocr" } };
+}
+
+async function qrCodeReader(file) {
+  const input = await fileBuffer(file);
+  const { data, info } = await sharp(input).rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const result = jsQR(new Uint8ClampedArray(data), info.width, info.height, { inversionAttempts: "attemptBoth" });
+  if (!result?.data) throw imageError("QR_CODE_NOT_FOUND");
+  return { output: { text: result.data, data: result.data, version: result.version, mode: "local" } };
+}
+
+export const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker", "image-ocr", "qr-code-reader"]);
 
 export async function processImageTool(slug, form) {
   const file = form.get("file");
@@ -198,5 +237,7 @@ export async function processImageTool(slug, form) {
   if (slug === "image-watermark") return watermark(file, form);
   if (slug === "nine-grid-image") return nineGrid(file);
   if (slug === "id-photo-maker") return idPhoto(file, form);
+  if (slug === "image-ocr") return imageOcr(file, form);
+  if (slug === "qr-code-reader") return qrCodeReader(file);
   throw imageError("IMAGE_TOOL_NOT_SUPPORTED", 404);
 }

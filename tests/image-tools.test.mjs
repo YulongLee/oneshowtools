@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
 import JSZip from "jszip";
+import QRCode from "qrcode";
 import { processImageTool } from "../server/image-tools.mjs";
 
 const source = await sharp({ create: { width: 1200, height: 900, channels: 4, background: "#f4f7fb" } })
@@ -81,4 +82,20 @@ test("favicon, OG image, EXIF removal, watermark, nine-grid, and ID photo all em
     assert.deepEqual([metadata.width, metadata.height, metadata.format], [width, height, "jpeg"]);
     assert.equal(photo.output.advancedAiAvailable, false);
   }
+});
+
+test("reads a generated QR code from an uploaded image", async () => {
+  const qr = await QRCode.toBuffer("https://oneshowtools.com/tools", { width: 600, margin: 4 });
+  const form = new FormData(); form.append("file", new File([qr], "qr.png", { type: "image/png" }));
+  const result = await processImageTool("qr-code-reader", form);
+  assert.equal(result.output.text, "https://oneshowtools.com/tools");
+});
+
+test("recognizes English text from an uploaded image and exports text", async () => {
+  const textImage = await sharp({ create: { width: 1200, height: 320, channels: 3, background: "white" } })
+    .composite([{ input: Buffer.from('<svg width="1200" height="320" xmlns="http://www.w3.org/2000/svg"><text x="70" y="205" font-family="Arial" font-size="120" font-weight="700" fill="black">OneShow Tools</text></svg>') }]).png().toBuffer();
+  const form = new FormData(); form.append("file", new File([textImage], "text.png", { type: "image/png" })); form.append("language", "eng");
+  const result = await processImageTool("image-ocr", form);
+  assert.equal(result.mimeType, "text/plain; charset=utf-8");
+  assert.match(result.output.text.toLowerCase(), /oneshow/);
 });

@@ -4,8 +4,8 @@ import { processUtilityTool, utilityToolSlugs } from "../server/utility-tools.mj
 
 const run = (slug, payload, extra = {}) => processUtilityTool({ slug, payload, locale: "zh-CN", modelText: async () => ({ text: "模型生成结果", route: "managed" }), ...extra });
 
-test("all 15 utility and acquisition tools are registered", () => {
-  assert.equal(utilityToolSlugs.size, 15);
+test("all utility and acquisition tools are registered", () => {
+  assert.equal(utilityToolSlugs.size, 23);
 });
 
 test("formats JSON and converts JSON to YAML and XML", async () => {
@@ -77,4 +77,39 @@ test("AI acquisition tools require and return actual model output", async () => 
   assert.equal(xhs.output.mode, "ai");
   const repurposed = await run("content-repurposer", { source: "一段原始文章", platforms: "小红书、LinkedIn" });
   assert.equal(repurposed.output.route, "managed");
+});
+
+test("generates QR images and counts Chinese and English text", async () => {
+  const qr = await run("qr-code-generator", { content: "https://oneshowtools.com", size: "320", errorCorrection: "Q" });
+  assert.equal(qr.mimeType, "image/png");
+  assert.equal(qr.buffer.subarray(1, 4).toString(), "PNG");
+  const stats = await run("text-statistics", { source: "你好 OneShow Tools。\n\n第二段。" });
+  assert.equal(stats.output.paragraphs, 2);
+  assert.ok(stats.output.words >= 6);
+});
+
+test("converts, cleans, and exports CSV data", async () => {
+  const converted = await run("csv-json-converter", { source: 'name,note\nOneShow,"AI, tools"', direction: "csv-to-json", delimiter: "comma" });
+  assert.deepEqual(JSON.parse(converted.output.text), [{ name: "OneShow", note: "AI, tools" }]);
+  const reverse = await run("csv-json-converter", { source: '[{"name":"OneShow","count":2}]', direction: "json-to-csv", delimiter: "comma" });
+  assert.match(reverse.output.text, /name,count/);
+  const cleaned = await run("csv-cleaner", { source: "name,value\n A ,1\n A ,1\nB,2", delimiter: "comma", trimCells: "yes", deduplicate: "yes" });
+  assert.equal(cleaned.output.duplicatesRemoved, 1);
+  assert.match(cleaned.output.text, /A,1/);
+  const excel = await run("csv-to-excel", { source: "name,value\nA,1", delimiter: "comma" });
+  assert.equal(excel.mimeType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  assert.equal(excel.buffer.subarray(0, 2).toString(), "PK");
+});
+
+test("converts Markdown and HTML, cleans rich text, and builds UTM links", async () => {
+  const html = await run("markdown-html-converter", { source: "# Title\n\n- One\n- Two", direction: "markdown-to-html" });
+  assert.match(html.output.text, /<h1>Title<\/h1>/);
+  assert.match(html.output.text, /<ul>/);
+  const markdown = await run("markdown-html-converter", { source: "<h2>Title</h2><p><strong>Hello</strong></p>", direction: "html-to-markdown" });
+  assert.match(markdown.output.text, /## Title/);
+  const clean = await run("rich-text-cleaner", { source: "<p>Hello&nbsp; world</p><script>bad()</script>" });
+  assert.equal(clean.output.text, "Hello world");
+  const utm = await run("utm-builder", { url: "https://example.com/path?x=1", source: "wechat", medium: "social", campaign: "launch", term: "", content: "cover-a" });
+  assert.match(utm.output.url, /utm_source=wechat/);
+  assert.match(utm.output.url, /utm_campaign=launch/);
 });
