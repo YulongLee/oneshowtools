@@ -42,6 +42,26 @@ const pdfToolFields = {
   "pdf-ocr": [{ id: "language", type: "select", zh: "识别语言", en: "Recognition language", options: [["chi_sim+eng", "简体中文 + English"], ["chi_sim", "简体中文"], ["eng", "English"]] }],
 };
 const pdfToolInitial = { pages: "", splitMode: "individual", quality: "72", scale: "1.25", order: "", rotate: "0", format: "png", watermark: "OneShowTools", opacity: "22", fontSize: "42", color: "#1769e8", start: "1", position: "bottom-center", language: "chi_sim+eng", question: "" };
+const mediaToolSlugs = new Set(["video-compressor", "mov-to-mp4", "mkv-to-mp4", "video-trimmer", "video-to-gif", "video-extract-audio", "mp4-to-mp3", "audio-format-converter", "audio-trimmer", "audio-merger", "audio-normalizer"]);
+const mediaToolFields = {
+  "video-compressor": [{ id: "quality", type: "select", zh: "压缩强度", en: "Compression", options: [["quality", "优先画质", "Quality first"], ["balanced", "平衡", "Balanced"], ["small", "优先体积", "Smaller file"]] }],
+  "video-trimmer": [{ id: "start", type: "number", zh: "开始时间（秒）", en: "Start time (seconds)", min: 0, max: 21600 }, { id: "duration", type: "number", zh: "截取时长（秒）", en: "Duration (seconds)", min: 0.1, max: 3600 }],
+  "video-to-gif": [{ id: "start", type: "number", zh: "开始时间（秒）", en: "Start time (seconds)", min: 0, max: 21600 }, { id: "duration", type: "number", zh: "动图时长（最多 30 秒）", en: "GIF duration (max 30s)", min: 0.2, max: 30 }, { id: "width", type: "select", zh: "动图宽度", en: "GIF width", options: [["480", "480 px"], ["640", "640 px"], ["800", "800 px"]] }],
+  "audio-format-converter": [{ id: "format", type: "select", zh: "输出格式", en: "Output format", options: [["mp3", "MP3"], ["wav", "WAV"], ["flac", "FLAC"]] }],
+  "audio-trimmer": [{ id: "start", type: "number", zh: "开始时间（秒）", en: "Start time (seconds)", min: 0, max: 21600 }, { id: "duration", type: "number", zh: "截取时长（秒）", en: "Duration (seconds)", min: 0.1, max: 3600 }],
+  "audio-normalizer": [{ id: "target", type: "select", zh: "目标响度", en: "Target loudness", options: [["-16", "播客 · -16 LUFS", "Podcast · -16 LUFS"], ["-14", "在线视频 · -14 LUFS", "Online video · -14 LUFS"], ["-18", "语音节目 · -18 LUFS", "Voice · -18 LUFS"]] }],
+};
+const mediaToolInitial = { quality: "balanced", start: "0", duration: "10", width: "640", format: "mp3", target: "-16" };
+const dataFileToolSlugs = new Set(["excel-merger", "excel-splitter", "csv-file-splitter", "excel-deduplicator", "excel-to-csv", "json-to-excel", "xml-to-excel", "excel-to-json", "table-field-mapper", "table-pivot-summary", "contact-data-extractor"]);
+const dataFileToolFields = {
+  "csv-file-splitter": [{ id: "rowsPerFile", type: "select", zh: "每个文件的数据行", en: "Rows per file", options: [["1000", "1,000"], ["5000", "5,000"], ["10000", "10,000"], ["50000", "50,000"]] }],
+  "excel-deduplicator": [{ id: "keyColumn", type: "text", zh: "去重字段（可选）", en: "Deduplication key (optional)", placeholderZh: "输入表头名称；留空按整行去重", placeholderEn: "Header name; blank compares the whole row" }],
+  "table-field-mapper": [{ id: "mapping", type: "textarea", zh: "字段映射（每行一项）", en: "Field mapping (one per line)", placeholderZh: "原字段:新字段\nphone:手机号", placeholderEn: "old_name:new_name\nphone:phone_number" }],
+  "table-pivot-summary": [{ id: "groupColumn", type: "text", zh: "分组字段", en: "Group column" }, { id: "valueColumn", type: "text", zh: "数值字段（计数可留空）", en: "Value column (optional for count)" }, { id: "aggregation", type: "select", zh: "统计方式", en: "Aggregation", options: [["sum", "求和", "Sum"], ["count", "计数", "Count"], ["average", "平均值", "Average"]] }],
+};
+const dataFileToolInitial = { rowsPerFile: "5000", keyColumn: "", mapping: "", groupColumn: "", valueColumn: "", aggregation: "sum" };
+const dataFileAccept = (slug) => slug === "json-to-excel" ? ".json,application/json" : slug === "xml-to-excel" ? ".xml,application/xml,text/xml" : slug === "csv-file-splitter" ? ".csv,text/csv" : ["table-field-mapper", "table-pivot-summary"].includes(slug) ? ".xlsx,.csv" : slug === "contact-data-extractor" ? ".xlsx,.csv,.txt" : ".xlsx";
+const dataFileHint = (slug) => slug === "json-to-excel" ? "JSON" : slug === "xml-to-excel" ? "XML" : slug === "csv-file-splitter" ? "CSV" : ["table-field-mapper", "table-pivot-summary"].includes(slug) ? "XLSX · CSV" : slug === "contact-data-extractor" ? "XLSX · CSV · TXT" : "XLSX";
 const utilityToolSlugs = new Set(["json-formatter", "data-format-converter", "jwt-decoder", "timestamp-converter", "base64-url-codec", "regex-tester", "text-diff", "meta-title-generator", "meta-description-generator", "schema-generator", "serp-preview", "robots-generator", "sitemap-checker", "xiaohongshu-copy", "content-repurposer", "qr-code-generator", "text-statistics", "csv-json-converter", "csv-cleaner", "csv-to-excel", "markdown-html-converter", "rich-text-cleaner", "utm-builder"]);
 const utilityToolFields = {
   "json-formatter": [{ id: "source", type: "textarea", zh: "JSON 内容", en: "JSON input" }, { id: "mode", type: "select", zh: "处理方式", en: "Mode", options: [["format", "格式化", "Format"], ["minify", "压缩", "Minify"]] }],
@@ -667,6 +687,8 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const [files, setFiles] = useState([]);
   const [imageSettings, setImageSettings] = useState(imageToolInitial);
   const [pdfSettings, setPdfSettings] = useState(pdfToolInitial);
+  const [mediaSettings, setMediaSettings] = useState(mediaToolInitial);
+  const [dataFileSettings, setDataFileSettings] = useState(dataFileToolInitial);
   const [utilitySettings, setUtilitySettings] = useState(utilityToolInitial);
   const [text, setText] = useState("");
   const [quality, setQuality] = useState(75);
@@ -683,9 +705,12 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const isImage = imageToolSlugs.has(tool.slug);
   const isPdf = pdfToolSlugs.has(tool.slug);
   const isUtility = utilityToolSlugs.has(tool.slug);
+  const isMedia = mediaToolSlugs.has(tool.slug);
+  const isDataFile = dataFileToolSlugs.has(tool.slug);
   const pdfMultiple = multiFilePdfSlugs.has(tool.slug);
+  const fileMultiple = tool.slug === "batch-image-resizer" || pdfMultiple || tool.slug === "audio-merger" || tool.slug === "excel-merger";
   const imageNeedsFile = isImage && tool.slug !== "og-image-generator";
-  const isFile = imageNeedsFile || isPdf;
+  const isFile = imageNeedsFile || isPdf || isMedia || isDataFile;
   const isText = tool.slug === "copy-polish";
   const isSpeech = tool.slug === "speech-to-text";
   const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
@@ -695,6 +720,8 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
     setFiles([]); setFile(null); setResult(null); setError("");
     setImageSettings({ ...imageToolInitial, preset: tool.slug === "id-photo-maker" ? "one-inch" : "xiaohongshu-cover" });
     setPdfSettings({ ...pdfToolInitial });
+    setMediaSettings({ ...mediaToolInitial });
+    setDataFileSettings({ ...dataFileToolInitial });
     setUtilitySettings({ ...utilityToolInitial });
   }, [tool.id, tool.slug]);
   useEffect(() => {
@@ -704,7 +731,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
   const run = async () => {
     if (!authenticated) return onAuth();
     const utilityHasInput = !isUtility || (utilityToolFields[tool.slug] || []).some((field) => !["select"].includes(field.type) && String(utilitySettings[field.id] || "").trim());
-    if ((isFile && (tool.slug === "batch-image-resizer" || pdfMultiple) && !files.length) || (isFile && tool.slug !== "batch-image-resizer" && !pdfMultiple && !file) || (!isFile && !isImage && !isUtility && !text.trim()) || !utilityHasInput) return setError(t.inputRequired);
+    if ((isFile && fileMultiple && !files.length) || (isFile && !fileMultiple && !file) || (!isFile && !isImage && !isUtility && !text.trim()) || !utilityHasInput) return setError(t.inputRequired);
     setBusy(true);
     setError("");
     setResult(null);
@@ -712,13 +739,15 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
       let options;
       if (isFile) {
         const form = new FormData();
-        if (tool.slug === "batch-image-resizer" || pdfMultiple) files.forEach((item) => form.append("files", item));
+        if (fileMultiple) files.forEach((item) => form.append("files", item));
         else form.append("file", file);
         if (modelConnectionId) form.append("modelConnectionId", modelConnectionId);
         if (tool.slug === "background-remover") form.append("tolerance", String(tolerance));
         if (tool.slug === "image-compressor") form.append("quality", String(quality));
         (imageToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(imageSettings[field.id] ?? "")));
         (pdfToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(pdfSettings[field.id] ?? "")));
+        (mediaToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(mediaSettings[field.id] ?? "")));
+        (dataFileToolFields[tool.slug] || []).forEach((field) => form.append(field.id, String(dataFileSettings[field.id] ?? "")));
         if (tool.slug === "pdf-summary") form.append("question", String(pdfSettings.question || ""));
         options = { method: "POST", body: form };
       } else if (tool.slug === "og-image-generator") {
@@ -787,10 +816,13 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
     <header className="tool-page-header"><span className={`tool-icon large ${tool.category}`}><Icon size={31} /></span><div><p className="eyebrow">{t.toolWorkspace}</p><h1>{name}</h1><p>{description}</p></div><div className="tool-run-meta"><StatusPill status={tool.runtimeStatus} locale={locale} /><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span></div></header>
     <div className="tool-workspace-grid">
       <section className="surface tool-input-panel">
-        <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : isPdf ? (tool.slug === "images-to-pdf" ? (locale === "en" ? "Upload images" : "上传图片") : t.pdfInput) : isUtility ? (locale === "en" ? "Tool input" : "工具输入") : isSpeech ? t.speechInput : t.textInput}</h2>
-        {isFile && <label className={`tool-dropzone ${(file || files.length) ? "selected" : ""}`}><input type="file" multiple={tool.slug === "batch-image-resizer" || pdfMultiple} accept={isImage || tool.slug === "images-to-pdf" ? "image/*,.heic,.heif" : "application/pdf"} onChange={(event) => { const selected = [...(event.target.files || [])]; setFiles(selected); setFile(selected[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{(tool.slug === "batch-image-resizer" || pdfMultiple) && files.length ? `${t.selectedFile}: ${files.length} ${locale === "en" ? "files" : "个文件"}` : file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{(tool.slug === "batch-image-resizer" || pdfMultiple) && files.length ? formatBytes(files.reduce((sum, item) => sum + item.size, 0)) : file ? formatBytes(file.size) : isImage || tool.slug === "images-to-pdf" ? "HEIC · PNG · JPG · WEBP · AVIF" : "PDF · 25 MB"}</span></label>}
+        <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : isPdf ? (tool.slug === "images-to-pdf" ? (locale === "en" ? "Upload images" : "上传图片") : t.pdfInput) : isMedia ? (locale === "en" ? "Upload media" : "上传媒体文件") : isDataFile ? (locale === "en" ? "Upload data file" : "上传数据文件") : isUtility ? (locale === "en" ? "Tool input" : "工具输入") : isSpeech ? t.speechInput : t.textInput}</h2>
+        {isFile && <label className={`tool-dropzone ${(file || files.length) ? "selected" : ""}`}><input type="file" multiple={fileMultiple} accept={isMedia ? (tool.category === "video" ? "video/*,.mov,.mkv,.mp4" : "audio/*,video/mp4,.mp3,.wav,.flac,.m4a,.aac") : isDataFile ? dataFileAccept(tool.slug) : isImage || tool.slug === "images-to-pdf" ? "image/*,.heic,.heif" : "application/pdf"} onChange={(event) => { const selected = [...(event.target.files || [])]; setFiles(selected); setFile(selected[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{fileMultiple && files.length ? `${t.selectedFile}: ${files.length} ${locale === "en" ? "files" : "个文件"}` : file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{fileMultiple && files.length ? formatBytes(files.reduce((sum, item) => sum + item.size, 0)) : file ? formatBytes(file.size) : isMedia ? (locale === "en" ? "Audio / video · up to 50 MB" : "音频 / 视频 · 最大 50 MB") : isDataFile ? `${dataFileHint(tool.slug)} · 25 MB` : isImage || tool.slug === "images-to-pdf" ? "HEIC · PNG · JPG · WEBP · AVIF" : "PDF · 25 MB"}</span></label>}
         {isImage && (imageToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{imageToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{imageSettings[field.id]}</strong>}</span>{field.type === "select" ? <select value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} />}</label>)}</div>}
         {isPdf && (pdfToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options pdf-tool-options">{pdfToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{pdfSettings[field.id]}{field.id === "opacity" ? "%" : ""}</strong>}</span>{field.type === "select" ? <select value={pdfSettings[field.id]} onChange={(event) => setPdfSettings({ ...pdfSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} value={pdfSettings[field.id]} onChange={(event) => setPdfSettings({ ...pdfSettings, [field.id]: event.target.value })} />}</label>)}</div>}
+        {isMedia && (mediaToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{mediaToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}</span>{field.type === "select" ? <select value={mediaSettings[field.id]} onChange={(event) => setMediaSettings({ ...mediaSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} value={mediaSettings[field.id]} onChange={(event) => setMediaSettings({ ...mediaSettings, [field.id]: event.target.value })} />}</label>)}</div>}
+        {isDataFile && (dataFileToolFields[tool.slug] || []).length > 0 && <div className="utility-tool-fields">{dataFileToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}</span>{field.type === "select" ? <select value={dataFileSettings[field.id]} onChange={(event) => setDataFileSettings({ ...dataFileSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : field.type === "textarea" ? <textarea rows="6" value={dataFileSettings[field.id]} onChange={(event) => setDataFileSettings({ ...dataFileSettings, [field.id]: event.target.value })} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} /> : <input type={field.type} value={dataFileSettings[field.id]} onChange={(event) => setDataFileSettings({ ...dataFileSettings, [field.id]: event.target.value })} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} />}</label>)}</div>}
+        {isMedia && <p className="tool-inline-note"><ShieldCheck size={16} />{locale === "en" ? "Processing runs on OneShowTools servers. Uploaded media is not sent to third-party conversion sites." : "文件在 OneShowTools 服务器内处理，不会发送到第三方转换网站。"}</p>}
         {tool.slug === "pdf-summary" && <label className="pdf-question-field"><span>{locale === "en" ? "Question (optional)" : "针对文档提问（可选）"}</span><textarea rows="4" value={pdfSettings.question} onChange={(event) => setPdfSettings({ ...pdfSettings, question: event.target.value })} placeholder={locale === "en" ? "Leave blank to generate a summary, or ask a question about the document." : "留空生成摘要，或输入一个需要根据文档回答的问题。"} /></label>}
         {tool.slug === "pdf-compress" && <p className="tool-inline-note"><Warning size={16} />{locale === "en" ? "Compression rebuilds pages as optimized images. It works best for scanned PDFs and does not preserve searchable text." : "压缩会将页面重建为优化图片，适合扫描件和图片型 PDF，但不会保留可搜索文字层。"}</p>}
         {tool.slug === "pdf-ocr" && <p className="tool-inline-note"><FileText size={16} />{locale === "en" ? "Recognizes up to 12 pages per run and exports editable text." : "单次最多识别 12 页，完成后导出可编辑文字文件。"}</p>}
@@ -808,7 +840,7 @@ function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBa
       <section className="surface tool-result-panel">
         <div className="tool-result-heading"><h2>{t.result}</h2>{result?.output?.mode && <span>{result.output.mode === "ai" ? t.aiMode : t.localMode}</span>}</div>
         {!result && <EmptyState icon={Icon} title={t.result} body={locale === "en" ? "Your processed result will appear here." : "处理完成后，结果会显示在这里。"} />}
-        {result?.file && <div className="file-result">{result.file.mimeType.startsWith("image/") && <div className="result-preview"><img src={result.file.downloadUrl} alt={result.file.name} /></div>}<div className="result-file-row"><span className="file-icon"><File size={19} /></span><div><strong>{result.file.name}</strong><small>{formatBytes(result.file.sizeBytes)}</small></div><a className="primary-button" href={result.file.downloadUrl}><DownloadSimple size={17} />{t.downloadResult}</a></div>{result.output.savedPercent !== undefined && <div className="result-stats"><span>{locale === "en" ? "Original" : "原始大小"}<strong>{formatBytes(result.output.originalBytes)}</strong></span><span>{locale === "en" ? "Output" : "处理后"}<strong>{formatBytes(result.output.compressedBytes)}</strong></span><span>{locale === "en" ? "Change" : "体积变化"}<strong>{result.output.savedPercent}%</strong></span></div>}{isPdf && (result.output.pages || result.output.rows || result.output.sheets) && <div className="pdf-result-meta">{result.output.pages ? <span><strong>{result.output.pages}</strong>{locale === "en" ? "Pages" : "页"}</span> : null}{result.output.rows ? <span><strong>{result.output.rows}</strong>{locale === "en" ? "Rows" : "行"}</span> : null}{result.output.sheets ? <span><strong>{result.output.sheets}</strong>{locale === "en" ? "Sheets" : "工作表"}</span> : null}</div>}</div>}
+        {result?.file && <div className="file-result">{result.file.mimeType.startsWith("image/") && <div className="result-preview"><img src={result.file.downloadUrl} alt={result.file.name} /></div>}{result.file.mimeType.startsWith("video/") && <div className="result-preview"><video src={result.file.downloadUrl} controls /></div>}{result.file.mimeType.startsWith("audio/") && <div className="result-preview"><audio src={result.file.downloadUrl} controls /></div>}<div className="result-file-row"><span className="file-icon"><File size={19} /></span><div><strong>{result.file.name}</strong><small>{formatBytes(result.file.sizeBytes)}</small></div><a className="primary-button" href={result.file.downloadUrl}><DownloadSimple size={17} />{t.downloadResult}</a></div>{result.output.savedPercent !== undefined && <div className="result-stats"><span>{locale === "en" ? "Original" : "原始大小"}<strong>{formatBytes(result.output.originalBytes)}</strong></span><span>{locale === "en" ? "Output" : "处理后"}<strong>{formatBytes(result.output.compressedBytes)}</strong></span><span>{locale === "en" ? "Change" : "体积变化"}<strong>{result.output.savedPercent}%</strong></span></div>}{(isPdf || isDataFile) && (result.output.pages || result.output.rows || result.output.sheets || result.output.recordCount || result.output.sheetCount) && <div className="pdf-result-meta">{result.output.pages ? <span><strong>{result.output.pages}</strong>{locale === "en" ? "Pages" : "页"}</span> : null}{result.output.rows || result.output.recordCount ? <span><strong>{result.output.rows || result.output.recordCount}</strong>{locale === "en" ? "Rows" : "行"}</span> : null}{result.output.sheets || result.output.sheetCount ? <span><strong>{result.output.sheets || result.output.sheetCount}</strong>{locale === "en" ? "Sheets" : "工作表"}</span> : null}</div>}</div>}
         {result?.output?.text && <div className="text-result"><pre>{result.output.text}</pre><button className="secondary-button" onClick={copyOutput}><Copy size={17} />{copied ? t.copied : t.copyResult}</button></div>}
       </section>
     </div>
