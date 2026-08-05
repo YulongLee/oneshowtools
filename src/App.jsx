@@ -1213,20 +1213,108 @@ function CapabilityNetwork({ locale }) {
 function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
   const t = dictionary[locale];
   const [guestQuery, setGuestQuery] = useState("");
+  const isEn = locale === "en";
   const visibleTools = useMemo(() => tools.filter((tool) => {
     const haystack = `${tool.nameZh} ${tool.nameEn} ${tool.descriptionZh} ${tool.descriptionEn}`.toLowerCase();
     return !guestQuery.trim() || haystack.includes(guestQuery.trim().toLowerCase());
   }), [guestQuery, tools]);
+  const featuredTools = useMemo(() => {
+    const preferred = ["ai-writer", "seo-workbench", "ai-music-studio", "lyrics-generator", "pdf-summary", "image-compressor"];
+    const ordered = preferred.map((slug) => tools.find((tool) => tool.slug === slug)).filter(Boolean);
+    return [...ordered, ...tools.filter((tool) => !preferred.includes(tool.slug))].slice(0, 6);
+  }, [tools]);
+  const agentTools = useMemo(() => tools.filter((tool) => tool.category === "agent").slice(0, 4), [tools]);
+  const quickTools = featuredTools.slice(0, 4);
+  const copy = isEn ? {
+    nav: ["Tool Marketplace", "AI Runtime", "AI Agents", "How it works"],
+    badge: "ONE ACCOUNT · ONE AI WORKSPACE",
+    titleA: "Let AI help you finish",
+    titleB: "more meaningful work",
+    subtitle: `Use ${tools.length} real tools with one account across writing, SEO, images, PDF, media, data, and AI agents.`,
+    search: "Search tools or describe what you want to accomplish...",
+    popular: "Popular:", free: "Start free", browse: "Browse all tools",
+    trust: ["No card required", "Unified account and credits", "Bring your own model", "Traceable tasks and files"],
+    hello: "Hello, creator", today: "What do you want to accomplish today?", quick: "Quick access", recent: "Platform overview",
+    available: "Available tools", categories: "Capability groups", newCredits: "New-user credits", ready: "Ready",
+    why: "Why OneShowTools", whySub: "A practical foundation for moving from an idea to a delivered result.",
+    strengths: [
+      [`${tools.length} real tools`, "Continuously expanding practical capabilities"],
+      ["Unified AI Runtime", "OneShowModel and personal connections"],
+      ["Unified credits", "One balance across supported AI tools"],
+      ["Task-oriented agents", "Turn multi-step work into clear workflows"],
+      ["Files and history", "Keep outputs and tasks under your account"],
+      ["Commercial foundation", "Accounts, permissions and usage records built in"],
+    ],
+    featured: "Popular tools", featuredSub: "Start with the most frequently needed workflows.", seeAll: "View all tools",
+    agents: "AI Agents", agentsSub: "Specialized agents for work that needs multiple steps and structured output.",
+    stepsTitle: "How OneShowTools works", steps: [["Choose a tool", "Find the right capability by category or search"], ["Describe the task", "Provide goals, materials and output preferences"], ["AI processes", "The platform routes the task to the right runtime"], ["Get the result", "Review, download and continue from task history"]],
+    cta: "Ready to put AI to work?", ctaSub: "Create one account and start with the tools you need today.",
+    footer: "A unified AI tools platform for everyday work.", product: "Product", resources: "Resources", company: "Company", support: "Support",
+  } : {
+    nav: ["工具市场", "AI Runtime", "AI Agent", "使用方式"],
+    badge: "一个账户 · 一站式 AI 工作平台",
+    titleA: "让 AI 帮你完成",
+    titleB: "更多重要的工作",
+    subtitle: `一个账户使用 ${tools.length} 个真实工具，覆盖写作、SEO、图片、PDF、音视频、数据和 AI Agent。`,
+    search: "搜索工具，或输入你想完成的任务...",
+    popular: "热门搜索：", free: "免费开始使用", browse: "浏览所有工具",
+    trust: ["无需绑定银行卡", "统一账户与积分", "支持自配模型", "任务与文件可追溯"],
+    hello: "你好，创作者", today: "今天想完成什么工作？", quick: "快捷访问", recent: "平台能力概览",
+    available: "可用工具", categories: "能力分类", newCredits: "新用户积分", ready: "可运行",
+    why: "为什么选择 OneShowTools", whySub: "从一个想法到可交付结果，为真实工作提供完整底座。",
+    strengths: [
+      [`${tools.length} 个真实工具`, "持续扩展高频、实用的工具能力"],
+      ["统一 AI Runtime", "支持 OneShowModel 与个人模型连接"],
+      ["统一积分", "支持的 AI 工具共享同一账户余额"],
+      ["任务型 AI Agent", "把多步骤工作变成清晰的执行流程"],
+      ["文件与历史记录", "产出文件和任务都归属于你的账户"],
+      ["商业化底座", "账户、权限与使用记录已统一接入"],
+    ],
+    featured: "热门工具", featuredSub: "从最常见、最实用的工作场景开始。", seeAll: "查看全部工具",
+    agents: "AI Agent", agentsSub: "面向多步骤任务和结构化交付的专业智能体。",
+    stepsTitle: "如何使用 OneShowTools", steps: [["选择工具", "按分类或搜索找到适合的能力"], ["输入需求", "提供目标、素材与输出偏好"], ["AI 处理", "平台将任务路由到合适的运行能力"], ["获取结果", "查看、下载并在任务历史中继续处理"]],
+    cta: "准备好让 AI 成为你的工作助手了吗？", ctaSub: "创建一个账户，从今天真正需要的工具开始。",
+    footer: "解决日常小需求的一站式 AI 工具平台。", product: "产品", resources: "资源", company: "公司", support: "支持",
+  };
   const showResults = (event) => {
     event.preventDefault();
     document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" });
   };
-  return <div className="guest-shell"><header className="guest-header"><Brand /><nav><a href="#tools">{t.marketplace}</a><a href="#tools">{t.runtime}</a><a href="#tools">{t.billing}</a></nav><div><button className="locale-button" onClick={onLocale}><Translate size={17} />{t.language}</button><button className="primary-button" onClick={onAuth}>{t.login}</button></div></header>
-    <main><section className="guest-hero"><div className="guest-hero-copy"><span className="eyebrow">ONESH​OWTOOLS PLATFORM</span><h1>{t.today}</h1><p>{t.todaySub}</p>
-      <form className="home-search guest-home-search" onSubmit={showResults}><MagnifyingGlass size={21} /><input value={guestQuery} onChange={(event) => setGuestQuery(event.target.value)} placeholder={t.search} /><button>{t.searchAction}</button></form>
-      <div className="hero-actions"><button className="primary-button" onClick={onAuth}>{t.signInAction}<ArrowRight size={18} /></button><a className="secondary-button" href="#tools">{t.marketplace}</a></div></div><CapabilityNetwork locale={locale} /></section>
-      <section id="tools" className="guest-tools"><SectionTitle title={t.marketplace} />{visibleTools.length ? <div className="tool-grid">{visibleTools.slice(0, 5).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <article className="tool-card" key={tool.id}><header><span className={`tool-icon ${tool.category}`}><Icon size={24} /></span><StatusPill status={tool.runtimeStatus} locale={locale} /></header><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span><button onClick={() => onRun(tool)}>{t.run}<ArrowRight size={17} /></button></footer></article>; })}</div> : <EmptyState icon={MagnifyingGlass} title={t.noResults} />}</section>
+  const chooseSearch = (tool) => { setGuestQuery(isEn ? tool.nameEn : tool.nameZh); requestAnimationFrame(() => document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" })); };
+  const strengthIcons = [SquaresFour, PlugsConnected, Coins, Robot, FolderOpen, ShieldCheck];
+  const stepIcons = [SquaresFour, NotePencil, Robot, DownloadSimple];
+  return <div className="guest-shell commercial-home">
+    <header className="guest-header commercial-header"><a href="#top" aria-label="OneShowTools home"><Brand /></a><nav>{copy.nav.map((item, index) => <a key={item} href={index === 0 ? "#tools" : index === 2 ? "#agents" : index === 3 ? "#how" : "#platform"}>{item}</a>)}</nav><div><button className="locale-button" onClick={onLocale}><Translate size={16} />{t.language}</button><button className="landing-login" onClick={onAuth}>{t.login}</button><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={15} /></button></div></header>
+    <main id="top">
+      <section className="landing-hero">
+        <div className="landing-hero-copy"><span className="landing-badge"><Sparkle size={14} weight="fill" />{copy.badge}</span><h1>{copy.titleA}<br /><span>{copy.titleB}</span></h1><p>{copy.subtitle}</p>
+          <form className="landing-search" onSubmit={showResults}><MagnifyingGlass size={21} /><input value={guestQuery} onChange={(event) => setGuestQuery(event.target.value)} placeholder={copy.search} /><button>{t.searchAction}<ArrowRight size={16} /></button></form>
+          <div className="landing-popular"><span>{copy.popular}</span>{featuredTools.slice(0, 5).map((tool) => <button key={tool.id} onClick={() => chooseSearch(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
+          <div className="hero-actions"><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={18} /></button><a className="secondary-button" href="#tools">{copy.browse}</a></div>
+          <div className="landing-trust">{copy.trust.map((item, index) => { const Icon = [CreditCard, UserCircle, PlugsConnected, ShieldCheck][index]; return <span key={item}><Icon size={16} />{item}</span>; })}</div>
+        </div>
+        <div className="landing-product-preview" id="platform" aria-label={isEn ? "OneShowTools platform preview" : "OneShowTools 平台预览"}>
+          <aside><Brand /><nav><span className="active"><House size={15} />{isEn ? "Overview" : "首页"}</span><span><SquaresFour size={15} />{isEn ? "Tool Marketplace" : "工具市场"}</span><span><RocketLaunch size={15} />AI Runtime</span><span><Robot size={15} />AI Agent</span><span><FolderOpen size={15} />{isEn ? "Files" : "文件中心"}</span></nav></aside>
+          <section><header><div><small>ONESH​OWTOOLS PLATFORM</small><h2>{copy.hello}</h2><p>{copy.today}</p></div><span><GearSix size={16} /></span></header>
+            <div className="preview-search"><MagnifyingGlass size={16} /><span>{copy.search}</span></div>
+            <div className="preview-summary"><div><span><SquaresFour size={16} /></span><small>{copy.available}</small><strong>{tools.length}</strong></div><div><span><GridFour size={16} /></span><small>{copy.categories}</small><strong>14</strong></div><div><span><Coins size={16} /></span><small>{copy.newCredits}</small><strong>200</strong></div></div>
+            <h3>{copy.quick}</h3><div className="preview-tools">{quickTools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`tool-icon compact ${tool.category}`}><Icon size={17} /></span><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={14} /></button>; })}</div>
+            <div className="preview-foot"><span><CheckCircle size={15} weight="fill" />{copy.ready}</span><p>{copy.recent}</p><strong>{tools.length} {isEn ? "tools connected" : "个工具已接入"}</strong></div>
+          </section>
+        </div>
+      </section>
+
+      <section className="landing-section landing-why"><header><span>ONESH​OWTOOLS</span><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div>{copy.strengths.map(([title, body], index) => { const Icon = strengthIcons[index]; return <article key={title}><span><Icon size={23} weight="duotone" /></span><h3>{title}</h3><p>{body}</p></article>; })}</div></section>
+
+      <section id="tools" className="landing-section landing-featured"><header><div><span>TOOL MARKETPLACE</span><h2>{copy.featured}</h2><p>{copy.featuredSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header>{visibleTools.length ? <div className="landing-tool-grid">{(guestQuery ? visibleTools : featuredTools).slice(0, 6).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <article key={tool.id}><button className="landing-tool-open" onClick={() => onRun(tool)} aria-label={`${t.run} ${isEn ? tool.nameEn : tool.nameZh}`}><span className={`tool-icon ${tool.category}`}><Icon size={23} /></span><span className="landing-tool-state"><CheckCircle size={13} weight="fill" />{copy.ready}</span><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={14} />{tool.creditCost} {t.creditsUnit}</span><ArrowRight size={17} /></footer></button></article>; })}</div> : <EmptyState icon={MagnifyingGlass} title={t.noResults} />}</section>
+
+      {agentTools.length > 0 && <section id="agents" className="landing-section landing-agents"><header><div><span>AI AGENT</span><h2>{copy.agents}</h2><p>{copy.agentsSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header><div>{agentTools.map((tool, index) => { const Icon = iconMap[tool.icon] || Robot; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`agent-orb agent-${index}`}><Icon size={28} weight="duotone" /></span><div><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p></div><ArrowRight size={17} /></button>; })}</div></section>}
+
+      <section id="how" className="landing-section landing-how"><header><span>WORKFLOW</span><h2>{copy.stepsTitle}</h2></header><div>{copy.steps.map(([title, body], index) => { const Icon = stepIcons[index]; return <article key={title}><span><Icon size={24} weight="duotone" /></span><div><small>0{index + 1}</small><h3>{title}</h3><p>{body}</p></div>{index < copy.steps.length - 1 && <ArrowRight className="step-arrow" size={18} />}</article>; })}</div></section>
+
+      <section className="landing-cta"><div><Sparkle size={22} weight="fill" /><h2>{copy.cta}</h2><p>{copy.ctaSub}</p></div><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button></section>
     </main>
+    <footer className="landing-footer"><div className="footer-brand"><Brand /><p>{copy.footer}</p></div><div><strong>{copy.product}</strong><a href="#tools">{copy.nav[0]}</a><a href="#platform">AI Runtime</a><a href="#agents">AI Agent</a></div><div><strong>{copy.resources}</strong><a href="#how">{copy.nav[3]}</a><button onClick={onAuth}>{isEn ? "Account" : "账户中心"}</button></div><div><strong>{copy.company}</strong><a href="https://www.oneshowailab.com/" target="_blank" rel="noreferrer">OneShow AI Lab</a></div><div><strong>{copy.support}</strong><button onClick={onAuth}>{t.login}</button><button onClick={onLocale}>{t.language}</button></div><p>© 2026 OneShowTools. All rights reserved.</p></footer>
   </div>;
 }
 

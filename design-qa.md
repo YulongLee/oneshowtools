@@ -1,53 +1,59 @@
-# OneShowSEO Commercial Refactor — Design QA
+# OneShowTools 首页 Design QA
 
-- Source visual truth: `/tmp/oneshowseo-current-design.png`
-- Rendered implementation: `/tmp/oneshowseo-commercial-refactor-final.png`
-- Full comparison: `/tmp/oneshowseo-refactor-comparison.jpg`
-- Focused comparison: `/tmp/oneshowseo-refactor-focused.jpg`
-- Viewport: Codex in-app browser desktop viewport
-- Source pixels: 1710 × 1354 at 1× density
-- Implementation pixels: 1710 × 1354 at 1× density
-- Density normalization: none required
-- State: authenticated Chinese desktop, 今日概览, demo-data disclosure visible
+## Comparison setup
 
-## Full-view comparison evidence
-
-The refactor retains the complete OneShowTools shell, sidebar and header geometry, pale-blue canvas, blue/green semantic palette, icon system, and compact Chinese SaaS typography. The page now uses the previously empty vertical space for a project/data readiness layer and a more commercially complete action workflow without changing the visual identity.
-
-## Focused-region comparison evidence
-
-The 1220 × 760 focused comparison shows the prior action dashboard beside the refactor. The new version improves hierarchy by separating project context, data authorization, opportunity evidence, growth baseline, and execution safety. The primary approval action remains visually dominant and the right rail remains compact. No clipping, overlap, excessive nested cards, or unreadable text is visible.
+- Source reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-0c301f12-5082-4589-8e0b-e21bd75153d7.png`
+- Source dimensions: `1024 × 1536`
+- Implementation screenshots:
+  - `artifacts/home-commercial-top-clip.png`
+  - `artifacts/home-section-850.jpg`
+  - `artifacts/home-section-1500.jpg`
+  - `artifacts/home-section-2050.jpg`
+  - `artifacts/home-commercial-mobile-390x844.jpg`
+- Desktop viewport: `1024 × 768` with section-by-section captures covering the full page
+- Mobile viewport: `390 × 844`
+- Comparison scope: public homepage only; authenticated product workspace is intentionally unchanged.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: Existing DM Sans and Noto Sans SC stack preserved. Product title, opportunity title, metadata, and action labels maintain the platform's established optical hierarchy.
-- Spacing and layout rhythm: Existing sidebar/header proportions are unchanged. New project and data strips use lightweight grouping; core action, queue, and right rail align to a consistent grid.
-- Colors and visual tokens: Existing blue, navy, green, orange, muted, line, and surface tokens are reused. Risk, connected, pending, and primary action states remain semantically distinct.
-- Image quality and asset fidelity: No raster assets were needed. All icons use the existing Phosphor icon library. No emoji, inline SVG, handcrafted SVG, decorative CSS illustration, or placeholder imagery is used.
-- Copy and content: Chinese-first commercial copy distinguishes evidence, expected impact, confidence, cost, risk, and rollback. Demo data and missing write permission are clearly disclosed. English equivalents are implemented.
-
-## Interaction verification
-
-- Opportunity preview expands and shows before/after content.
-- Approval progresses from idle to executing to completed.
-- Today, opportunity queue, automation, and changes tabs work.
-- Automation mode selection updates visually.
-- Website setup modal validates the full three-step prototype flow.
-- Change history exposes rollback and updates to a completed rollback state.
-- Authenticated platform credit balance is displayed after private data loads.
-- Browser console returned no errors.
-
-## Findings
-
-No actionable P0, P1, or P2 visual or interaction defects remain.
+- Layout: passed — commercial header, two-column hero, product preview, value cards, tool cards, Agent section, workflow, CTA, and footer follow the source hierarchy.
+- Spacing: passed — sections have consistent horizontal bounds and vertical rhythm at desktop, tablet, and mobile sizes.
+- Typography: passed — clear display/body hierarchy, restrained line lengths, and responsive title scale.
+- Colors: passed — blue primary, lilac accent, quiet gray surfaces, subtle borders, and shadows preserve the source's commercial visual language.
+- Imagery: passed — fictional usage metrics, avatar imagery, decorative robots, and unverified social proof were intentionally replaced with live product data and the established Phosphor icon system.
+- Icons: passed — all visible controls and category surfaces use the existing icon library with consistent weight and alignment.
+- Shape and surfaces: passed — preview, capability cards, tool cards, CTA, and navigation use consistent radii, borders, and elevations.
+- Responsiveness: passed — verified at `1024 × 768` and `390 × 844`; no horizontal overflow, clipping, or unusable controls found.
+- Content: passed — tool count, tool names, credit costs, runtime state, and new-user credits come from the current product or current platform rules; no fake ratings or usage counts were added.
+- Behavior: passed — homepage search filters real tools, popular-search chips set a real query, tool cards route through the existing tool opener, language/login/free-start controls retain existing handlers.
+- Accessibility: passed — semantic buttons/links, visible labels, keyboard-submit search, focusable controls, meaningful headings, reduced-motion handling, and mobile tap targets are present.
 
 ## Comparison history
 
-- Initial refactor comparison: no P0/P1/P2 issue found. One capture occurred during the private-data loading state; it was discarded and recaptured after the OneShowSEO heading became visible.
+### Pass 1 — structure and commercial hierarchy
 
-## Follow-up polish
+- Replaced the previous single hero plus five-card list with the complete commercial landing-page hierarchy from the source.
+- Adapted the right-side dashboard preview to real OneShowTools capabilities and removed fictional account activity.
+- Result: no blocking fidelity issue.
 
-- P3: Add true empty/error/loading states once live website-project APIs exist.
-- P3: Replace demo integration statuses with backend authorization state during the real connectivity phase.
+### Pass 2 — real data and interaction integrity
+
+- Verified the public API supplies 94 current tools in the local environment.
+- Verified search with `PDF`; the page returned six real PDF tools.
+- Verified the primary “免费开始使用” control opens the existing authentication dialog.
+- Verified browser console contains no errors or warnings during the tested flow.
+- Result: no blocking interaction issue.
+
+### Pass 3 — responsive QA
+
+- Captured and inspected desktop section screenshots and the mobile hero/product preview.
+- Confirmed responsive header, stacked hero, two-column trust list, compact dashboard preview, and single-column downstream cards.
+- Result: passed.
+
+## Intentional product adaptations
+
+- The reference contains fictional ratings, usage counts, user avatar activity, and “coming soon” robot artwork. These were not copied because the commercial product should not present unverifiable proof or placeholder functionality.
+- Current live tool count, actual tool names, actual credit costs, and the real 200-credit welcome rule are used instead.
+- Pricing was not fabricated on the public page while the existing billing integration remains configuration-dependent.
 
 final result: passed
