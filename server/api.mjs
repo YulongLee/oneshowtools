@@ -19,6 +19,9 @@ import { runToolAction } from "./tool-actions.mjs";
 import { writingCatalog } from "./writing-engine.mjs";
 import { seoCatalog } from "./seo-engine.mjs";
 import { handleSeoAgent } from "./seo-agent.mjs";
+import {
+  createMusicGeneration, deleteMusicTrack, listMusicTracks, musicStudioStatus,
+} from "./music-studio.mjs";
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
@@ -890,6 +893,7 @@ export async function handleApi(request) {
     configurationReady: configurationErrors.length === 0,
     configurationErrors,
     oneShowModelEnabled: gatewayFlags().managedConfigured && gatewayFlags().managedExecutionEnabled,
+    musicGenerationEnabled: musicStudioStatus().ready,
     externalRuntimeEnabled: Boolean(process.env.TOOL_RUNTIME_BASE_URL),
     adminConsoleVersion: "v1",
     adminMfaEnforced: config.adminMfaEnforced,
@@ -917,6 +921,7 @@ export async function handleApi(request) {
   }
   if (path === "/api/writing/catalog" && request.method === "GET") return json(writingCatalog());
   if (path === "/api/seo/catalog" && request.method === "GET") return json(seoCatalog());
+  if (path === "/api/music/status" && request.method === "GET") return json(musicStudioStatus());
   if (path === "/api/plans" && request.method === "GET") {
     const plans = db.prepare(`
       SELECT id, code, name_zh AS nameZh, name_en AS nameEn, amount_minor AS amountMinor,
@@ -932,6 +937,22 @@ export async function handleApi(request) {
   const user = auth.user;
 
   if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) return handleSeoAgent(request, user, path);
+  if (path === "/api/music/tracks" && request.method === "GET") return json({ tracks: listMusicTracks(user.id) });
+  if (path === "/api/music/generations" && request.method === "POST") {
+    if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
+    try {
+      const generation = createMusicGeneration(user, await body(request));
+      runNextJob().catch(() => {});
+      return json(generation, 201);
+    } catch (error) {
+      return fail(error.code || "MUSIC_GENERATION_FAILED", error.status || 500);
+    }
+  }
+  const musicTrackMatch = path.match(/^\/api\/music\/tracks\/([^/]+)$/);
+  if (musicTrackMatch && request.method === "DELETE") {
+    try { return json(await deleteMusicTrack(user.id, musicTrackMatch[1])); }
+    catch (error) { return fail(error.code || "MUSIC_TRACK_DELETE_FAILED", error.status || 500); }
+  }
 
   if (path === "/api/dashboard" && request.method === "GET") return json(dashboard(user.id));
   if (path === "/api/marketplace/search-events" && request.method === "POST") {

@@ -15,6 +15,9 @@ import { objectStorageStatus } from "./object-storage.mjs";
 import {
   saveSeoProviderConfiguration, seoProviderConfiguration, testSeoProviderConfiguration,
 } from "./seo-provider-config.mjs";
+import {
+  musicProviderConfiguration, saveMusicProviderConfiguration, testMusicProviderConfiguration,
+} from "./music-provider.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -1335,6 +1338,29 @@ export function createAdminHandler(dependencies) {
         environmentFallback: Boolean(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD),
         ipWhitelist: { enabledByProvider: null, serverIp: process.env.OUTBOUND_PUBLIC_IP || null },
       });
+    }
+    if (path === "/api/admin/v1/music-provider" && request.method === "GET") {
+      const denied = requirePermission(context, "models.read"); if (denied) return denied;
+      return json({ configuration: musicProviderConfiguration() });
+    }
+    if (path === "/api/admin/v1/music-provider/test" && request.method === "POST") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testMusicProviderConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.music_provider.test", targetType: "music_provider", targetId: "minimax", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "MUSIC_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/music-provider" && request.method === "PUT") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = musicProviderConfiguration();
+        const configuration = await saveMusicProviderConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.music_provider.update", targetType: "music_provider", targetId: "minimax", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "MUSIC_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/seo-provider/test" && request.method === "POST") {
       const denied = requirePermission(context, "seo_sources.manage"); if (denied) return denied;

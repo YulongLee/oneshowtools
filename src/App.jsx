@@ -11,12 +11,13 @@ import {
   PaperPlaneRight, CheckSquare, FileText,
 } from "@phosphor-icons/react";
 import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
+import { MusicStudio } from "./MusicStudio.jsx";
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
-  Code, Megaphone,
+  Code, Megaphone, MusicNotes,
 };
 const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker", "image-ocr", "qr-code-reader"]);
 const pdfToolSlugs = new Set(["pdf-merge", "pdf-split", "pdf-compress", "pdf-organizer", "images-to-pdf", "pdf-to-images", "pdf-watermark", "pdf-page-numbers", "pdf-ocr", "pdf-to-markdown", "pdf-table-to-excel", "pdf-summary"]);
@@ -679,6 +680,7 @@ function SeoAgentCommercialPage({ tool, locale, authenticated, account, onBack, 
 }
 
 function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;
   if (tool.slug === "ai-writer") return <AiWriterPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-workbench" || catalog?.specialist) return <SeoWorkbenchPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;

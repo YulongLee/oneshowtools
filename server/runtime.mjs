@@ -1,6 +1,7 @@
 import { db } from "./database.mjs";
 import { randomUUID } from "node:crypto";
 import { gatewayFlags, invokeModel } from "./model-gateway.mjs";
+import { executeMusicTask } from "./music-studio.mjs";
 
 const prompts = {
   "copy-polish": {
@@ -94,9 +95,11 @@ export async function executeTask(taskId) {
   db.prepare("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ?").run(Date.now(), taskId);
   let result;
   try {
-    result = ["copy-polish", "pdf-summary"].includes(tool.slug) || tool.runtime_kind === "openai"
-      ? await runModelTask(task, tool, input)
-      : await runExternalTask(task, tool, input);
+    result = tool.runtime_kind === "builtin-music"
+      ? await executeMusicTask(task, input)
+      : ["copy-polish", "pdf-summary"].includes(tool.slug) || tool.runtime_kind === "openai"
+        ? await runModelTask(task, tool, input)
+        : await runExternalTask(task, tool, input);
   } catch (error) {
     if (error?.retryable) throw error;
     result = { status: "failed", errorCode: error?.code || "RUNTIME_REQUEST_FAILED" };

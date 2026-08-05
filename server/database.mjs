@@ -257,6 +257,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0013_seo_workbench.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0014_seo_provider_configs.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0015_seo_agent.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0016_music_studio.sql"), "utf8"));
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
@@ -337,6 +338,7 @@ export function initializeDatabase() {
     ["tool_audio_trim", "audio-trimmer", "音频裁剪", "Audio Trimmer", "按开始时间和时长截取音频。", "Trim audio by start time and duration.", "audio", "Microphone", 1, "builtin-media"],
     ["tool_audio_merge", "audio-merger", "音频合并", "Audio Merger", "按上传顺序合并最多 10 个音频文件。", "Merge up to 10 audio files in upload order.", "audio", "Microphone", 2, "builtin-media"],
     ["tool_audio_normalize", "audio-normalizer", "音频响度标准化", "Audio Loudness Normalizer", "按播客、视频或广播目标统一音频响度。", "Normalize audio loudness for podcasts, video, or broadcast.", "audio", "Microphone", 2, "builtin-media"],
+    ["tool_music_studio", "ai-music-studio", "AI 音乐工作室", "AI Music Studio", "通过灵感、自定义歌词或纯音乐模式创作完整音乐，并统一管理试听与下载。", "Create complete tracks from an idea, custom lyrics, or instrumental mode, then manage playback and downloads.", "music", "MusicNotes", 30, "builtin-music"],
     ["tool_excel_merge", "excel-merger", "Excel 合并", "Merge Excel Workbooks", "将多个 Excel 工作簿和工作表合并到一个文件。", "Combine worksheets from multiple Excel workbooks into one file.", "data", "Database", 2, "builtin-data"],
     ["tool_excel_split", "excel-splitter", "Excel 按工作表拆分", "Split Excel Worksheets", "将每个工作表拆为独立 Excel 并打包下载。", "Split every worksheet into an individual Excel file and download a ZIP.", "data", "Database", 1, "builtin-data"],
     ["tool_csv_split", "csv-file-splitter", "CSV 大文件拆分", "Split Large CSV", "保留表头并按指定行数拆分 CSV。", "Split CSV by row count while retaining headers.", "data", "Database", 1, "builtin-data"],
@@ -395,7 +397,10 @@ export function refreshRuntimeStatuses() {
     .run(openAiReady ? "ready" : "configuration_required");
   db.prepare("UPDATE tools SET runtime_status = ?, runtime_url = ? WHERE runtime_kind = 'external'")
     .run(externalReady ? "ready" : "configuration_required", process.env.TOOL_RUNTIME_BASE_URL || null);
-  db.prepare("UPDATE tools SET runtime_status = 'ready' WHERE runtime_kind LIKE 'builtin-%' OR runtime_kind = 'browser'").run();
+  db.prepare("UPDATE tools SET runtime_status = 'ready' WHERE (runtime_kind LIKE 'builtin-%' AND runtime_kind <> 'builtin-music') OR runtime_kind = 'browser'").run();
+  const musicReady = db.prepare("SELECT 1 AS ready FROM music_provider_configs WHERE status = 'active' LIMIT 1").get();
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'builtin-music'")
+    .run(musicReady ? "ready" : "configuration_required");
 }
 
 export function audit(userId, action, targetType = null, targetId = null, metadata = {}) {

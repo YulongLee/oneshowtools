@@ -5,7 +5,7 @@ import {
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
   BookOpenText,
-  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt,
+  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -18,6 +18,8 @@ const copy = {
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
     models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
+    musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
+    musicModel: "音乐模型 ID", musicFormat: "输出格式", musicCredits: "每个版本积分", musicDuration: "最长时长（秒）", musicStatus: "运行状态", musicActive: "启用", musicDisabled: "停用",
     seoSources: "SEO 数据源", seoSourceTitle: "DataForSEO 数据源", seoSourceHint: "用于关键词指标、实时排名、外链和竞争分析。API 密码加密保存，提交后不再显示明文。",
     seoLogin: "API 登录名", seoPassword: "API 密码（留空则保留现有密码）", seoConnectionTest: "测试账户连接",
     seoConnectionSave: "测试并保存", seoBalance: "账户余额", seoUnlocked: "可解锁能力", seoProviderHealthy: "认证成功，可以读取账户信息",
@@ -92,6 +94,8 @@ const copy = {
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
     models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
+    musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
+    musicModel: "Music model ID", musicFormat: "Output format", musicCredits: "Credits per version", musicDuration: "Maximum duration (seconds)", musicStatus: "Runtime status", musicActive: "Enabled", musicDisabled: "Disabled",
     seoSources: "SEO Sources", seoSourceTitle: "DataForSEO source", seoSourceHint: "Provides keyword metrics, live rankings, backlinks, and competitor data. The API password is encrypted and never displayed again.",
     seoLogin: "API login", seoPassword: "API password (leave blank to keep the stored password)", seoConnectionTest: "Test account connection",
     seoConnectionSave: "Test and save", seoBalance: "Account balance", seoUnlocked: "Capabilities unlocked", seoProviderHealthy: "Authentication succeeded and account data is available",
@@ -508,6 +512,48 @@ function PlatformModelsView({ data, locale, canManage, onTest, onSave }) {
   </div>;
 }
 
+function MusicProviderView({ data, locale, canManage, onTest, onSave }) {
+  const t = copy[locale];
+  const configuration = data?.configuration;
+  const [draft, setDraft] = useState({});
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    setDraft({
+      baseUrl: configuration?.baseUrl || "https://api.minimaxi.com",
+      modelId: configuration?.modelId || "music-2.6", apiKey: "",
+      outputFormat: configuration?.outputFormat || "mp3",
+      creditCost: configuration?.creditCost || 30,
+      maxDurationSeconds: configuration?.maxDurationSeconds || 300,
+      status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active",
+      reason: "",
+    });
+    setTestResult(null);
+  }, [configuration?.updatedAt, configuration?.configured]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(draft)); } finally { setTesting(false); } };
+  const save = async (event) => { event.preventDefault(); setSaving(true); try { const ok = await onSave(draft); if (ok) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); } finally { setSaving(false); } };
+  return <div className="admin-page-stack platform-model-page">
+    <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE MUSIC GENERATION</small><h2>{t.musicProviderTitle}</h2></div><MusicNotes size={24} /></header><p>{t.musicProviderHint}</p></section>
+    <section className="platform-model-layout"><article className="admin-v2-panel platform-model-editor">
+      <div className="platform-model-current"><span className={`admin-metric-state ${configuration?.configured && configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.configured ? configuration.modelId : t.notReporting}</strong><small>{configuration?.configured ? `${configuration.keyHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : (locale === "en" ? "No music provider configured" : "尚未配置音乐模型")}</small></div></div>
+      <form className="platform-model-form" onSubmit={save}>
+        <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.baseUrl || ""} onChange={change("baseUrl")} disabled={!canManage} required /></label>
+        <label>{t.musicModel}<input value={draft.modelId || ""} onChange={change("modelId")} disabled={!canManage} required /></label>
+        <label>{t.musicFormat}<select value={draft.outputFormat || "mp3"} onChange={change("outputFormat")} disabled={!canManage}><option value="mp3">MP3</option><option value="wav">WAV</option></select></label>
+        <label>{t.musicCredits}<input type="number" min="1" max="10000" value={draft.creditCost || 30} onChange={change("creditCost")} disabled={!canManage} required /></label>
+        <label>{t.musicDuration}<input type="number" min="15" max="600" value={draft.maxDurationSeconds || 300} onChange={change("maxDurationSeconds")} disabled={!canManage} required /></label>
+        <label>{t.musicStatus}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{t.musicActive}</option><option value="disabled">{t.musicDisabled}</option></select></label>
+        <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured} /></label>
+        <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
+        {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{t.modelTestHealthy}</span><em>{testResult.latencyMs} ms</em></div>}
+        {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.testModel}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.saveModel}</button></div>}
+      </form>
+    </article><aside className="admin-v2-panel platform-model-guidance"><MusicNotes size={25} /><h3>OneShowMusic</h3><p>{locale === "en" ? "Customer requests are queued, billed through the credit ledger, and copied to private object storage before temporary provider URLs expire." : "用户请求将进入任务队列，通过积分账本计费，并在供应商临时地址失效前转存到私有 OSS。"}</p><ul><li>{locale === "en" ? "API keys never reach the client" : "API Key 不会下发到前端"}</li><li>{locale === "en" ? "Failed jobs refund credits automatically" : "失败任务自动退还积分"}</li><li>{locale === "en" ? "Provider identity is hidden from users" : "用户端统一显示 OneShowMusic"}</li></ul></aside></section>
+  </div>;
+}
+
 function SeoSourcesView({ data, locale, canManage, onTest, onSave }) {
   const t = copy[locale];
   const configuration = data?.configuration;
@@ -749,6 +795,7 @@ export function AdminApp() {
     analytics: "/api/admin/v1/analytics/tools?days=30",
     intelligence: `/api/admin/v1/market-intelligence${intelligenceDate ? `?date=${encodeURIComponent(intelligenceDate)}` : ""}`,
     models: "/api/admin/v1/platform-models",
+    musicProvider: "/api/admin/v1/music-provider",
     seoSources: "/api/admin/v1/seo-provider",
     infrastructure: "/api/admin/v1/infrastructure/overview",
     commerce: "/api/admin/v1/commerce", tools: "/api/admin/v1/tools",
@@ -842,6 +889,15 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/platform-models/${purpose}`, json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const testMusicProvider = async (draft) => {
+    try { return await api("/api/admin/v1/music-provider/test", json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const saveMusicProvider = async (draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/music-provider", json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const testSeoProvider = async (draft) => {
     try { return await api("/api/admin/v1/seo-provider/test", json("POST", draft)); }
     catch (error) { setMessage(error.code || t.loadFailed); return null; }
@@ -862,6 +918,7 @@ export function AdminApp() {
     ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
     ["intelligence", Binoculars, "intelligence.read"],
     ["models", Gear, "models.read"],
+    ["musicProvider", MusicNotes, "models.read"],
     ["seoSources", LinkSimple, "seo_sources.read"],
     ["operations", Pulse, "jobs.read"], ["tools", Storefront, "tools.read"], ["commerce", CreditCard, "billing.read"],
     ["privacy", IdentificationCard, "privacy.read"],
@@ -875,6 +932,7 @@ export function AdminApp() {
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
     models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} onTest={testPlatformModel} onSave={savePlatformModel} />,
+    musicProvider: <MusicProviderView data={data.musicProvider} locale={locale} canManage={allowed(session, "models.manage")} onTest={testMusicProvider} onSave={saveMusicProvider} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
