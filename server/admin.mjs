@@ -1328,7 +1328,11 @@ export function createAdminHandler(dependencies) {
     }
     if (path === "/api/admin/v1/platform-models" && request.method === "GET") {
       const denied = requirePermission(context, "models.read"); if (denied) return denied;
-      return json({ models: listPlatformModelConfigurations(), storage: objectStorageStatus() });
+      return json({
+        models: listPlatformModelConfigurations(),
+        music: musicProviderConfiguration(),
+        storage: objectStorageStatus(),
+      });
     }
     if (path === "/api/admin/v1/seo-provider" && request.method === "GET") {
       const denied = requirePermission(context, "seo_sources.read"); if (denied) return denied;

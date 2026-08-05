@@ -203,13 +203,18 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   assert.equal(activation.status, 200);
   assert.equal((await activation.json()).recoveryCodes.length, 8);
   assert.equal((await handleApi(authenticated("/api/admin/v1/overview", owner.cookie))).status, 200);
+  const unifiedModels = await handleApi(authenticated("/api/admin/v1/platform-models", owner.cookie));
+  assert.equal(unifiedModels.status, 200);
+  const unifiedModelsBody = await unifiedModels.json();
+  assert.equal(Array.isArray(unifiedModelsBody.models), true);
+  assert.equal(unifiedModelsBody.music.configured, false);
+  assert.equal(/key_ciphertext|key_iv|key_tag/i.test(JSON.stringify(unifiedModelsBody)), false);
   for (const path of [
     "/api/admin/v1/command-center",
     "/api/admin/v1/credits/ledger",
     "/api/admin/v1/finance",
     "/api/admin/v1/analytics/tools",
     "/api/admin/v1/infrastructure/overview",
-    "/api/admin/v1/platform-models",
   ]) {
     const response = await handleApi(authenticated(path, owner.cookie));
     assert.equal(response.status, 200, path);
