@@ -231,7 +231,7 @@ const modelTestLabel = (status, locale) => ({
 })[status] || (locale === "en" ? "Not tested" : "尚未测试");
 
 function Brand() {
-  return <div className="brand-lockup"><span className="brand-mark"><GridFour weight="fill" size={18} /></span><span><strong>OneShowTools</strong><small>Platform</small></span></div>;
+  return <div className="brand-lockup"><span className="brand-mark"><img src="/brand/oneshowtools-mark-192.png" alt="" /></span><span><strong><span>OneShow</span><span className="brand-tools">Tools</span></strong><small>Platform</small></span></div>;
 }
 
 function StatusPill({ status, locale }) {
@@ -1202,7 +1202,7 @@ function CapabilityNetwork({ locale }) {
 
   return <div className="capability-visual" ref={visualRef} aria-label={locale === "en" ? "Animated OneShowTools capability network" : "OneShowTools 平台能力网络动效"}>
     <canvas ref={canvasRef} aria-hidden="true" />
-    <div className="capability-core"><span><SquaresFour size={31} weight="fill" /></span><strong>OneShowTools</strong></div>
+    <div className="capability-core"><span><img src="/brand/oneshowtools-mark-192.png" alt="" /></span><strong>OneShowTools</strong></div>
     <div className="capability-statuses">{labels.map(([key, Icon, title, detail]) => <div className={`capability-status ${key}`} key={key}><span><Icon size={17} /></span><div><strong>{title}</strong><small><i />{detail}</small></div></div>)}</div>
   </div>;
 }
