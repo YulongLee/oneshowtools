@@ -188,6 +188,7 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .tool-icon { width: 47px; height: 47px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; color: var(--blue); background: #eaf2ff; flex: 0 0 auto; }
 .tool-icon.document { color: var(--red); background: #fff0f1; }
 .tool-icon.audio { color: var(--purple); background: #f1edff; }
+.tool-icon.music { color: #c23dcf; background: #fbeefe; }
 .tool-icon.writing { color: var(--green); background: #e9f8f2; }
 .tool-icon.compact { width: 38px; height: 38px; border-radius: 9px; }
 .tool-card h3 { margin: 18px 0 7px; font-size: 16px; }
