@@ -29,7 +29,7 @@ const copy = {
     empty: "还没有音乐作品", emptyBody: "完成第一次创作后，作品会安全保存在这里。", notReady: "音乐模型尚未配置", notReadyBody: "工作台已经就绪。管理员在后台完成音乐模型配置后即可真实生成，当前不会产生假音频或扣除积分。",
     login: "登录后开始创作", queued: "排队中", running: "生成中", completed: "已完成", failed: "生成失败", download: "下载", remove: "删除", provider: "OneShowMusic",
     required: "请完整填写音乐灵感并确认素材权利。", lyricsRequired: "自定义歌词模式需要填写歌词。", insufficient: "积分不足，请先充值。", failedMessage: "创建失败，请稍后重试。", showLyrics: "查看歌词", hideLyrics: "收起歌词", generatedLyrics: "生成歌词", createCover: "生成封面", recreateCover: "重新生成", coverNotReady: "管理员尚未配置图片模型", coverFailed: "封面生成失败", creatingCover: "生成中",
-    referenceTitle: "参考音频", referenceHint: "上传已有歌曲，或直接录制一段演唱。系统会提取歌词和歌曲结构，再生成新的风格版本。", uploadReference: "上传音频", startRecording: "开始录音", stopRecording: "结束录音", analyzingReference: "正在分析音频与歌词…", referenceReady: "参考音频已就绪", referenceDuration: "音频时长", replaceReference: "更换音频", coverLyricsHint: "已从音频提取歌词，你可以修改后再生成（10～1000 字）。", referenceRequired: "请先上传或录制参考音频并等待分析完成。", coverLyricsRequired: "翻唱歌词需为 10～1000 字。", referenceFailed: "参考音频分析失败，请确认音频为 6 秒至 6 分钟，且格式正确。", recordingDenied: "无法使用麦克风，请检查浏览器权限。", referenceRights: "我确认拥有参考音频及其中声音、歌词和音乐作品的合法使用或改编授权，不用于冒充他人或未经授权的翻唱。",
+    referenceTitle: "参考音频", referenceHint: "上传已有歌曲，或直接录制一段演唱。系统会提取歌词和歌曲结构，再生成新的风格版本。", uploadReference: "上传音频", startRecording: "开始录音", stopRecording: "结束录音", requestingMic: "正在申请麦克风权限…", recordingNow: "正在录音", analyzingReference: "正在分析音频与歌词…", referenceReady: "参考音频已就绪", referenceDuration: "音频时长", replaceReference: "更换音频", coverLyricsHint: "已从音频提取歌词，你可以修改后再生成（10～1000 字）。", referenceRequired: "请先上传或录制参考音频并等待分析完成。", coverLyricsRequired: "翻唱歌词需为 10～1000 字。", referenceFailed: "参考音频分析失败，请确认音频为 6 秒至 6 分钟，且格式正确。", recordingDenied: "麦克风权限被拒绝。请在浏览器地址栏的网站权限中允许麦克风后重试。", recordingUnsupported: "当前浏览器不支持直接录音，请使用最新版 Chrome、Edge 或 Safari，或者上传音频文件。", recordingMissing: "没有检测到可用麦克风，请连接麦克风后重试。", recordingBusy: "麦克风正在被其他应用占用，请关闭占用程序后重试。", referenceRights: "我确认拥有参考音频及其中声音、歌词和音乐作品的合法使用或改编授权，不用于冒充他人或未经授权的翻唱。",
   },
   en: {
     kicker: "ONESH​OW MUSIC STUDIO", title: "Turn one idea into a complete track", sub: "Create songs, write lyrics, or generate instrumental music. Your work is saved securely to your library.",
@@ -41,7 +41,7 @@ const copy = {
     empty: "No tracks yet", emptyBody: "Your first completed creation will appear here.", notReady: "Music model not configured", notReadyBody: "The studio is ready. An administrator can connect the music provider later; no fake audio or credits will be generated now.",
     login: "Sign in to create", queued: "Queued", running: "Generating", completed: "Completed", failed: "Failed", download: "Download", remove: "Delete", provider: "OneShowMusic",
     required: "Add a creative direction and confirm your rights.", lyricsRequired: "Custom lyrics mode requires lyrics.", insufficient: "Not enough credits.", failedMessage: "Could not create the task. Try again.", showLyrics: "View lyrics", hideLyrics: "Hide lyrics", generatedLyrics: "Generated lyrics", createCover: "Generate cover", recreateCover: "Regenerate", coverNotReady: "Image model is not configured", coverFailed: "Cover generation failed", creatingCover: "Generating",
-    referenceTitle: "Reference audio", referenceHint: "Upload a song or record a performance. We will extract its lyrics and structure before creating a new arrangement.", uploadReference: "Upload audio", startRecording: "Start recording", stopRecording: "Stop recording", analyzingReference: "Analyzing audio and lyrics…", referenceReady: "Reference ready", referenceDuration: "Duration", replaceReference: "Replace audio", coverLyricsHint: "Lyrics extracted from the reference. You may edit them before generation (10–1000 characters).", referenceRequired: "Upload or record reference audio and wait for analysis first.", coverLyricsRequired: "Cover lyrics must contain 10–1000 characters.", referenceFailed: "Could not analyze this audio. Use a valid 6-second to 6-minute audio file.", recordingDenied: "Microphone access is unavailable. Check browser permissions.", referenceRights: "I confirm I have the rights to use or adapt the reference audio, voices, lyrics, and composition, and will not use it to impersonate another person.",
+    referenceTitle: "Reference audio", referenceHint: "Upload a song or record a performance. We will extract its lyrics and structure before creating a new arrangement.", uploadReference: "Upload audio", startRecording: "Start recording", stopRecording: "Stop recording", requestingMic: "Requesting microphone access…", recordingNow: "Recording", analyzingReference: "Analyzing audio and lyrics…", referenceReady: "Reference ready", referenceDuration: "Duration", replaceReference: "Replace audio", coverLyricsHint: "Lyrics extracted from the reference. You may edit them before generation (10–1000 characters).", referenceRequired: "Upload or record reference audio and wait for analysis first.", coverLyricsRequired: "Cover lyrics must contain 10–1000 characters.", referenceFailed: "Could not analyze this audio. Use a valid 6-second to 6-minute audio file.", recordingDenied: "Microphone permission was denied. Allow microphone access in this site's browser permissions and try again.", recordingUnsupported: "Direct recording is not supported in this browser. Use a current Chrome, Edge, or Safari browser, or upload an audio file.", recordingMissing: "No microphone was found. Connect one and try again.", recordingBusy: "The microphone is being used by another application. Close it and try again.", referenceRights: "I confirm I have the rights to use or adapt the reference audio, voices, lyrics, and composition, and will not use it to impersonate another person.",
   },
 };
 
@@ -68,6 +68,9 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
   const [reference, setReference] = useState(null);
   const [referenceBusy, setReferenceBusy] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordingRequesting, setRecordingRequesting] = useState(false);
+  const [recordingError, setRecordingError] = useState("");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
@@ -103,6 +106,11 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
   };
   const startRecording = async () => {
     if (!authenticated) return onAuth?.();
+    setRecordingError("");
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setRecordingError(t.recordingUnsupported); return;
+    }
+    setRecordingRequesting(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
@@ -116,10 +124,27 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
         stream.getTracks().forEach((track) => track.stop()); streamRef.current = null; recorderRef.current = null;
         if (file.size) prepareReference(file);
       };
-      recorder.start(1000); setRecording(true); setError("");
-    } catch { setError(t.recordingDenied); }
+      recorder.start(1000); setRecording(true); setRecordingSeconds(0); setError("");
+    } catch (recordingFailure) {
+      const message = recordingFailure?.name === "NotFoundError" ? t.recordingMissing
+        : ["NotReadableError", "AbortError"].includes(recordingFailure?.name) ? t.recordingBusy
+          : recordingFailure?.name === "NotAllowedError" || recordingFailure?.name === "SecurityError" ? t.recordingDenied
+            : t.recordingUnsupported;
+      setRecordingError(message);
+    } finally { setRecordingRequesting(false); }
   };
   const stopRecording = () => { if (recorderRef.current?.state === "recording") recorderRef.current.stop(); setRecording(false); };
+  useEffect(() => {
+    if (!recording) return undefined;
+    const timer = setInterval(() => setRecordingSeconds((current) => {
+      if (current >= 359) {
+        if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+        setRecording(false); return 360;
+      }
+      return current + 1;
+    }), 1000);
+    return () => clearInterval(timer);
+  }, [recording]);
   useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), []);
   const submit = async (event) => {
     event.preventDefault(); setError("");
@@ -164,7 +189,7 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
           <label className="wide"><span>{t.titleLabel}</span><input value={draft.title} onChange={update("title")} placeholder={t.titleHint} maxLength="100" /></label>
           {draft.mode === "cover" && <section className={`music-reference-panel wide ${reference ? "ready" : ""}`}>
             <header><span><Waveform size={20} /></span><div><strong>{t.referenceTitle}</strong><p>{t.referenceHint}</p></div></header>
-            {referenceBusy ? <div className="music-reference-progress"><SpinnerGap className="spin" size={21} /><span>{t.analyzingReference}</span></div> : reference ? <div className="music-reference-ready"><audio controls preload="metadata" src={reference.previewUrl} /><div><CheckCircle size={18} weight="fill" /><span><strong>{t.referenceReady}</strong><small>{reference.fileName} · {t.referenceDuration} {Math.round(reference.durationSeconds)}s</small></span></div><label><UploadSimple size={16} />{t.replaceReference}<input type="file" accept="audio/mpeg,audio/wav,audio/flac,audio/mp4,audio/webm,audio/ogg,.mp3,.wav,.flac,.m4a,.webm,.ogg" onChange={(event) => prepareReference(event.target.files?.[0])} /></label></div> : <div className="music-reference-actions"><label><UploadSimple size={18} />{t.uploadReference}<input type="file" accept="audio/mpeg,audio/wav,audio/flac,audio/mp4,audio/webm,audio/ogg,.mp3,.wav,.flac,.m4a,.webm,.ogg" onChange={(event) => prepareReference(event.target.files?.[0])} /></label><button type="button" className={recording ? "recording" : ""} onClick={recording ? stopRecording : startRecording}>{recording ? <Stop size={18} weight="fill" /> : <Microphone size={18} />}{recording ? t.stopRecording : t.startRecording}</button></div>}
+            {referenceBusy ? <div className="music-reference-progress"><SpinnerGap className="spin" size={21} /><span>{t.analyzingReference}</span></div> : reference ? <div className="music-reference-ready"><audio controls preload="metadata" src={reference.previewUrl} /><div><CheckCircle size={18} weight="fill" /><span><strong>{t.referenceReady}</strong><small>{reference.fileName} · {t.referenceDuration} {Math.round(reference.durationSeconds)}s</small></span></div><label><UploadSimple size={16} />{t.replaceReference}<input type="file" accept="audio/mpeg,audio/wav,audio/flac,audio/mp4,audio/webm,audio/ogg,.mp3,.wav,.flac,.m4a,.webm,.ogg" onChange={(event) => prepareReference(event.target.files?.[0])} /></label></div> : <><div className="music-reference-actions"><label><UploadSimple size={18} />{t.uploadReference}<input type="file" accept="audio/mpeg,audio/wav,audio/flac,audio/mp4,audio/webm,audio/ogg,.mp3,.wav,.flac,.m4a,.webm,.ogg" onChange={(event) => prepareReference(event.target.files?.[0])} /></label><button type="button" disabled={recordingRequesting} className={recording ? "recording" : ""} onClick={recording ? stopRecording : startRecording}>{recordingRequesting ? <SpinnerGap className="spin" size={18} /> : recording ? <Stop size={18} weight="fill" /> : <Microphone size={18} />}{recordingRequesting ? t.requestingMic : recording ? t.stopRecording : t.startRecording}</button></div>{recording && <div className="music-recording-status"><i /><strong>{t.recordingNow}</strong><span>{String(Math.floor(recordingSeconds / 60)).padStart(2, "0")}:{String(recordingSeconds % 60).padStart(2, "0")}</span></div>}{recordingError && <div className="music-recording-error"><Warning size={16} /><span>{recordingError}</span></div>}</>}
           </section>}
           <label className="wide"><span>{t.idea}</span><textarea rows="5" value={draft.idea} onChange={update("idea")} placeholder={t.ideaHint} maxLength="1000" /></label>
           {(draft.mode === "lyrics" || draft.mode === "cover") && <label className="wide"><span>{t.lyricsLabel}{draft.mode === "cover" && <small className="music-lyrics-count">{draft.lyrics.length}/1000</small>}</span><textarea className="music-lyrics-input" rows="10" value={draft.lyrics} onChange={update("lyrics")} placeholder={draft.mode === "cover" ? t.coverLyricsHint : t.lyricsHint} maxLength={draft.mode === "cover" ? "1000" : "3500"} /></label>}
