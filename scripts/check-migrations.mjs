@@ -9,6 +9,7 @@ const intelligenceMigration = await readFile(new URL("../db/migrations/0008_mark
 const platformInfrastructureMigration = await readFile(new URL("../db/migrations/0011_platform_models_and_object_storage.sql", import.meta.url), "utf8");
 const seoAgentMigration = await readFile(new URL("../db/migrations/0015_seo_agent.sql", import.meta.url), "utf8");
 const objectStorageAdminMigration = await readFile(new URL("../db/migrations/0017_object_storage_admin_config.sql", import.meta.url), "utf8");
+const musicCoverMigration = await readFile(new URL("../db/migrations/0018_music_history_and_cover.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -66,6 +67,9 @@ for (const table of ["platform_model_configs", "file_storage_objects"]) {
 
 if (!objectStorageAdminMigration.includes("CREATE TABLE IF NOT EXISTS object_storage_configs ")) {
   throw new Error("Object storage admin migration is missing object_storage_configs");
+}
+if (!musicCoverMigration.includes("CREATE TABLE IF NOT EXISTS image_provider_configs ")) {
+  throw new Error("Music cover migration is missing image_provider_configs");
 }
 
 for (const table of [

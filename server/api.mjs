@@ -20,7 +20,7 @@ import { writingCatalog } from "./writing-engine.mjs";
 import { seoCatalog } from "./seo-engine.mjs";
 import { handleSeoAgent } from "./seo-agent.mjs";
 import {
-  createMusicGeneration, deleteMusicTrack, listMusicTracks, musicStudioStatus,
+  createMusicCover, createMusicGeneration, deleteMusicTrack, listMusicTracks, musicStudioStatus,
 } from "./music-studio.mjs";
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
@@ -551,7 +551,7 @@ function listTasks(userId) {
     SELECT t.id, t.status, t.credit_cost AS creditCost, t.error_code AS errorCode,
       t.input_json AS inputJson, t.output_json AS outputJson, t.created_at AS createdAt,
       t.updated_at AS updatedAt, t.completed_at AS completedAt,
-      x.id AS toolId, x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon
+      x.id AS toolId, x.slug AS toolSlug, x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon
     FROM tasks t JOIN tools x ON x.id = t.tool_id
     WHERE t.user_id = ? ORDER BY t.created_at DESC LIMIT 100
   `).all(userId).map((task) => ({
@@ -952,6 +952,11 @@ export async function handleApi(request) {
   if (musicTrackMatch && request.method === "DELETE") {
     try { return json(await deleteMusicTrack(user.id, musicTrackMatch[1])); }
     catch (error) { return fail(error.code || "MUSIC_TRACK_DELETE_FAILED", error.status || 500); }
+  }
+  const musicCoverMatch = path.match(/^\/api\/music\/tracks\/([^/]+)\/cover$/);
+  if (musicCoverMatch && request.method === "POST") {
+    try { return json(await createMusicCover(user, musicCoverMatch[1]), 201); }
+    catch (error) { return fail(error.code || "MUSIC_COVER_GENERATION_FAILED", error.status || 500); }
   }
 
   if (path === "/api/dashboard" && request.method === "GET") return json(dashboard(user.id));

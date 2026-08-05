@@ -5,7 +5,7 @@ import {
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
   BookOpenText,
-  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes,
+  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes, ImageSquare,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -18,7 +18,7 @@ const copy = {
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
     models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
-    music_generation: "OneShowMusic", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
+    music_generation: "OneShowMusic", music_cover_image: "音乐封面模型", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
     musicModel: "音乐模型 ID", musicFormat: "输出格式", musicCredits: "每个版本积分", musicDuration: "最长时长（秒）", musicStatus: "运行状态", musicActive: "启用", musicDisabled: "停用",
     seoSources: "SEO 数据源", seoSourceTitle: "DataForSEO 数据源", seoSourceHint: "用于关键词指标、实时排名、外链和竞争分析。API 密码加密保存，提交后不再显示明文。",
     seoLogin: "API 登录名", seoPassword: "API 密码（留空则保留现有密码）", seoConnectionTest: "测试账户连接",
@@ -95,7 +95,7 @@ const copy = {
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
     models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
-    music_generation: "OneShowMusic", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
+    music_generation: "OneShowMusic", music_cover_image: "Music Cover Model", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
     musicModel: "Music model ID", musicFormat: "Output format", musicCredits: "Credits per version", musicDuration: "Maximum duration (seconds)", musicStatus: "Runtime status", musicActive: "Enabled", musicDisabled: "Disabled",
     seoSources: "SEO Sources", seoSourceTitle: "DataForSEO source", seoSourceHint: "Provides keyword metrics, live rankings, backlinks, and competitor data. The API password is encrypted and never displayed again.",
     seoLogin: "API login", seoPassword: "API password (leave blank to keep the stored password)", seoConnectionTest: "Test account connection",
@@ -506,7 +506,7 @@ function ObjectStorageView({ configuration, locale, canManage, onTest, onSave })
   </section>;
 }
 
-function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onStorageTest, onStorageSave }) {
+function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onImageTest, onImageSave, onStorageTest, onStorageSave }) {
   const t = copy[locale];
   const [purpose, setPurpose] = useState("managed_runtime");
   const selected = data?.models?.find((item) => item.purpose === purpose);
@@ -532,7 +532,7 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
     try { const result = await onSave(purpose, draft); if (result) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); }
     finally { setSaving(false); }
   };
-  const purposes = ["managed_runtime", "market_intelligence", "music_generation", "storage_management"];
+  const purposes = ["managed_runtime", "market_intelligence", "music_generation", "music_cover_image", "storage_management"];
   return <div className="admin-page-stack platform-model-page">
     <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE AI ROUTING</small><h2>{t.platformModels}</h2></div><Gear size={23} /></header><p>{t.platformModelsHint}</p></section>
     <nav className="admin-v2-panel admin-section-tabs platform-model-purpose-tabs">{purposes.map((item) => <button key={item} className={purpose === item ? "active" : ""} onClick={() => setPurpose(item)}>{t[item]}</button>)}</nav>
@@ -540,6 +540,8 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
       ? <ObjectStorageView configuration={data?.storage} locale={locale} canManage={canManageStorage} onTest={onStorageTest} onSave={onStorageSave} />
       : purpose === "music_generation"
       ? <section className="platform-model-layout"><MusicProviderView data={{ configuration: data?.music }} locale={locale} canManage={canManage} onTest={onMusicTest} onSave={onMusicSave} embedded /></section>
+      : purpose === "music_cover_image"
+      ? <section className="platform-model-layout"><ImageProviderView configuration={data?.image} locale={locale} canManage={canManage} onTest={onImageTest} onSave={onImageSave} /></section>
       : <section className="platform-model-layout">
       <article className="admin-v2-panel platform-model-editor">
         <div className="platform-model-current"><span className={`admin-metric-state ${selected?.configured ? "healthy" : "warning"}`} /><div><strong>{selected?.modelId || t.notReporting}</strong><small>{selected?.source === "admin" ? `${selected.keyHint || "••••"} · ${selected.lastTestStatus || t.pending}` : `${locale === "en" ? "Environment configuration" : "环境变量配置"}`}</small></div></div>
@@ -558,6 +560,34 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
       <aside className="admin-v2-panel platform-storage-card"><header><div><small>PRIVATE OBJECT STORAGE</small><h2>{t.storageBackend}</h2></div><HardDrives size={22} /></header><div className="platform-storage-status"><span className={`admin-metric-state ${data?.storage?.configured ? "healthy" : "warning"}`} /><strong>{data?.storage?.provider?.toUpperCase() || "LOCAL"}</strong></div><DetailRow label={t.storageBucket} value={data?.storage?.bucket} /><DetailRow label={t.storageRegion} value={data?.storage?.region} /><DetailRow label={t.storagePrefix} value={data?.storage?.prefix} /><p>{locale === "en" ? "Objects use private ACL, random IDs, and an isolated prefix. Existing bucket objects are never listed or modified." : "对象使用私有权限、随机 ID 和独立前缀；系统不会列举或修改 Bucket 中的既有文件。"}</p></aside>
     </section>}
   </div>;
+}
+
+function ImageProviderView({ configuration, locale, canManage, onTest, onSave }) {
+  const t = copy[locale];
+  const [draft, setDraft] = useState({});
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    const adapter = configuration?.adapter || "minimax";
+    setDraft({ adapter, baseUrl: configuration?.baseUrl || (adapter === "minimax" ? "https://api.minimaxi.com" : "https://api.openai.com"), modelId: configuration?.modelId || (adapter === "minimax" ? "image-01" : "gpt-image-1"), apiKey: "", creditCost: configuration?.creditCost || 10, status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "" });
+    setTestResult(null);
+  }, [configuration?.updatedAt, configuration?.configured]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const changeAdapter = (event) => { const adapter = event.target.value; setDraft((current) => ({ ...current, adapter, baseUrl: adapter === "minimax" ? "https://api.minimaxi.com" : "https://api.openai.com", modelId: adapter === "minimax" ? "image-01" : "gpt-image-1" })); };
+  const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(draft)); } finally { setTesting(false); } };
+  const save = async (event) => { event.preventDefault(); setSaving(true); try { const ok = await onSave(draft); if (ok) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); } finally { setSaving(false); } };
+  return <><article className="admin-v2-panel platform-model-editor"><div className="platform-model-current"><span className={`admin-metric-state ${configuration?.configured && configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.configured ? configuration.modelId : t.notReporting}</strong><small>{configuration?.configured ? `${configuration.keyHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : (locale === "en" ? "No image model configured" : "尚未配置图片模型")}</small></div></div><form className="platform-model-form" onSubmit={save}>
+    <label>{locale === "en" ? "API format" : "接口格式"}<select value={draft.adapter || "minimax"} onChange={changeAdapter} disabled={!canManage}><option value="minimax">MiniMax Images</option><option value="openai">OpenAI Images</option></select></label>
+    <label>{t.modelId}<input value={draft.modelId || ""} onChange={change("modelId")} disabled={!canManage} required /></label>
+    <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.baseUrl || ""} onChange={change("baseUrl")} disabled={!canManage} required /></label>
+    <label>{locale === "en" ? "Credits per cover" : "每张封面积分"}<input type="number" min="1" max="10000" value={draft.creditCost || 10} onChange={change("creditCost")} disabled={!canManage} required /></label>
+    <label>{t.musicStatus}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{t.musicActive}</option><option value="disabled">{t.musicDisabled}</option></select></label>
+    <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured} /></label>
+    <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
+    {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{t.modelTestHealthy}</span><em>{testResult.latencyMs} ms</em></div>}
+    {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.testModel}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.saveModel}</button></div>}
+  </form></article><aside className="admin-v2-panel platform-model-guidance"><ImageSquare size={25} /><h3>{locale === "en" ? "Music covers" : "音乐封面"}</h3><p>{locale === "en" ? "Creates a square visual from the track metadata and saved lyrics. The image is stored with the user's files." : "根据歌曲信息和已保存歌词生成方形封面，并归档到用户文件中心与 OSS。"}</p><ul><li>{locale === "en" ? "Users never see provider credentials" : "用户不会接触模型密钥"}</li><li>{locale === "en" ? "Testing creates one real image" : "连接测试会真实生成一张测试图片"}</li><li>{locale === "en" ? "No model means no fake cover button" : "未配置时用户端不会伪装可用"}</li></ul></aside></>;
 }
 
 function MusicProviderView({ data, locale, canManage, onTest, onSave, embedded = false }) {
@@ -947,6 +977,15 @@ export function AdminApp() {
     try { await api("/api/admin/v1/music-provider", json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const testImageProvider = async (draft) => {
+    try { return await api("/api/admin/v1/image-provider/test", json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const saveImageProvider = async (draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/image-provider", json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const testObjectStorage = async (draft) => {
     try { return await api("/api/admin/v1/object-storage/test", json("POST", draft)); }
     catch (error) { setMessage(error.code || t.loadFailed); return null; }
@@ -988,7 +1027,7 @@ export function AdminApp() {
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
-    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
+    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,

@@ -15,8 +15,9 @@ const {
   testMusicProviderConfiguration,
 } = await import(`../server/music-provider.mjs?test=${Date.now()}`);
 const {
-  createMusicGeneration, executeMusicTask, listMusicTracks, musicStudioStatus,
+  createMusicCover, createMusicGeneration, executeMusicTask, listMusicTracks, musicStudioStatus,
 } = await import(`../server/music-studio.mjs?test=${Date.now()}`);
+const { saveImageProviderConfiguration } = await import(`../server/image-provider.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 
 const providerFetch = async (_url, options = {}) => {
@@ -29,6 +30,17 @@ const providerFetch = async (_url, options = {}) => {
     extra_info: { music_duration: 62_000 }, trace_id: "provider-trace-redacted",
     base_resp: { status_code: 0, status_msg: "success" },
   }), { status: 200, headers: { "content-type": "application/json" } });
+};
+
+const fullProviderFetch = async (url, options = {}) => {
+  assert.equal(options.headers.authorization, "Bearer music-provider-secret-1234");
+  if (String(url).includes("lyrics_generation")) return new Response(JSON.stringify({ song_title: "归途", style_tags: "pop, warm", lyrics: "[Verse]\n晚风穿过城市\n[Chorus]\n我正在回家", base_resp: { status_code: 0 } }), { status: 200, headers: { "content-type": "application/json" } });
+  return providerFetch(url, options);
+};
+
+const imageFetch = async (_url, options = {}) => {
+  assert.equal(options.headers.authorization, "Bearer image-provider-secret-5678");
+  return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("real-cover-image").toString("base64") }] }), { status: 200, headers: { "content-type": "application/json" } });
 };
 
 function addUser() {
@@ -90,6 +102,23 @@ test("music generation rejects unowned material declarations before reserving cr
   const before = db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance;
   assert.throws(() => createMusicGeneration(user, { mode: "inspiration", idea: "test", rightsConfirmed: false }), (error) => error.code === "MUSIC_RIGHTS_CONFIRMATION_REQUIRED");
   assert.equal(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance, before);
+});
+
+test("inspiration mode persists provider lyrics and a billed, private cover artifact", async () => {
+  await saveImageProviderConfiguration({ adapter: "openai", baseUrl: "https://api.openai.com/v1", modelId: "gpt-image-1", apiKey: "image-provider-secret-5678", creditCost: 10, status: "active" }, "admin-user", imageFetch);
+  const user = addUser();
+  const generation = createMusicGeneration(user, { mode: "inspiration", title: "归途", idea: "深夜回家的温暖", language: "中文", genre: "流行", mood: "治愈", durationSeconds: 60, variants: 1, rightsConfirmed: true });
+  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(generation.taskId);
+  await executeMusicTask(task, JSON.parse(task.input_json), fullProviderFetch);
+  let track = listMusicTracks(user.id)[0];
+  assert.match(track.lyrics, /我正在回家/);
+  assert.equal(track.lyricsSource, "provider_generated");
+  const cover = await createMusicCover(user, track.id, imageFetch);
+  assert.match(cover.coverUrl, /^\/api\/files\//);
+  track = listMusicTracks(user.id)[0];
+  assert.equal(track.coverFileId, cover.coverFileId);
+  assert.equal(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance, 460);
+  assert.equal(db.prepare("SELECT provider FROM file_storage_objects WHERE file_id = ?").get(cover.coverFileId).provider, "local");
 });
 
 test.after(async () => rm(dataDirectory, { recursive: true, force: true }));

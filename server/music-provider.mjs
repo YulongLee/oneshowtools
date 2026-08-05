@@ -154,9 +154,32 @@ function audioBuffer(payload) {
   return { buffer: null, sourceUrl: url.toString() };
 }
 
+async function generateProviderLyrics(config, input, fetchImpl) {
+  let response;
+  try {
+    response = await fetchImpl(`${config.baseUrl}/v1/lyrics_generation`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ mode: "write_full_song", prompt: clean(input.prompt, 2000), title: clean(input.title, 120) || undefined }),
+      signal: AbortSignal.timeout(90_000),
+    });
+  } catch (error) {
+    if (error?.name === "TimeoutError") throw providerError("MUSIC_LYRICS_TIMEOUT", 504, true);
+    throw providerError("MUSIC_LYRICS_UNREACHABLE", 502, true);
+  }
+  const payload = await response.json().catch(() => ({}));
+  const error = responseError(payload, response.status);
+  if (error) throw error;
+  const lyrics = clean(payload?.lyrics, 3500);
+  if (!response.ok || !lyrics) throw providerError("MUSIC_LYRICS_EMPTY_OUTPUT", 502);
+  return { lyrics, title: clean(payload?.song_title, 120) || null, styleTags: clean(payload?.style_tags, 500) || null };
+}
+
 export async function generateMusic(input, fetchImpl = fetch) {
   const config = musicProviderCredentials();
   if (!config) throw providerError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
+  const generatedLyrics = input.mode === "inspiration" ? await generateProviderLyrics(config, input, fetchImpl) : null;
+  const resolvedLyrics = input.mode === "instrumental" ? "" : (input.lyrics || generatedLyrics?.lyrics || "");
   let response;
   try {
     response = await fetchImpl(`${config.baseUrl}/v1/music_generation`, {
@@ -165,8 +188,8 @@ export async function generateMusic(input, fetchImpl = fetch) {
       body: JSON.stringify({
         model: config.modelId,
         prompt: clean(input.prompt, 2000),
-        lyrics: input.mode === "lyrics" ? clean(input.lyrics, 3500) : undefined,
-        lyrics_optimizer: input.mode === "inspiration",
+        lyrics: resolvedLyrics || undefined,
+        lyrics_optimizer: false,
         is_instrumental: input.mode === "instrumental",
         output_format: "url",
         audio_setting: { sample_rate: 44100, bitrate: 256000, format: config.outputFormat },
@@ -195,5 +218,7 @@ export async function generateMusic(input, fetchImpl = fetch) {
     extension: config.outputFormat === "wav" ? "wav" : "mp3",
     durationMs: Number(payload?.extra_info?.music_duration || 0) || null,
     providerTrackId: clean(payload?.trace_id || payload?.data?.id || "", 200) || null,
+    lyrics: resolvedLyrics,
+    lyricsSource: input.mode === "inspiration" ? "provider_generated" : input.mode === "lyrics" ? "user_input" : "instrumental",
   };
 }

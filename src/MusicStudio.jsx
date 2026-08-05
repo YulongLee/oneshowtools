@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, CheckCircle, Coins, DownloadSimple, Headphones, LockKey, MusicNotes,
-  Play, Sparkle, SpinnerGap, Trash, Warning,
+  Play, Sparkle, SpinnerGap, Trash, Warning, FileText, ImageSquare,
 } from "@phosphor-icons/react";
 
 async function request(path, options = {}) {
@@ -27,7 +27,7 @@ const copy = {
     create: "开始创作", creating: "正在创建任务", cost: "预计消耗", credits: "积分", library: "我的音乐", librarySub: "生成完成后可以试听、下载和继续创作。",
     empty: "还没有音乐作品", emptyBody: "完成第一次创作后，作品会安全保存在这里。", notReady: "音乐模型尚未配置", notReadyBody: "工作台已经就绪。管理员在后台完成音乐模型配置后即可真实生成，当前不会产生假音频或扣除积分。",
     login: "登录后开始创作", queued: "排队中", running: "生成中", completed: "已完成", failed: "生成失败", download: "下载", remove: "删除", provider: "OneShowMusic",
-    required: "请完整填写音乐灵感并确认素材权利。", lyricsRequired: "自定义歌词模式需要填写歌词。", insufficient: "积分不足，请先充值。", failedMessage: "创建失败，请稍后重试。",
+    required: "请完整填写音乐灵感并确认素材权利。", lyricsRequired: "自定义歌词模式需要填写歌词。", insufficient: "积分不足，请先充值。", failedMessage: "创建失败，请稍后重试。", showLyrics: "查看歌词", hideLyrics: "收起歌词", generatedLyrics: "生成歌词", createCover: "生成封面", recreateCover: "重新生成", coverNotReady: "管理员尚未配置图片模型", coverFailed: "封面生成失败", creatingCover: "生成中",
   },
   en: {
     kicker: "ONESH​OW MUSIC STUDIO", title: "Turn one idea into a complete track", sub: "Create songs, write lyrics, or generate instrumental music. Your work is saved securely to your library.",
@@ -38,13 +38,13 @@ const copy = {
     create: "Create music", creating: "Creating task", cost: "Estimated cost", credits: "credits", library: "My music", librarySub: "Listen, download, and revisit completed tracks.",
     empty: "No tracks yet", emptyBody: "Your first completed creation will appear here.", notReady: "Music model not configured", notReadyBody: "The studio is ready. An administrator can connect the music provider later; no fake audio or credits will be generated now.",
     login: "Sign in to create", queued: "Queued", running: "Generating", completed: "Completed", failed: "Failed", download: "Download", remove: "Delete", provider: "OneShowMusic",
-    required: "Add a creative direction and confirm your rights.", lyricsRequired: "Custom lyrics mode requires lyrics.", insufficient: "Not enough credits.", failedMessage: "Could not create the task. Try again.",
+    required: "Add a creative direction and confirm your rights.", lyricsRequired: "Custom lyrics mode requires lyrics.", insufficient: "Not enough credits.", failedMessage: "Could not create the task. Try again.", showLyrics: "View lyrics", hideLyrics: "Hide lyrics", generatedLyrics: "Generated lyrics", createCover: "Generate cover", recreateCover: "Regenerate", coverNotReady: "Image model is not configured", coverFailed: "Cover generation failed", creatingCover: "Generating",
   },
 };
 
 const statusClass = (status) => ["queued", "running", "completed", "failed"].includes(status) ? status : "queued";
 
-export function MusicStudio({ locale = "zh-CN", authenticated, account, onBack, onAuth, onCompleted }) {
+export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTaskId, onBack, onAuth, onCompleted }) {
   const t = copy[locale] || copy["zh-CN"];
   const [draft, setDraft] = useState(() => {
     try {
@@ -60,6 +60,8 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, onBack, 
   const [tracks, setTracks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [expandedLyrics, setExpandedLyrics] = useState(null);
+  const [coverBusy, setCoverBusy] = useState(null);
   const update = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.type === "checkbox" ? event.target.checked : event.target.value }));
   const load = useCallback(async () => {
     const provider = await request("/api/music/status");
@@ -67,6 +69,7 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, onBack, 
     if (authenticated) setTracks((await request("/api/music/tracks")).tracks || []);
   }, [authenticated]);
   useEffect(() => { load().catch(() => setStatus({ ready: false, creditCost: 30 })); }, [load]);
+  useEffect(() => { if (focusTaskId) setTimeout(() => document.querySelector(`[data-task-id="${focusTaskId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120); }, [focusTaskId, tracks.length]);
   const active = tracks.some((track) => ["queued", "running"].includes(track.status));
   useEffect(() => {
     if (!authenticated || !active) return undefined;
@@ -94,6 +97,13 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, onBack, 
   const remove = async (id) => {
     await request(`/api/music/tracks/${id}`, { method: "DELETE" });
     await load();
+  };
+  const createCover = async (id) => {
+    if (!status?.cover?.ready) return setError(t.coverNotReady);
+    setCoverBusy(id); setError("");
+    try { await request(`/api/music/tracks/${id}/cover`, { method: "POST" }); await load(); onCompleted?.(); }
+    catch (requestError) { setError(requestError.code === "INSUFFICIENT_CREDITS" ? t.insufficient : t.coverFailed); }
+    finally { setCoverBusy(null); }
   };
   return <div className="music-studio-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{locale === "en" ? "Back to marketplace" : "返回工具市场"}</button>
@@ -124,12 +134,13 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, onBack, 
       </form>
       <section className="music-library">
         <header><div><p className="eyebrow">LIBRARY</p><h2>{t.library}</h2><span>{t.librarySub}</span></div><MusicNotes size={24} /></header>
-        {tracks.length ? <div className="music-track-list">{tracks.map((track) => <article className="music-track" key={track.id}>
-          <div className={`music-track-cover ${statusClass(track.status)}`}>{track.status === "completed" ? <Play size={22} weight="fill" /> : track.status === "failed" ? <Warning size={22} /> : <SpinnerGap className="spin" size={22} />}</div>
+        {tracks.length ? <div className="music-track-list">{tracks.map((track) => <article className={`music-track ${focusTaskId === track.taskId ? "focused" : ""}`} data-task-id={track.taskId} key={track.id}>
+          <div className={`music-track-cover ${statusClass(track.status)} ${track.coverUrl ? "has-image" : ""}`} style={track.coverUrl ? { backgroundImage: `url(${track.coverUrl})` } : undefined}>{track.status === "completed" ? <Play size={22} weight="fill" /> : track.status === "failed" ? <Warning size={22} /> : <SpinnerGap className="spin" size={22} />}</div>
           <div className="music-track-main"><header><div><strong>{track.title}</strong><small>{modeInfo[track.mode]} · {track.providerAlias || t.provider}</small></div><span className={`music-track-status ${statusClass(track.status)}`}>{track.status === "completed" && <CheckCircle size={13} weight="fill" />}{t[track.status] || track.status}</span></header>
             {track.status === "completed" && <audio controls preload="metadata" src={track.downloadUrl} />}
             {track.status === "failed" && <p>{track.errorCode || t.failedMessage}</p>}
-            <footer><span>{new Date(track.createdAt).toLocaleString(locale === "en" ? "en-US" : "zh-CN")}</span><div>{track.downloadUrl && <a href={track.downloadUrl}><DownloadSimple size={15} />{t.download}</a>}<button onClick={() => remove(track.id)}><Trash size={15} />{t.remove}</button></div></footer>
+            {expandedLyrics === track.id && track.lyrics && <div className="music-track-lyrics"><strong>{t.generatedLyrics}</strong><pre>{track.lyrics}</pre></div>}
+            <footer><span>{new Date(track.createdAt).toLocaleString(locale === "en" ? "en-US" : "zh-CN")}</span><div>{track.lyrics && <button onClick={() => setExpandedLyrics(expandedLyrics === track.id ? null : track.id)}><FileText size={15} />{expandedLyrics === track.id ? t.hideLyrics : t.showLyrics}</button>}{track.status === "completed" && <button title={!status?.cover?.ready ? t.coverNotReady : ""} onClick={() => createCover(track.id)} disabled={coverBusy === track.id || !status?.cover?.ready}>{coverBusy === track.id ? <SpinnerGap className="spin" size={15} /> : <ImageSquare size={15} />}{coverBusy === track.id ? t.creatingCover : track.coverUrl ? t.recreateCover : t.createCover}</button>}{track.downloadUrl && <a href={track.downloadUrl}><DownloadSimple size={15} />{t.download}</a>}<button onClick={() => remove(track.id)}><Trash size={15} />{t.remove}</button></div></footer>
           </div>
         </article>)}</div> : <div className="music-library-empty"><MusicNotes size={34} weight="duotone" /><strong>{t.empty}</strong><p>{t.emptyBody}</p></div>}
       </section>

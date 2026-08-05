@@ -680,9 +680,9 @@ function SeoAgentCommercialPage({ tool, locale, authenticated, account, onBack, 
   </div>;
 }
 
-function ToolPage({ tool, catalog, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
-  if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
-  if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
+function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
+  if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;
   if (tool.slug === "ai-writer") return <AiWriterPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-workbench" || catalog?.specialist) return <SeoWorkbenchPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
@@ -1034,12 +1034,9 @@ function Billing({ plans, status, locale, onCheckout, onPortal }) {
   </div>;
 }
 
-function Tasks({ tasks, locale, onRefresh, onCancel }) {
+function Tasks({ tasks, locale, onRefresh, onCancel, onOpenTask }) {
   const t = dictionary[locale];
-  const [selected, setSelected] = useState(null);
-  return <div className="page-stack"><PageHeading title={t.tasks} subtitle={t.tasksSub} action={<button className="secondary-button" onClick={onRefresh}><ArrowClockwise size={17} />{t.retry}</button>} /><div className="surface task-center">{tasks.length ? tasks.map((task) => <div className="task-row-button" role="button" tabIndex="0" key={task.id} onClick={() => setSelected(task)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelected(task); }}><TaskRow task={task} locale={locale} onCancel={onCancel} /></div>) : <EmptyState title={t.noTasks} body={t.noTasksHint} />}</div>
-    {selected && <div className="detail-drawer"><header><div><small>{selected.id}</small><h3>{locale === "en" ? selected.toolNameEn : selected.toolNameZh}</h3></div><button className="icon-button" onClick={() => setSelected(null)}><X size={19} /></button></header><StatusPill status={selected.status} locale={locale} /><section><h4>{t.inputLabel}</h4><pre>{selected.input?.text || "—"}</pre></section><section><h4>{t.taskOutput}</h4><pre>{selected.output?.text || selected.errorCode || "—"}</pre></section></div>}
-  </div>;
+  return <div className="page-stack"><PageHeading title={t.tasks} subtitle={t.tasksSub} action={<button className="secondary-button" onClick={onRefresh}><ArrowClockwise size={17} />{t.retry}</button>} /><div className="surface task-center">{tasks.length ? tasks.map((task) => <div className="task-row-button" role="button" tabIndex="0" key={task.id} onClick={() => onOpenTask(task)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpenTask(task); }}><TaskRow task={task} locale={locale} onCancel={onCancel} /></div>) : <EmptyState title={t.noTasks} body={t.noTasksHint} />}</div></div>;
 }
 
 function Files({ files, locale, onUpload, onDelete }) {
@@ -1331,6 +1328,7 @@ export function App() {
   const [query, setQuery] = useState("");
   const [authOpen, setAuthOpen] = useState(() => Boolean(new URLSearchParams(location.search).get("resetToken")));
   const [routeSlug, setRouteSlug] = useState(() => location.pathname.match(/^\/tools\/([^/]+)$/)?.[1] || null);
+  const [routeTaskId, setRouteTaskId] = useState(() => new URLSearchParams(location.search).get("task"));
   const [toast, setToast] = useState("");
   const t = dictionary[locale];
 
@@ -1365,6 +1363,7 @@ export function App() {
         if (location.pathname.startsWith("/tools/")) {
           history.pushState({}, "", "/");
           setRouteSlug(null);
+          setRouteTaskId(null);
         }
         setView("marketplace");
         setTimeout(() => document.querySelector(".command-search input")?.focus(), 50);
@@ -1376,6 +1375,7 @@ export function App() {
     const updateRoute = () => {
       const slug = location.pathname.match(/^\/tools\/([^/]+)$/)?.[1] || null;
       setRouteSlug(slug);
+      setRouteTaskId(new URLSearchParams(location.search).get("task"));
       if (slug) setView("tool");
     };
     window.addEventListener("popstate", updateRoute);
@@ -1395,12 +1395,20 @@ export function App() {
     if (session) api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_open", toolSlug: tool.slug, category: tool.category, query: query.trim() || null })).catch(() => {});
     history.pushState({}, "", `/tools/${tool.slug}`);
     setRouteSlug(tool.slug);
+    setRouteTaskId(null);
     setView("tool");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const openTask = (task) => {
+    if (!task.toolSlug) return;
+    history.pushState({}, "", `/tools/${task.toolSlug}?task=${encodeURIComponent(task.id)}`);
+    setRouteSlug(task.toolSlug); setRouteTaskId(task.id); setView("tool");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const leaveTool = () => {
     history.pushState({}, "", session ? "/" : "/#tools");
     setRouteSlug(null);
+    setRouteTaskId(null);
     setView(session ? "marketplace" : "dashboard");
     if (!session) setTimeout(() => document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" }), 0);
   };
@@ -1408,6 +1416,7 @@ export function App() {
     if (routeSlug) {
       history.pushState({}, "", "/");
       setRouteSlug(null);
+      setRouteTaskId(null);
     }
     setView(nextView);
   };
@@ -1422,6 +1431,7 @@ export function App() {
 
   if (session === undefined) return <Loading locale={locale} />;
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
+  const routeTask = routeTaskId ? privateData.tasks.find((task) => task.id === routeTaskId) : null;
   if (!session && routeSlug && !routeTool) return <Loading locale={locale} />;
   const specialistCatalog = seoCatalogForTool(seoCatalog, routeTool);
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
@@ -1434,10 +1444,10 @@ export function App() {
     runtime: <Runtime data={privateData.runtime} locale={locale} onRefresh={loadPrivate} onNotice={setToast} />,
     credits: <Credits data={privateData.credits} locale={locale} />,
     billing: <Billing plans={plans} status={privateData.billing} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} />,
-    tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} />,
+    tasks: <Tasks tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} onOpenTask={openTask} />,
     files: <Files files={privateData.files} locale={locale} onUpload={upload} onDelete={deleteFile} />,
     account: <Account user={session} health={health} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} />,
-    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} locale={locale} authenticated runtime={privateData.runtime} account={{ session, credits: privateData.credits }} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
+    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} task={routeTask} historyTasks={privateData.tasks.filter((task) => task.toolId === routeTool.id)} locale={locale} authenticated runtime={privateData.runtime} account={{ session, credits: privateData.credits }} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
   }[view];
 
   const isWriter = ["ai-writer", "lyrics-generator", "seo-workbench", "seo-agent"].includes(routeTool?.slug) || Boolean(seoSpecialistFor(seoCatalog, routeTool?.slug));

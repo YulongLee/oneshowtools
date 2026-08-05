@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft, CheckCircle, Coins, Copy, DownloadSimple, LockKey, MusicNotes,
-  NotePencil, PaperPlaneRight, ShieldCheck, Sparkle, SpinnerGap, Warning,
+  NotePencil, PaperPlaneRight, ShieldCheck, Sparkle, SpinnerGap, Warning, ClockCounterClockwise,
 } from "@phosphor-icons/react";
 
 async function request(path, options = {}) {
@@ -20,7 +20,7 @@ const copies = {
     language: "歌词语言", genre: "音乐风格", mood: "情绪氛围", audience: "目标听众（可选）", perspective: "叙事视角", structure: "歌曲结构", rhyme: "押韵方式", custom: "补充要求（可选）",
     customHint: "例如：副歌需要一句容易记住的短句；避免陈词滥调……", generate: "生成歌词", generating: "正在创作歌词", waiting: "通常需要 20～60 秒，请保持页面开启。",
     empty: "填写创作信息后，歌词会在这里显示。", copy: "复制歌词", copied: "已复制", download: "下载 .md", compose: "带入音乐工作室", quality: "创作自检",
-    login: "登录后即可生成歌词并保存到任务中心。", required: "请先填写创作主题。", sourceRequired: "请粘贴需要处理的原始歌词。", failed: "生成失败，本次不会扣除积分，请稍后重试。", credits: "积分 / 次",
+    login: "登录后即可生成歌词并保存到任务中心。", required: "请先填写创作主题。", sourceRequired: "请粘贴需要处理的原始歌词。", failed: "生成失败，本次不会扣除积分，请稍后重试。", credits: "积分 / 次", history: "历史生成", historySub: "点击可重新打开过去生成的歌词", noHistory: "还没有历史歌词",
   },
   en: {
     back: "Back to marketplace", kicker: "ONESH​OW LYRIC LAB", title: "AI Lyrics Generator", sub: "Turn one idea into original, singable lyrics with a complete song structure, then take them straight into the Music Studio.",
@@ -29,13 +29,13 @@ const copies = {
     language: "Language", genre: "Genre", mood: "Mood", audience: "Audience (optional)", perspective: "Point of view", structure: "Song structure", rhyme: "Rhyme", custom: "Additional direction (optional)",
     customHint: "For example: give the chorus a short memorable line and avoid clichés…", generate: "Generate lyrics", generating: "Writing lyrics", waiting: "This usually takes 20–60 seconds. Keep this page open.",
     empty: "Complete the brief and your lyrics will appear here.", copy: "Copy lyrics", copied: "Copied", download: "Download .md", compose: "Use in Music Studio", quality: "Creative checks",
-    login: "Sign in to generate lyrics and save the task.", required: "Describe the song you want to write.", sourceRequired: "Paste the source lyrics first.", failed: "Generation failed and no credits were charged. Please retry.", credits: "credits / run",
+    login: "Sign in to generate lyrics and save the task.", required: "Describe the song you want to write.", sourceRequired: "Paste the source lyrics first.", failed: "Generation failed and no credits were charged. Please retry.", credits: "credits / run", history: "Generation history", historySub: "Open a previously generated lyric", noHistory: "No lyrics history yet",
   },
 };
 
 const initial = { mode: "original", topic: "", sourceLyrics: "", language: "简体中文", genre: "流行", mood: "真挚", audience: "", perspective: "第一人称", structure: "pop", rhyme: "自然押韵", customInstructions: "" };
 
-export function LyricsGenerator({ tool, locale = "zh-CN", authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+export function LyricsGenerator({ tool, task, historyTasks = [], locale = "zh-CN", authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
   const t = copies[locale] || copies["zh-CN"];
   const zh = locale !== "en";
   const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
@@ -48,6 +48,11 @@ export function LyricsGenerator({ tool, locale = "zh-CN", authenticated, runtime
   const [copied, setCopied] = useState(false);
   const update = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
   useEffect(() => { setModelConnectionId(runtimeTool?.modelConnectionId || "managed"); }, [runtimeTool?.modelConnectionId]);
+  useEffect(() => {
+    if (!task?.output?.lyricsMarkdown) return;
+    setResult(task.output);
+    setDraft((current) => ({ ...current, ...task.input, mode: task.input?.mode || current.mode }));
+  }, [task?.id]);
   useEffect(() => { if (!busy) return undefined; const started = Date.now(); setElapsed(0); const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000); return () => clearInterval(timer); }, [busy]);
 
   const selectMode = (mode) => { setDraft((current) => ({ ...current, mode })); setError(""); };
@@ -97,5 +102,9 @@ export function LyricsGenerator({ tool, locale = "zh-CN", authenticated, runtime
         {!result ? <div className="lyrics-empty"><MusicNotes size={42} weight="duotone" /><strong>{t.result}</strong><p>{t.empty}</p></div> : <><div className="lyrics-hook"><small>{zh ? "核心记忆点" : "HOOK"}</small><strong>“{result.hook}”</strong></div><pre>{result.lyricsMarkdown}</pre>{result.creativeNote && <p className="lyrics-note">{result.creativeNote}</p>}<div className="lyrics-checks"><header><ShieldCheck size={18} weight="duotone" /><strong>{t.quality}</strong></header>{result.checks?.map((item) => <span key={item}><CheckCircle size={15} weight="fill" />{item}</span>)}</div><button className="lyrics-compose" onClick={compose}><MusicNotes size={18} weight="fill" />{t.compose}</button></>}
       </section>
     </main>
+    <section className="lyrics-history">
+      <header><div><ClockCounterClockwise size={22} /><span><strong>{t.history}</strong><small>{t.historySub}</small></span></div></header>
+      <div>{historyTasks.filter((item) => item.status === "completed" && item.output?.lyricsMarkdown).length ? historyTasks.filter((item) => item.status === "completed" && item.output?.lyricsMarkdown).map((item) => <button key={item.id} onClick={() => { setResult(item.output); setDraft((current) => ({ ...current, ...item.input })); history.replaceState({}, "", `/tools/${tool.slug}?task=${encodeURIComponent(item.id)}`); document.querySelector(".lyrics-result")?.scrollIntoView({ behavior: "smooth" }); }}><span><strong>{item.output.title || t.result}</strong><small>{new Date(item.createdAt).toLocaleString(locale === "en" ? "en-US" : "zh-CN")}</small></span><em>{item.input?.mode === "rewrite" ? t.rewrite : item.input?.mode === "continue" ? t.continue : t.original}</em></button>) : <p>{t.noHistory}</p>}</div>
+    </section>
   </div>;
 }

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db, audit } from "./database.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { generateMusic, musicProviderConfiguration } from "./music-provider.mjs";
+import { generateMusicCover, imageProviderConfiguration } from "./image-provider.mjs";
 
 const studioError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 const clean = (value, max = 2000) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
@@ -41,6 +42,7 @@ function normalizedInput(data) {
 
 export function musicStudioStatus() {
   const configuration = musicProviderConfiguration();
+  const coverConfiguration = imageProviderConfiguration();
   return {
     ready: Boolean(configuration.configured && configuration.enabled),
     providerAlias: "OneShowMusic",
@@ -48,6 +50,7 @@ export function musicStudioStatus() {
     maxDurationSeconds: configuration.maxDurationSeconds,
     outputFormat: configuration.outputFormat,
     modes: ["inspiration", "lyrics", "instrumental"],
+    cover: { ready: Boolean(coverConfiguration.configured && coverConfiguration.enabled), creditCost: coverConfiguration.creditCost },
   };
 }
 
@@ -99,18 +102,22 @@ export function createMusicGeneration(user, data) {
 
 export function listMusicTracks(userId) {
   return db.prepare(`
-    SELECT m.id, m.task_id AS taskId, m.file_id AS fileId, m.title, m.mode, m.lyrics,
+    SELECT m.id, m.task_id AS taskId, m.file_id AS fileId, m.cover_file_id AS coverFileId,
+      m.title, m.mode, m.lyrics, m.lyrics_source AS lyricsSource,
       m.options_json AS optionsJson, m.variant_index AS variantIndex, m.status,
       m.provider_alias AS providerAlias, m.duration_ms AS durationMs, m.error_code AS errorCode,
       m.created_at AS createdAt, m.updated_at AS updatedAt, m.completed_at AS completedAt,
-      f.name AS fileName, f.size_bytes AS sizeBytes, f.mime_type AS mimeType
+      f.name AS fileName, f.size_bytes AS sizeBytes, f.mime_type AS mimeType,
+      cf.name AS coverFileName
     FROM music_tracks m LEFT JOIN files f ON f.id = m.file_id
+    LEFT JOIN files cf ON cf.id = m.cover_file_id
     WHERE m.user_id = ? ORDER BY m.created_at DESC, m.variant_index ASC LIMIT 100
   `).all(userId).map((track) => ({
     ...track,
     options: JSON.parse(track.optionsJson || "{}"),
     optionsJson: undefined,
     downloadUrl: track.fileId ? `/api/files/${track.fileId}/download` : null,
+    coverUrl: track.coverFileId ? `/api/files/${track.coverFileId}/download` : null,
   }));
 }
 
@@ -126,15 +133,65 @@ async function storeTrackFile(task, track, generated) {
       .run(fileId, task.user_id, fileName, stored.storageName, generated.mimeType, generated.buffer.length, timestamp);
     db.prepare(`INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'available', ?, ?)`)
       .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
-    db.prepare(`UPDATE music_tracks SET file_id = ?, status = 'completed', provider_track_id = ?, duration_ms = ?, updated_at = ?, completed_at = ? WHERE id = ?`)
-      .run(fileId, generated.providerTrackId, generated.durationMs, timestamp, timestamp, track.id);
+    db.prepare(`UPDATE music_tracks SET file_id = ?, lyrics = ?, lyrics_source = ?, status = 'completed', provider_track_id = ?, duration_ms = ?, updated_at = ?, completed_at = ? WHERE id = ?`)
+      .run(fileId, generated.lyrics || track.lyrics || "", generated.lyricsSource || "input", generated.providerTrackId, generated.durationMs, timestamp, timestamp, track.id);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     await deleteStoredFile({ provider: stored.provider, objectKey: stored.objectKey, storageName: stored.storageName }).catch(() => {});
     throw error;
   }
-  return { trackId: track.id, fileId, downloadUrl: `/api/files/${fileId}/download`, durationMs: generated.durationMs };
+  return { trackId: track.id, fileId, downloadUrl: `/api/files/${fileId}/download`, durationMs: generated.durationMs, lyrics: generated.lyrics || track.lyrics || "" };
+}
+
+export async function createMusicCover(user, trackId, fetchImpl = fetch) {
+  const track = db.prepare("SELECT * FROM music_tracks WHERE id = ? AND user_id = ? AND status = 'completed'").get(trackId, user.id);
+  if (!track) throw studioError("MUSIC_TRACK_NOT_FOUND", 404);
+  const configuration = imageProviderConfiguration();
+  if (!configuration.configured || !configuration.enabled) throw studioError("IMAGE_PROVIDER_NOT_CONFIGURED", 503);
+  if (creditBalance(user.id) < configuration.creditCost) throw studioError("INSUFFICIENT_CREDITS", 402);
+  const options = JSON.parse(track.options_json || "{}");
+  const prompt = [
+    "Create a commercial square album cover with no text, logo, watermark, border, or recognizable public figure.",
+    `Song title concept: ${track.title}.`, `Genre: ${options.genre || "original music"}.`,
+    `Mood: ${options.mood || "cinematic"}.`, `Story: ${options.idea || track.prompt}.`,
+    track.lyrics ? `Visual motifs from lyrics: ${track.lyrics.slice(0, 500)}.` : "Instrumental abstract visual storytelling.",
+    "High-quality editorial artwork, strong focal point, suitable as a 1024x1024 music cover.",
+  ].join(" ");
+  const generated = await generateMusicCover(prompt, fetchImpl);
+  const fileId = randomUUID();
+  const taskId = randomUUID();
+  const safeTitle = track.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "OneShowMusic";
+  const fileName = `${safeTitle}-cover.${generated.extension}`;
+  const stored = await putStoredFile({ userId: user.id, fileId, fileName, mimeType: generated.mimeType, buffer: generated.buffer });
+  const oldCover = track.cover_file_id ? db.prepare(`
+    SELECT f.id, f.storage_name, COALESCE(s.provider, 'local') AS provider, s.object_key
+    FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ?
+  `).get(track.cover_file_id) : null;
+  const timestamp = Date.now();
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.prepare("INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(fileId, user.id, fileName, stored.storageName, generated.mimeType, generated.buffer.length, timestamp);
+    db.prepare("INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'available', ?, ?)")
+      .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
+    const tool = db.prepare("SELECT id FROM tools WHERE slug = 'ai-music-studio'").get();
+    db.prepare("INSERT INTO tasks (id, user_id, tool_id, status, input_json, output_json, credit_cost, created_at, updated_at, completed_at) VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?)")
+      .run(taskId, user.id, tool.id, JSON.stringify({ action: "music_cover", trackId, prompt }), JSON.stringify({ kind: "music_cover", trackId, fileId }), configuration.creditCost, timestamp, timestamp, timestamp);
+    db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, fileId);
+    db.prepare("INSERT INTO credit_ledger (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at) VALUES (?, ?, 'consumption', ?, '生成音乐封面', 'Generated music cover', 'task', ?, ?)")
+      .run(randomUUID(), user.id, -configuration.creditCost, taskId, timestamp);
+    db.prepare("UPDATE music_tracks SET cover_file_id = ?, updated_at = ? WHERE id = ?").run(fileId, timestamp, trackId);
+    if (oldCover) db.prepare("DELETE FROM files WHERE id = ?").run(oldCover.id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    await deleteStoredFile({ provider: stored.provider, objectKey: stored.objectKey, storageName: stored.storageName }).catch(() => {});
+    throw error;
+  }
+  if (oldCover) await deleteStoredFile({ provider: oldCover.provider, objectKey: oldCover.object_key, storageName: oldCover.storage_name }).catch(() => {});
+  audit(user.id, "music.cover.generate", "music_track", trackId, { taskId, creditCost: configuration.creditCost });
+  return { taskId, trackId, coverFileId: fileId, coverUrl: `/api/files/${fileId}/download`, creditCost: configuration.creditCost };
 }
 
 export async function executeMusicTask(task, input, fetchImpl = fetch) {
@@ -167,15 +224,23 @@ export async function executeMusicTask(task, input, fetchImpl = fetch) {
 
 export async function deleteMusicTrack(userId, trackId) {
   const track = db.prepare(`
-    SELECT m.*, f.storage_name, COALESCE(s.provider, 'local') AS storage_provider, s.object_key
+    SELECT m.*, f.storage_name, COALESCE(s.provider, 'local') AS storage_provider, s.object_key,
+      cf.storage_name AS cover_storage_name, COALESCE(cs.provider, 'local') AS cover_storage_provider,
+      cs.object_key AS cover_object_key
     FROM music_tracks m LEFT JOIN files f ON f.id = m.file_id
     LEFT JOIN file_storage_objects s ON s.file_id = f.id
+    LEFT JOIN files cf ON cf.id = m.cover_file_id
+    LEFT JOIN file_storage_objects cs ON cs.file_id = cf.id
     WHERE m.id = ? AND m.user_id = ?
   `).get(trackId, userId);
   if (!track) throw studioError("MUSIC_TRACK_NOT_FOUND", 404);
   if (track.file_id) {
     await deleteStoredFile({ provider: track.storage_provider, objectKey: track.object_key, storageName: track.storage_name });
     db.prepare("DELETE FROM files WHERE id = ?").run(track.file_id);
+  }
+  if (track.cover_file_id) {
+    await deleteStoredFile({ provider: track.cover_storage_provider, objectKey: track.cover_object_key, storageName: track.cover_storage_name });
+    db.prepare("DELETE FROM files WHERE id = ?").run(track.cover_file_id);
   }
   db.prepare("DELETE FROM music_tracks WHERE id = ?").run(trackId);
   audit(userId, "music.track.delete", "music_track", trackId);

@@ -259,6 +259,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0015_seo_agent.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0016_music_studio.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0017_object_storage_admin_config.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0018_music_history_and_cover.sql"), "utf8"));
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
@@ -266,6 +267,10 @@ export function initializeDatabase() {
   if (!rankSnapshotColumns.has("search_engine")) db.exec("ALTER TABLE seo_rank_snapshots ADD COLUMN search_engine TEXT NOT NULL DEFAULT 'google'");
   if (!rankSnapshotColumns.has("device")) db.exec("ALTER TABLE seo_rank_snapshots ADD COLUMN device TEXT NOT NULL DEFAULT 'desktop'");
   db.exec("CREATE INDEX IF NOT EXISTS idx_seo_rank_engine_history ON seo_rank_snapshots(user_id, website, keyword, search_engine, device, observed_at DESC)");
+
+  const musicTrackColumns = new Set(db.prepare("PRAGMA table_info(music_tracks)").all().map((item) => item.name));
+  if (!musicTrackColumns.has("cover_file_id")) db.exec("ALTER TABLE music_tracks ADD COLUMN cover_file_id TEXT");
+  if (!musicTrackColumns.has("lyrics_source")) db.exec("ALTER TABLE music_tracks ADD COLUMN lyrics_source TEXT NOT NULL DEFAULT 'input'");
 
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");

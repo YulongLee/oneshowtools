@@ -20,6 +20,9 @@ import {
 import {
   musicProviderConfiguration, saveMusicProviderConfiguration, testMusicProviderConfiguration,
 } from "./music-provider.mjs";
+import {
+  imageProviderConfiguration, saveImageProviderConfiguration, testImageProviderConfiguration,
+} from "./image-provider.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -1335,6 +1338,7 @@ export function createAdminHandler(dependencies) {
       return json({
         models: listPlatformModelConfigurations(),
         music: musicProviderConfiguration(),
+        image: imageProviderConfiguration(),
         storage: objectStorageConfiguration(),
       });
     }
@@ -1388,6 +1392,25 @@ export function createAdminHandler(dependencies) {
         richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.music_provider.update", targetType: "music_provider", targetId: "minimax", reason: String(data.reason), before, after: configuration });
         return json({ configuration });
       } catch (error) { return fail(error?.code || "MUSIC_PROVIDER_UPDATE_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/image-provider/test" && request.method === "POST") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testImageProviderConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.image_provider.test", targetType: "image_provider", targetId: "music_cover", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/image-provider" && request.method === "PUT") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = imageProviderConfiguration();
+        const configuration = await saveImageProviderConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.image_provider.update", targetType: "image_provider", targetId: "music_cover", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/seo-provider/test" && request.method === "POST") {
       const denied = requirePermission(context, "seo_sources.manage"); if (denied) return denied;
