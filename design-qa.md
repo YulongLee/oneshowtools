@@ -1,43 +1,40 @@
-# OneShowTools brand mark design QA
+# OneShowTools workspace dashboard design QA
 
-- Source visual truth: `artifacts/brand-logo-reference.png`
-- Browser implementation capture: `artifacts/brand-logo-implementation-desktop.png`
-- Full-view comparison: `artifacts/brand-logo-qa-comparison.png`
-- Focused brand comparison: `artifacts/brand-logo-qa-focus.png`
-- Source pixels: 1961 × 802
-- Implementation pixels / CSS viewport: 1639 × 1329 at browser default density
-- State: unauthenticated Chinese commercial homepage, with the shared `Brand` component visible in the public header, embedded workspace preview, and footer
+- Source visual truth: `artifacts/dashboard-reference.png`
+- Browser implementation capture: `artifacts/dashboard-implementation-desktop.png`
+- Mobile implementation capture: `artifacts/dashboard-implementation-mobile.png`
+- Side-by-side comparison: `artifacts/dashboard-qa-comparison.png`
+- Source pixels: 1536 × 1024
+- Desktop implementation pixels: 1639 × 1329
+- Tested states: authenticated Chinese workspace at browser default width, 1024 × 900, and 390 × 844
 
-**Findings**
+## Findings
 
 - No actionable P0, P1, or P2 differences remain.
-- Typography: the implementation retains the product's DM Sans/Noto Sans SC system. `OneShow` uses the existing dark navy wordmark weight and `Tools` adopts the reference's blue-violet gradient. The compact lockup remains readable at navigation size.
-- Spacing and layout rhythm: the new 38–40 px navigation/sidebar mark fits the existing 68–76 px shells without changing header height, navigation alignment, or responsive structure. The embedded workspace preview uses a dedicated 27 px mark.
-- Colors and visual tokens: the generated mark follows the reference's violet → royal blue → cyan progression; the wordmark gradient uses the same family while maintaining contrast on white.
-- Image quality and fidelity: a real transparent PNG asset is used, not a CSS/SVG approximation. The 192 × 192 source renders at 27–40 CSS px with sufficient pixel density. Browser checks confirmed every visible image loaded (`naturalWidth: 192`) and no transparency box or chroma fringe was visible.
-- Copy and content: the existing product name and `Platform` descriptor are preserved. The reference divider is intentionally omitted in compact navigation because the user requested the icon treatment, not a wide banner lockup.
+- Hierarchy: the implementation matches the reference's dashboard rhythm: greeting/search hero, five KPI cards, quick access, recommendations, runtime/task context, and category exploration.
+- Data integrity: every displayed number and status comes from the authenticated user's real dashboard, subscription, task, file, credit, runtime, and tool-catalog data. Decorative fake metrics, notifications, and fabricated usage counts from the reference were intentionally excluded.
+- Visual language: cool blue-violet gradient, white cards, compact icon tiles, subtle borders, and soft shadows preserve the OneShowTools product system while increasing density and polish.
+- Hero artwork: a custom transparent 3D OneShowTools toolkit illustration is used at desktop and crops safely at mobile width.
+- Responsive behavior: 1024 px switches KPI and content grids without clipping; 390 px retains the hero search, two-column KPI layout, full-width plan card, and existing bottom navigation.
+- Accessibility: headings remain semantic, actions are buttons, search retains a visible input and label placeholder, status does not rely on color alone, and mobile controls remain comfortably tappable.
 
-**Full-view comparison evidence**
+## Deliberate differences from reference
 
-- The new brand treatment is visually consistent with the supplied lockup and integrates without altering the homepage's commercial hierarchy or above-the-fold layout.
+- The left sidebar preserves the product's existing navigation and account system instead of adding unimplemented API/team/settings entries.
+- Upgrade, gifts, notification badges, favorites, announcements, and social-proof counters were not copied because the current backend does not provide those capabilities or data.
+- The right column uses real AI Runtime and recent-task data instead of decorative demo content.
+- The lower explore rail uses the live tool-category counts rather than hard-coded category totals.
 
-**Focused region evidence**
+## Interaction checks
 
-- The focused comparison confirms the folded numeral “1”, upper-right sparkle, gradient direction, dark `OneShow`, and blue-violet `Tools` treatment all carry through at compact size.
-
-**Comparison history**
-
-- Initial implementation: no P0/P1/P2 findings. No visual correction loop was required.
-
-**Primary interactions and runtime checks**
-
-- Homepage navigation and tool actions remained present in the browser DOM.
-- Desktop responsive layout captured successfully.
-- Brand images loaded at all three visible sizes.
+- Dashboard search routed to the real tool marketplace and retained the search query.
+- Sidebar navigation returned to the dashboard correctly.
+- Quick-access and recommendation cards use the existing real tool-opening handler.
 - Browser console errors/warnings: none.
+- Production build, 101 automated tests, and database migration check: passed.
 
-**Follow-up polish**
+## Comparison history
 
-- P3: a dedicated manually drawn vector source could improve mathematical edge precision in future brand-guideline work, but the current high-density PNG is sharp at all shipped UI sizes.
+- Initial implementation passed desktop and mobile review without P0/P1/P2 corrections.
 
 final result: passed

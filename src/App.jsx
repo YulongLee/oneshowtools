@@ -8,7 +8,7 @@ import {
   GearSix, Plus, PlugsConnected, ShieldCheck, PenNib, ChartLineUp, Megaphone, Code,
   Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, MusicNotes, Robot,
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
-  PaperPlaneRight, CheckSquare, FileText,
+  PaperPlaneRight, CheckSquare, FileText, Crown,
 } from "@phosphor-icons/react";
 import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
 import { MusicStudio } from "./MusicStudio.jsx";
@@ -862,24 +862,58 @@ function TaskRow({ task, locale, onCancel }) {
   return <div className="task-row"><span className="tool-icon compact"><Icon size={20} /></span><div className="task-main"><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{formatDate(task.createdAt, locale)}</small></div><span className="task-cost">−{task.creditCost}</span><StatusPill status={task.status} locale={locale} />{onCancel && ["queued", "waiting_for_runtime"].includes(task.status) && <button className="icon-button" onClick={(event) => { event.stopPropagation(); onCancel(task.id); }}><X size={18} /></button>}</div>;
 }
 
-function Dashboard({ data, tools, locale, onNavigate, onSearch }) {
+function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun }) {
   const t = dictionary[locale];
   const [homeQuery, setHomeQuery] = useState("");
   if (!data) return <Loading locale={locale} />;
+  const isEn = locale === "en";
+  const hour = new Date().getHours();
+  const greeting = isEn ? (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening") : (hour < 12 ? "上午好" : hour < 18 ? "下午好" : "晚上好");
+  const userName = data.user?.name || (isEn ? "Creator" : "创作者");
+  const currentPlan = data.subscription ? (isEn ? data.subscription.nameEn : data.subscription.nameZh) : t.free;
   const metrics = [
-    [t.creditsBalance, data.metrics.credits, Coins, "blue"], [t.taskCount, data.metrics.tasks, ListChecks, "purple"],
-    [t.fileCount, data.metrics.files, FolderOpen, "green"], [t.completed, data.metrics.completed, CheckCircle, "orange"],
+    [t.creditsBalance, data.metrics.credits, Coins, "blue", isEn ? "Live balance" : "实时余额"],
+    [t.taskCount, data.metrics.tasks, ListChecks, "purple", `${data.metrics.running} ${isEn ? "running" : "个执行中"}`],
+    [t.completed, data.metrics.completed, CheckCircle, "green", isEn ? "Recorded results" : "结果已记录"],
+    [t.fileCount, data.metrics.files, FolderOpen, "orange", isEn ? "Private files" : "账户私有文件"],
+    [t.currentPlan, currentPlan, Crown, "violet", data.subscription?.currentPeriodEnd ? formatDate(data.subscription.currentPeriodEnd, locale) : (isEn ? "Upgrade anytime" : "随时可以升级")],
   ];
+  const readyTools = tools.filter((tool) => tool.runtimeStatus === "ready");
+  const preferredSlugs = ["ai-writer", "seo-workbench", "ai-music-studio", "lyrics-generator", "image-compressor", "pdf-summary", "background-remover", "content-repurposer"];
+  const recommended = [...preferredSlugs.map((slug) => readyTools.find((tool) => tool.slug === slug)).filter(Boolean), ...readyTools]
+    .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index).slice(0, 8);
+  const quickTools = recommended.slice(0, 4);
+  const categoryItems = marketplaceCategories.filter((item) => item.id !== "all")
+    .map((item) => ({ ...item, count: tools.filter((tool) => item.accepts.includes(tool.category)).length }))
+    .filter((item) => item.count > 0).slice(0, 9);
+  const activeConnections = runtime?.connections?.filter((item) => item.status === "active").length || 0;
   const submitSearch = (event) => {
     event.preventDefault();
     onSearch(homeQuery.trim());
   };
-  return <div className="page-stack"><section className="welcome-panel home-discovery"><div className="welcome-copy"><p className="eyebrow">ONESH​OWTOOLS PLATFORM</p><h1>{t.today}</h1><p>{t.todaySub}</p></div>
-    <form className="home-search" onSubmit={submitSearch}><MagnifyingGlass size={21} /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={t.search} /><button>{t.searchAction}</button></form>
-    <div className="home-suggestions"><span>{t.popularTools}</span><div>{tools.slice(0, 5).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; const name = locale === "en" ? tool.nameEn : tool.nameZh; return <button key={tool.id} onClick={() => onSearch(name)}><Icon size={15} />{name}</button>; })}<button className="browse-all-chip" onClick={() => onNavigate("marketplace")}><SquaresFour size={15} />{t.openMarketplace}</button></div></div>
-  </section>
-    <section><SectionTitle title={t.overview} /><div className="metric-grid">{metrics.map(([label, value, Icon, tone]) => <article className="metric-card" key={label}><span className={`metric-icon ${tone}`}><Icon size={22} /></span><div><strong>{value.toLocaleString()}</strong><span>{label}</span></div></article>)}</div></section>
-    <section><SectionTitle title={t.recentTasks} action={<button className="text-button" onClick={() => onNavigate("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button>} /><div className="surface">{data.recentTasks.length ? <div className="task-list">{data.recentTasks.map((task) => <TaskRow task={task} locale={locale} key={task.id} />)}</div> : <EmptyState title={t.noTasks} body={t.noTasksHint} action={<button className="secondary-button" onClick={() => onNavigate("marketplace")}>{t.openMarketplace}</button>} />}</div></section>
+  return <div className="page-stack dashboard-page">
+    <section className="dashboard-hero">
+      <div className="dashboard-hero-copy"><p className="eyebrow">ONESH​OWTOOLS WORKSPACE</p><h1>{greeting}，{userName}<Sparkle size={22} weight="fill" /></h1><p>{t.today}</p>
+        <form className="dashboard-search" onSubmit={submitSearch}><MagnifyingGlass size={20} /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={t.search} /><button aria-label={t.searchAction}><ArrowRight size={20} /></button></form>
+        <div className="dashboard-hot"><span>{t.popularTools}：</span>{recommended.slice(0, 6).map((tool) => <button key={tool.id} onClick={() => onRun(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
+      </div>
+      <div className="dashboard-hero-art" aria-hidden="true"><img src="/dashboard/oneshowtools-ai-toolkit-900.png" alt="" /></div>
+    </section>
+
+    <section className="dashboard-metric-grid">{metrics.map(([label, value, Icon, tone, note]) => <article className="dashboard-metric-card" key={label}><span className={`metric-icon ${tone}`}><Icon size={22} weight="duotone" /></span><div><small>{label}</small><strong>{typeof value === "number" ? value.toLocaleString() : value}</strong><p>{note}</p></div><span className={`dashboard-metric-accent ${tone}`} /></article>)}</section>
+
+    <section className="dashboard-content-grid">
+      <article className="surface dashboard-quick"><header><div><span>QUICK ACCESS</span><h2>{isEn ? "Quick access" : "快捷入口"}</h2></div><button onClick={() => onNavigate("marketplace")}><Plus size={15} />{isEn ? "More" : "更多工具"}</button></header><div>{quickTools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`tool-icon compact ${tool.category}`}><Icon size={19} /></span><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={16} /></button>; })}</div></article>
+
+      <article className="surface dashboard-recommended"><header><div><span>RECOMMENDED</span><h2>{isEn ? "Recommended for you" : "为你推荐"}</h2></div><button onClick={() => onNavigate("marketplace")}>{isEn ? "View all" : "查看全部"}<ArrowRight size={15} /></button></header><div>{recommended.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`tool-icon ${tool.category}`}><Icon size={21} /></span><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={13} />{tool.creditCost}</span><span><CheckCircle size={13} weight="fill" />{t.ready}</span></footer></button>; })}</div></article>
+
+      <aside className="dashboard-side-stack">
+        <article className="surface dashboard-runtime"><header><h2>{isEn ? "AI Runtime status" : "AI Runtime 状态"}</h2><span className={runtime?.managed?.status === "ready" ? "online" : "offline"}>{runtime?.managed?.status === "ready" ? t.online : t.notConfigured}</span></header><dl><div><dt><RocketLaunch size={18} />{isEn ? "Managed model" : "平台模型"}</dt><dd>{runtime?.managed?.status === "ready" ? t.ready : t.config}</dd></div><div><dt><PlugsConnected size={18} />{isEn ? "Personal models" : "个人模型"}</dt><dd>{activeConnections}</dd></div><div><dt><ListChecks size={18} />{isEn ? "Running tasks" : "执行中任务"}</dt><dd>{data.metrics.running}</dd></div></dl><button onClick={() => onNavigate("runtime")}>{isEn ? "Open runtime" : "进入运行中心"}<ArrowRight size={15} /></button></article>
+        <article className="surface dashboard-recent"><header><h2>{t.recentTasks}</h2><button onClick={() => onNavigate("tasks")}>{isEn ? "All" : "全部"}<ArrowRight size={14} /></button></header>{data.recentTasks.length ? <div>{data.recentTasks.slice(0, 4).map((task) => <TaskRow task={task} locale={locale} key={task.id} />)}</div> : <p>{t.noTasksHint}</p>}</article>
+      </aside>
+    </section>
+
+    <section className="surface dashboard-explore"><header><span>EXPLORE</span><h2>{isEn ? "Explore more possibilities" : "探索更多可能"}</h2><p>{isEn ? "Discover tools and agents by capability" : "按能力发现更多 AI 工具和智能体"}</p></header><div>{categoryItems.map((item) => { const CategoryIcon = item.icon; return <button key={item.id} onClick={() => onNavigate("marketplace")}><span><CategoryIcon size={20} /></span><strong>{t[item.id]}</strong><small>{item.count}</small></button>; })}</div></section>
   </div>;
 }
 
@@ -1439,7 +1473,7 @@ export function App() {
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {
-    dashboard: <Dashboard data={privateData.dashboard} tools={tools} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} />,
+    dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} />,
     marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} />,
     runtime: <Runtime data={privateData.runtime} locale={locale} onRefresh={loadPrivate} onNotice={setToast} />,
     credits: <Credits data={privateData.credits} locale={locale} />,
