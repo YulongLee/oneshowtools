@@ -258,6 +258,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0014_seo_provider_configs.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0015_seo_agent.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0016_music_studio.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0017_object_storage_admin_config.sql"), "utf8"));
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 

@@ -7,14 +7,27 @@ import test from "node:test";
 
 const dataDirectory = await mkdtemp(join(tmpdir(), "oneshowtools-storage-"));
 process.env.DATA_DIR = dataDirectory;
+process.env.APP_URL = "http://localhost:5173";
 
 const {
   deleteStoredFile,
   objectKeyFor,
   objectStorageConfig,
+  objectStorageConfiguration,
   putStoredFile,
   readStoredFile,
+  saveObjectStorageConfiguration,
+  testObjectStorageConfiguration,
 } = await import(`../server/object-storage.mjs?storage=${Date.now()}`);
+
+function fakeOssFactory() {
+  const objects = new Map();
+  return () => ({
+    async put(key, content) { objects.set(key, Buffer.from(content)); return { etag: "test-etag" }; },
+    async get(key) { return { content: Buffer.from(objects.get(key) || "") }; },
+    async delete(key) { objects.delete(key); },
+  });
+}
 
 test("OSS aliases produce an isolated owner-scoped object key without exposing secrets", () => {
   const env = {
@@ -42,6 +55,31 @@ test("local compatibility storage writes, reads, and removes only the requested 
   assert.equal((await readStoredFile({ ...stored, env: {} })).toString(), "storage-roundtrip");
   await deleteStoredFile({ ...stored, env: {} });
   await assert.rejects(() => readStoredFile({ ...stored, env: {} }), /ENOENT/);
+});
+
+test("administrator storage configuration is tested, encrypted, redacted, and becomes the runtime source", async () => {
+  const draft = {
+    bucket: "projects-yulong",
+    endpoint: "https://oss-cn-shanghai.aliyuncs.com",
+    region: "cn-shanghai",
+    prefix: "oneshowtools",
+    accessKeyId: "local-test-access-id",
+    accessKeySecret: "local-test-access-secret",
+    status: "active",
+  };
+  const factory = fakeOssFactory();
+  const tested = await testObjectStorageConfiguration(draft, factory);
+  assert.equal(tested.status, "healthy");
+  const saved = await saveObjectStorageConfiguration(draft, "admin-test", factory);
+  assert.equal(saved.source, "admin");
+  assert.equal(saved.enabled, true);
+  assert.equal(saved.prefix, "oneshowtools");
+  assert.doesNotMatch(JSON.stringify(saved), /local-test-access-id|local-test-access-secret/);
+  assert.match(saved.accessKeyIdHint, /s-id$/);
+  const runtime = objectStorageConfig();
+  assert.equal(runtime.source, "admin");
+  assert.equal(runtime.accessKeyId, draft.accessKeyId);
+  assert.equal(objectStorageConfiguration().lastTestStatus, "healthy");
 });
 
 test.after(() => rm(dataDirectory, { recursive: true, force: true }));

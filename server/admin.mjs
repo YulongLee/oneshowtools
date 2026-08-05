@@ -11,7 +11,9 @@ import {
 import {
   listPlatformModelConfigurations, savePlatformModelConfiguration, testPlatformModelConfiguration,
 } from "./model-gateway.mjs";
-import { objectStorageStatus } from "./object-storage.mjs";
+import {
+  objectStorageConfiguration, saveObjectStorageConfiguration, testObjectStorageConfiguration,
+} from "./object-storage.mjs";
 import {
   saveSeoProviderConfiguration, seoProviderConfiguration, testSeoProviderConfiguration,
 } from "./seo-provider-config.mjs";
@@ -49,6 +51,8 @@ const permissions = [
   ["intelligence.manage", "Run the market intelligence agent"],
   ["models.read", "View redacted platform model configuration"],
   ["models.manage", "Test and rotate platform model configuration"],
+  ["storage.read", "View redacted platform object storage configuration"],
+  ["storage.manage", "Test and rotate platform object storage configuration"],
   ["seo_sources.read", "View redacted SEO data source configuration"],
   ["seo_sources.manage", "Test and rotate SEO data source credentials"],
   ["infrastructure.read", "View infrastructure metrics and health"],
@@ -67,12 +71,12 @@ const permissions = [
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "seo_sources.read", "audit.read"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "storage.read", "seo_sources.read", "audit.read"],
   support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read"],
   finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
-  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage", "seo_sources.read", "seo_sources.manage"],
+  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage", "storage.read", "storage.manage", "seo_sources.read", "seo_sources.manage"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "storage.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -1331,8 +1335,27 @@ export function createAdminHandler(dependencies) {
       return json({
         models: listPlatformModelConfigurations(),
         music: musicProviderConfiguration(),
-        storage: objectStorageStatus(),
+        storage: objectStorageConfiguration(),
       });
+    }
+    if (path === "/api/admin/v1/object-storage/test" && request.method === "POST") {
+      const denied = requirePermission(context, "storage.manage"); if (denied) return denied;
+      try {
+        const result = await testObjectStorageConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "storage.manage", action: "admin.object_storage.test", targetType: "object_storage", targetId: "aliyun_oss", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "OBJECT_STORAGE_TEST_FAILED", error?.status || 502, error?.details); }
+    }
+    if (path === "/api/admin/v1/object-storage" && request.method === "PUT") {
+      const denied = requirePermission(context, "storage.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = objectStorageConfiguration();
+        const configuration = await saveObjectStorageConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "storage.manage", action: "admin.object_storage.update", targetType: "object_storage", targetId: "aliyun_oss", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "OBJECT_STORAGE_UPDATE_FAILED", error?.status || 502, error?.details); }
     }
     if (path === "/api/admin/v1/seo-provider" && request.method === "GET") {
       const denied = requirePermission(context, "seo_sources.read"); if (denied) return denied;

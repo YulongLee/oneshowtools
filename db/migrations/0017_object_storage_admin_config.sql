@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS object_storage_configs (
+  provider TEXT PRIMARY KEY CHECK(provider IN ('aliyun_oss')),
+  bucket TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  region TEXT NOT NULL,
+  key_prefix TEXT NOT NULL,
+  access_id_ciphertext TEXT NOT NULL,
+  access_id_iv TEXT NOT NULL,
+  access_id_tag TEXT NOT NULL,
+  access_id_hint TEXT NOT NULL,
+  secret_ciphertext TEXT NOT NULL,
+  secret_iv TEXT NOT NULL,
+  secret_tag TEXT NOT NULL,
+  secret_hint TEXT NOT NULL,
+  credential_version INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
+  last_test_status TEXT,
+  last_test_latency_ms INTEGER,
+  last_tested_at INTEGER,
+  updated_by TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);

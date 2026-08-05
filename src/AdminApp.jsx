@@ -27,7 +27,8 @@ const copy = {
     managed_runtime: "OneShowModel", market_intelligence: "市场情报模型", modelName: "配置名称", modelProtocol: "接口协议",
     modelBaseUrl: "API Base URL", modelId: "模型 ID", workspaceId: "阿里云 Workspace（可选）", replaceApiKey: "API Key（留空则保留现有密钥）",
     testModel: "测试连接", saveModel: "测试并保存", modelTestHealthy: "连接正常", modelRateLimited: "连接有效，但模型当前繁忙或限流",
-    changeReason: "变更原因", storageBackend: "用户文件存储", storagePrefix: "隔离前缀", storageBucket: "Bucket", storageRegion: "地域",
+    changeReason: "变更原因", storageBackend: "用户文件存储", storage_management: "对象存储", storagePrefix: "隔离前缀", storageBucket: "Bucket", storageRegion: "地域", storageEndpoint: "OSS Endpoint",
+    storageAccessId: "AccessKey ID（留空则保留现有密钥）", storageSecret: "AccessKey Secret（留空则保留现有密钥）", storageTest: "测试 OSS 连接", storageSave: "测试并保存", storageHealthy: "连接正常，测试对象已清理", storageHint: "统一管理用户上传和工具生成文件的阿里云 OSS。密钥仅在后端加密保存，不会返回浏览器。",
     intelligenceBrief: "结合外部市场信号与站内真实数据，生成每日工具开发优先级。",
     opportunity: "开发机会", demand: "需求", fit: "平台匹配", competition: "竞争机会", effort: "开发可行性",
     evidence: "需求证据", whyNow: "为什么现在值得关注", validationPlan: "7 天验证计划", nextStep: "建议下一步", latestReport: "最新日报", reportHistory: "历史日报",
@@ -103,7 +104,8 @@ const copy = {
     managed_runtime: "OneShowModel", market_intelligence: "Market Intelligence", modelName: "Configuration name", modelProtocol: "API protocol",
     modelBaseUrl: "API Base URL", modelId: "Model ID", workspaceId: "DashScope Workspace (optional)", replaceApiKey: "API Key (leave blank to keep current key)",
     testModel: "Test connection", saveModel: "Test and save", modelTestHealthy: "Connection healthy", modelRateLimited: "Credential accepted, but model is busy or rate limited",
-    changeReason: "Change reason", storageBackend: "User file storage", storagePrefix: "Isolated prefix", storageBucket: "Bucket", storageRegion: "Region",
+    changeReason: "Change reason", storageBackend: "User file storage", storage_management: "Object Storage", storagePrefix: "Isolated prefix", storageBucket: "Bucket", storageRegion: "Region", storageEndpoint: "OSS Endpoint",
+    storageAccessId: "AccessKey ID (leave blank to keep current key)", storageSecret: "AccessKey Secret (leave blank to keep current key)", storageTest: "Test OSS connection", storageSave: "Test and save", storageHealthy: "Connection healthy; test object removed", storageHint: "Manage Aliyun OSS for user uploads and generated files. Credentials are encrypted on the backend and never returned to browsers.",
     intelligenceBrief: "Combines external market signals with persisted product data into a daily development priority brief.",
     opportunity: "Opportunity", demand: "Demand", fit: "Platform fit", competition: "Competition", effort: "Feasibility",
     evidence: "Evidence", whyNow: "Why now", validationPlan: "7-day validation", nextStep: "Next step", latestReport: "Latest report", reportHistory: "Report history",
@@ -463,7 +465,48 @@ function Score({ label, value }) {
   return <div><span><small>{label}</small><strong>{Number(value || 0)}</strong></span><i><b style={{ width: `${Math.max(0, Math.min(100, Number(value || 0)))}%` }} /></i></div>;
 }
 
-function PlatformModelsView({ data, locale, canManage, onTest, onSave, onMusicTest, onMusicSave }) {
+function ObjectStorageView({ configuration, locale, canManage, onTest, onSave }) {
+  const t = copy[locale];
+  const [draft, setDraft] = useState({});
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    setDraft({
+      bucket: configuration?.bucket || "", endpoint: configuration?.endpoint || "https://oss-cn-shanghai.aliyuncs.com",
+      region: configuration?.region || "cn-shanghai", prefix: configuration?.prefix || "oneshowtools",
+      accessKeyId: "", accessKeySecret: "", status: configuration?.enabled === false && configuration?.source === "admin" ? "disabled" : "active", reason: "",
+    });
+    setTestResult(null);
+  }, [configuration?.updatedAt, configuration?.source, configuration?.configured]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(draft)); } finally { setTesting(false); } };
+  const save = async (event) => {
+    event.preventDefault(); setSaving(true);
+    try { const ok = await onSave(draft); if (ok) setDraft((current) => ({ ...current, accessKeyId: "", accessKeySecret: "", reason: "" })); }
+    finally { setSaving(false); }
+  };
+  return <section className="platform-model-layout">
+    <article className="admin-v2-panel platform-model-editor">
+      <div className="platform-model-current"><span className={`admin-metric-state ${configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.enabled ? "Aliyun OSS" : "Local storage"}</strong><small>{configuration?.source === "admin" ? `${configuration.accessKeyIdHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : configuration?.source === "environment" ? (locale === "en" ? "Environment configuration" : "环境变量配置") : t.notReporting}</small></div></div>
+      <form className="platform-model-form" onSubmit={save}>
+        <label>{t.storageBucket}<input value={draft.bucket || ""} onChange={change("bucket")} disabled={!canManage} required /></label>
+        <label>{t.storageRegion}<input value={draft.region || ""} onChange={change("region")} disabled={!canManage} required /></label>
+        <label className="wide">{t.storageEndpoint}<input type="url" value={draft.endpoint || ""} onChange={change("endpoint")} disabled={!canManage} required /></label>
+        <label>{t.storagePrefix}<input value={draft.prefix || ""} onChange={change("prefix")} disabled={!canManage} required /></label>
+        <label>{t.musicStatus}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{t.musicActive}</option><option value="disabled">{t.musicDisabled}</option></select></label>
+        <label>{t.storageAccessId}<input type="password" autoComplete="new-password" value={draft.accessKeyId || ""} onChange={change("accessKeyId")} disabled={!canManage} required={configuration?.source !== "admin"} /></label>
+        <label>{t.storageSecret}<input type="password" autoComplete="new-password" value={draft.accessKeySecret || ""} onChange={change("accessKeySecret")} disabled={!canManage} required={configuration?.source !== "admin"} /></label>
+        <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
+        {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{t.storageHealthy}</span><em>{testResult.latencyMs} ms</em></div>}
+        {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.storageTest}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.storageSave}</button></div>}
+      </form>
+    </article>
+    <aside className="admin-v2-panel platform-storage-card"><header><div><small>PRIVATE OBJECT STORAGE</small><h2>{t.storageBackend}</h2></div><HardDrives size={22} /></header><div className="platform-storage-status"><span className={`admin-metric-state ${configuration?.enabled ? "healthy" : "warning"}`} /><strong>{configuration?.provider?.toUpperCase() || "LOCAL"}</strong></div><DetailRow label={t.storageBucket} value={configuration?.bucket} /><DetailRow label={t.storageRegion} value={configuration?.region} /><DetailRow label={t.storagePrefix} value={configuration?.prefix} /><DetailRow label={locale === "en" ? "Credential" : "密钥标识"} value={configuration?.accessKeyIdHint} /><p>{t.storageHint}</p><p>{locale === "en" ? "The connection check only creates and removes one isolated test object. Existing bucket objects are never listed or changed." : "连接测试只会创建并清理一个隔离的测试对象，不会列举或改动 Bucket 中已有的内容。"}</p></aside>
+  </section>;
+}
+
+function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onStorageTest, onStorageSave }) {
   const t = copy[locale];
   const [purpose, setPurpose] = useState("managed_runtime");
   const selected = data?.models?.find((item) => item.purpose === purpose);
@@ -489,11 +532,13 @@ function PlatformModelsView({ data, locale, canManage, onTest, onSave, onMusicTe
     try { const result = await onSave(purpose, draft); if (result) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); }
     finally { setSaving(false); }
   };
-  const purposes = ["managed_runtime", "market_intelligence", "music_generation"];
+  const purposes = ["managed_runtime", "market_intelligence", "music_generation", "storage_management"];
   return <div className="admin-page-stack platform-model-page">
     <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE AI ROUTING</small><h2>{t.platformModels}</h2></div><Gear size={23} /></header><p>{t.platformModelsHint}</p></section>
     <nav className="admin-v2-panel admin-section-tabs platform-model-purpose-tabs">{purposes.map((item) => <button key={item} className={purpose === item ? "active" : ""} onClick={() => setPurpose(item)}>{t[item]}</button>)}</nav>
-    {purpose === "music_generation"
+    {purpose === "storage_management"
+      ? <ObjectStorageView configuration={data?.storage} locale={locale} canManage={canManageStorage} onTest={onStorageTest} onSave={onStorageSave} />
+      : purpose === "music_generation"
       ? <section className="platform-model-layout"><MusicProviderView data={{ configuration: data?.music }} locale={locale} canManage={canManage} onTest={onMusicTest} onSave={onMusicSave} embedded /></section>
       : <section className="platform-model-layout">
       <article className="admin-v2-panel platform-model-editor">
@@ -902,6 +947,15 @@ export function AdminApp() {
     try { await api("/api/admin/v1/music-provider", json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const testObjectStorage = async (draft) => {
+    try { return await api("/api/admin/v1/object-storage/test", json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const saveObjectStorage = async (draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/object-storage", json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const testSeoProvider = async (draft) => {
     try { return await api("/api/admin/v1/seo-provider/test", json("POST", draft)); }
     catch (error) { setMessage(error.code || t.loadFailed); return null; }
@@ -934,7 +988,7 @@ export function AdminApp() {
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
-    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} />,
+    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
