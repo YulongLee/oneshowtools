@@ -23,6 +23,9 @@ import {
 import {
   imageProviderConfiguration, saveImageProviderConfiguration, testImageProviderConfiguration,
 } from "./image-provider.mjs";
+import {
+  saveSingingProviderConfiguration, singingProviderConfiguration, testSingingProviderConfiguration,
+} from "./singing-provider.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -1338,6 +1341,7 @@ export function createAdminHandler(dependencies) {
       return json({
         models: listPlatformModelConfigurations(),
         music: musicProviderConfiguration(),
+        singing: singingProviderConfiguration(),
         image: imageProviderConfiguration(),
         storage: objectStorageConfiguration(),
       });
@@ -1392,6 +1396,29 @@ export function createAdminHandler(dependencies) {
         richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.music_provider.update", targetType: "music_provider", targetId: "minimax", reason: String(data.reason), before, after: configuration });
         return json({ configuration });
       } catch (error) { return fail(error?.code || "MUSIC_PROVIDER_UPDATE_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/singing-provider" && request.method === "GET") {
+      const denied = requirePermission(context, "models.read"); if (denied) return denied;
+      return json({ configuration: singingProviderConfiguration() });
+    }
+    if (path === "/api/admin/v1/singing-provider/test" && request.method === "POST") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testSingingProviderConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.singing_provider.test", targetType: "singing_provider", targetId: "myvocal", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "SINGING_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/singing-provider" && request.method === "PUT") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = singingProviderConfiguration();
+        const configuration = await saveSingingProviderConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.singing_provider.update", targetType: "singing_provider", targetId: "myvocal", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "SINGING_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/image-provider/test" && request.method === "POST") {
       const denied = requirePermission(context, "models.manage"); if (denied) return denied;

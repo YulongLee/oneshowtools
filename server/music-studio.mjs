@@ -9,6 +9,7 @@ import { db, audit } from "./database.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { generateMusic, musicProviderConfiguration, preprocessMusicCover } from "./music-provider.mjs";
 import { generateMusicCover, imageProviderConfiguration } from "./image-provider.mjs";
+import { singingProviderConfiguration } from "./singing-provider.mjs";
 
 const studioError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 const clean = (value, max = 2000) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
@@ -20,7 +21,7 @@ function creditBalance(userId) {
   return Number(db.prepare("SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_ledger WHERE user_id = ?").get(userId)?.balance || 0);
 }
 
-async function normalizedReferenceAudio(file) {
+export async function normalizedReferenceAudio(file) {
   if (!(file instanceof File) || !file.size) throw studioError("MUSIC_REFERENCE_REQUIRED", 422);
   if (file.size > 50 * 1024 * 1024) throw studioError("MUSIC_REFERENCE_TOO_LARGE", 413);
   const extension = extname(file.name || "").toLowerCase();
@@ -124,14 +125,20 @@ function normalizedInput(userId, data) {
 export function musicStudioStatus() {
   const configuration = musicProviderConfiguration();
   const coverConfiguration = imageProviderConfiguration();
+  const singingConfiguration = singingProviderConfiguration();
   return {
     ready: Boolean(configuration.configured && configuration.enabled),
     providerAlias: "OneShowMusic",
     creditCost: configuration.creditCost,
     maxDurationSeconds: configuration.maxDurationSeconds,
     outputFormat: configuration.outputFormat,
-    modes: ["inspiration", "lyrics", "cover", "instrumental"],
+    modes: ["inspiration", "lyrics", "cover", "singing_cover", "instrumental"],
     cover: { ready: Boolean(coverConfiguration.configured && coverConfiguration.enabled), creditCost: coverConfiguration.creditCost },
+    singingCover: {
+      available: process.env.SINGING_COVER_PUBLIC_ENABLED === "true",
+      ready: Boolean(singingConfiguration.configured && singingConfiguration.enabled),
+      creditCost: singingConfiguration.creditCost,
+    },
   };
 }
 

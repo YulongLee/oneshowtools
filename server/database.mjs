@@ -261,6 +261,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0017_object_storage_admin_config.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0018_music_history_and_cover.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0019_music_reference_cover.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0020_singing_cover.sql"), "utf8"));
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
@@ -273,7 +274,7 @@ export function initializeDatabase() {
   if (!musicTrackColumns.has("cover_file_id")) db.exec("ALTER TABLE music_tracks ADD COLUMN cover_file_id TEXT");
   if (!musicTrackColumns.has("lyrics_source")) db.exec("ALTER TABLE music_tracks ADD COLUMN lyrics_source TEXT NOT NULL DEFAULT 'input'");
   const musicTrackSql = String(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'music_tracks'").get()?.sql || "");
-  if (!musicTrackSql.includes("'cover'")) {
+  if (!musicTrackSql.includes("'singing_cover'")) {
     db.exec(`
       PRAGMA foreign_keys = OFF;
       BEGIN IMMEDIATE;
@@ -283,7 +284,7 @@ export function initializeDatabase() {
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
         file_id TEXT REFERENCES files(id) ON DELETE SET NULL,
         title TEXT NOT NULL,
-        mode TEXT NOT NULL CHECK(mode IN ('inspiration','lyrics','instrumental','cover')),
+        mode TEXT NOT NULL CHECK(mode IN ('inspiration','lyrics','instrumental','cover','singing_cover')),
         prompt TEXT NOT NULL,
         lyrics TEXT NOT NULL DEFAULT '',
         options_json TEXT NOT NULL DEFAULT '{}',

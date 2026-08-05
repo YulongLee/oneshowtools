@@ -18,6 +18,8 @@ const {
   createMusicCover, createMusicGeneration, createMusicReference, executeMusicTask, listMusicTracks, musicStudioStatus,
 } = await import(`../server/music-studio.mjs?test=${Date.now()}`);
 const { saveImageProviderConfiguration } = await import(`../server/image-provider.mjs?test=${Date.now()}`);
+const { saveSingingProviderConfiguration, singingProviderConfiguration } = await import(`../server/singing-provider.mjs?test=${Date.now()}`);
+const { enrollSingingVoice, handleSingingProviderCallback, listSingingVoices, submitSingingCover } = await import(`../server/singing-cover.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 
 const providerFetch = async (url, options = {}) => {
@@ -158,6 +160,57 @@ test("inspiration mode persists provider lyrics and a billed, private cover arti
   assert.equal(track.coverFileId, cover.coverFileId);
   assert.equal(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance, 460);
   assert.equal(db.prepare("SELECT provider FROM file_storage_objects WHERE file_id = ?").get(cover.coverFileId).provider, "local");
+});
+
+test("authorized singing covers train an owner-scoped voice, bill once, and persist provider output", async () => {
+  const callbacks = [];
+  const singingFetch = async (url, options = {}) => {
+    const target = String(url);
+    if (target === "https://cdn.example.com/cover.mp3") return new Response(Buffer.from("real-authorized-song-cover"), { status: 200, headers: { "content-type": "audio/mpeg" } });
+    assert.equal(options.headers?.accessKey, "singing-provider-secret-9012");
+    if (target.endsWith("/user/info")) return new Response(JSON.stringify({ code: 1, message: "Success", data: { plan: "api" } }), { status: 200, headers: { "content-type": "application/json" } });
+    if (target.endsWith("/voices/vc")) {
+      callbacks.push(options.body.get("callbackUrl"));
+      assert.equal(options.body.get("name"), "我的声音");
+      return new Response(JSON.stringify({ code: 1, message: "Success", data: { webhookId: "voice-webhook" } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (target.endsWith("/cover/query")) return new Response(JSON.stringify({ code: 1, message: "Success", data: [{ id: "cover-1", url: "https://cdn.example.com/cover.mp3" }] }), { status: 200, headers: { "content-type": "application/json" } });
+    if (target.endsWith("/cover")) {
+      callbacks.push(options.body.get("callbackUrl"));
+      assert.equal(options.body.get("voiceId"), "provider-voice-1");
+      return new Response(JSON.stringify({ code: 1, message: "Success", data: { webhookId: "cover-webhook" } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    throw new Error(`unexpected singing URL: ${target}`);
+  };
+  const configured = await saveSingingProviderConfiguration({ baseUrl: "https://api.myvocal.ai", apiKey: "singing-provider-secret-9012", creditCost: 80, status: "active" }, "admin-user", singingFetch);
+  assert.equal(configured.configured, true);
+  assert.equal(configured.keyHint, "••••9012");
+  assert.doesNotMatch(JSON.stringify(singingProviderConfiguration()), /singing-provider-secret/);
+  assert.equal(musicStudioStatus().singingCover.ready, true);
+
+  const user = addUser();
+  const voiceForm = new FormData();
+  voiceForm.append("name", "我的声音"); voiceForm.append("consentConfirmed", "true");
+  voiceForm.append("files", new File([Buffer.from("authorized-voice-sample")], "voice.mp3", { type: "audio/mpeg" }));
+  const voice = await enrollSingingVoice(user, voiceForm, singingFetch);
+  assert.equal(voice.status, "training");
+  const voiceToken = new URL(callbacks.shift()).pathname.split("/").pop();
+  await handleSingingProviderCallback(new Request("http://localhost/callback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ webhookType: "TRAIN_COVER_SPEAKER", status: "SUCCESS", data: { id: "provider-voice-1" } }) }), voiceToken, singingFetch);
+  assert.equal(listSingingVoices(user.id)[0].status, "ready");
+  assert.doesNotMatch(JSON.stringify(listSingingVoices(user.id)), /provider-voice-1/);
+
+  const before = db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance;
+  const coverForm = new FormData(); coverForm.append("voiceId", voice.id); coverForm.append("title", "授权翻唱"); coverForm.append("rightsConfirmed", "true");
+  coverForm.append("file", new File([Buffer.from("authorized-target-song")], "song.mp3", { type: "audio/mpeg" }));
+  const submitted = await submitSingingCover(user, coverForm, singingFetch);
+  assert.equal(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance, before - 80);
+  const coverToken = new URL(callbacks.shift()).pathname.split("/").pop();
+  await handleSingingProviderCallback(new Request("http://localhost/callback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ webhookType: "COVER_SONG", status: "SUCCESS", data: { id: "cover-1" } }) }), coverToken, singingFetch);
+  const track = listMusicTracks(user.id).find((item) => item.taskId === submitted.taskId);
+  assert.equal(track.mode, "singing_cover");
+  assert.equal(track.status, "completed");
+  assert.match(track.downloadUrl, /^\/api\/files\//);
+  assert.equal(db.prepare("SELECT status FROM singing_cover_jobs WHERE task_id = ?").get(submitted.taskId).status, "completed");
 });
 
 test.after(async () => rm(dataDirectory, { recursive: true, force: true }));

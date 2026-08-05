@@ -22,6 +22,9 @@ import { handleSeoAgent } from "./seo-agent.mjs";
 import {
   createMusicCover, createMusicGeneration, createMusicReference, deleteMusicTrack, listMusicTracks, musicStudioStatus,
 } from "./music-studio.mjs";
+import {
+  enrollSingingVoice, handleSingingProviderCallback, listSingingVoices, removeSingingVoice, submitSingingCover,
+} from "./singing-cover.mjs";
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
@@ -899,6 +902,11 @@ export async function handleApi(request) {
     adminMfaEnforced: config.adminMfaEnforced,
   });
   if (path === "/api/billing/webhook" && request.method === "POST") return stripeWebhook(request);
+  const singingCallbackMatch = path.match(/^\/api\/music\/singing-provider\/callback\/([^/]+)$/);
+  if (singingCallbackMatch && request.method === "POST") {
+    try { return json(await handleSingingProviderCallback(request, singingCallbackMatch[1])); }
+    catch (error) { return fail(error.code || "SINGING_CALLBACK_FAILED", error.status || 500); }
+  }
   if (path === "/api/auth/verify" && request.method === "GET") return verifyEmail(request);
   if (path === "/api/auth/confirm-email" && request.method === "GET") return confirmEmailChange(request);
   if (!sameOrigin(request, config.appUrl)) return fail("ORIGIN_NOT_ALLOWED", 403);
@@ -938,6 +946,28 @@ export async function handleApi(request) {
 
   if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) return handleSeoAgent(request, user, path);
   if (path === "/api/music/tracks" && request.method === "GET") return json({ tracks: listMusicTracks(user.id) });
+  if (path === "/api/music/singing-voices" && request.method === "GET") {
+    if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
+    return json({ voices: listSingingVoices(user.id) });
+  }
+  if (path === "/api/music/singing-voices" && request.method === "POST") {
+    if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
+    if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
+    try { return json({ voice: await enrollSingingVoice(user, await request.formData()) }, 201); }
+    catch (error) { return fail(error.code || "SINGING_VOICE_ENROLL_FAILED", error.status || 500); }
+  }
+  const singingVoiceMatch = path.match(/^\/api\/music\/singing-voices\/([^/]+)$/);
+  if (singingVoiceMatch && request.method === "DELETE") {
+    if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
+    try { return json(await removeSingingVoice(user, singingVoiceMatch[1])); }
+    catch (error) { return fail(error.code || "SINGING_VOICE_DELETE_FAILED", error.status || 500); }
+  }
+  if (path === "/api/music/singing-covers" && request.method === "POST") {
+    if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
+    if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
+    try { return json(await submitSingingCover(user, await request.formData()), 201); }
+    catch (error) { return fail(error.code || "SINGING_COVER_SUBMIT_FAILED", error.status || 500); }
+  }
   if (path === "/api/music/references" && request.method === "POST") {
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try {
