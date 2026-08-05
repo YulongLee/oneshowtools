@@ -5,6 +5,7 @@ import { audit, db } from "./database.mjs";
 import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { generateWriting } from "./writing-engine.mjs";
+import { generateLyrics } from "./lyrics-engine.mjs";
 import { generateSeo } from "./seo-engine.mjs";
 import { seoSpecialistBySlug } from "./seo-specialists.mjs";
 import { imageToolSlugs, processImageTool } from "./image-tools.mjs";
@@ -304,6 +305,9 @@ export async function runToolAction(request, user, tool) {
     payload.modelConnectionId = modelConnectionId;
     if (tool.slug === "ai-writer") {
       processed = await generateWriting({ user, payload, connectionId: modelConnectionId });
+      input = processed.safeInput;
+    } else if (tool.slug === "lyrics-generator") {
+      processed = await generateLyrics({ user, payload, connectionId: modelConnectionId });
       input = processed.safeInput;
     } else if (tool.slug === "seo-workbench" || seoSpecialistBySlug.has(tool.slug)) {
       const specialist = seoSpecialistBySlug.get(tool.slug);

@@ -19,6 +19,7 @@ const provider = createServer(async (request, response) => {
   let raw = "";
   for await (const chunk of request) raw += chunk;
   const payload = JSON.parse(raw);
+  const promptText = JSON.stringify(payload.messages || payload.input || "");
   observedRequests.push({
     url: request.url,
     authorization: request.headers.authorization || null,
@@ -27,6 +28,13 @@ const provider = createServer(async (request, response) => {
     workspaceId: request.headers["x-dashscope-workspace"] || null,
   });
   response.setHeader("content-type", "application/json");
+  if (promptText.includes("lyrics_request")) {
+    response.end(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ title: "雨后的站台", hook: "下一站，我会成为自己的光", lyricsMarkdown: "[Verse 1]\n雨落在空荡的站台\n我把旧名字留在身后\n\n[Pre-Chorus]\n列车穿过沉默的夜\n心跳替我说出口\n\n[Chorus]\n下一站，我会成为自己的光\n不再回头，不再躲藏\n\n[Bridge]\n天亮以前，再勇敢一次", creativeNote: "由告别走向自我确认，副歌适合逐层抬升。", checks: ["叙事推进清晰"] }) }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 120, completion_tokens: 90 },
+    }));
+    return;
+  }
   response.end(JSON.stringify(request.url.endsWith("/v1/messages") ? {
     content: [{ type: "text", text: `ok:${payload.model}` }],
     usage: { input_tokens: 4, output_tokens: 2 },
@@ -62,6 +70,7 @@ const {
 const { db } = await import("../server/database.mjs");
 const { refundTask } = await import("../server/runtime.mjs");
 const { generateWriting, writingCatalog } = await import("../server/writing-engine.mjs");
+const { generateLyrics } = await import("../server/lyrics-engine.mjs");
 
 function addUser(email) {
   const id = randomUUID();
@@ -122,6 +131,23 @@ test("AI writing exposes 7 modules and 49 templates, then performs draft and rev
   assert.ok(generated.output.review.score >= 0);
   assert.equal(observedRequests.length - before, 2);
   assert.doesNotMatch(JSON.stringify(generated), /managed-secret-key/);
+});
+
+test("lyrics generator creates structured, reviewed lyrics without exposing model credentials", async () => {
+  const userId = addUser("lyrics@example.com");
+  const generated = await generateLyrics({
+    user: { id: userId, locale: "zh-CN" },
+    connectionId: "managed",
+    payload: {
+      mode: "original", topic: "雨夜告别过去，重新出发", language: "简体中文",
+      genre: "流行", mood: "克制后坚定", perspective: "第一人称", structure: "pop",
+    },
+  });
+  assert.equal(generated.output.title, "雨后的站台");
+  assert.match(generated.output.lyricsMarkdown, /\[Chorus\]/);
+  assert.ok(generated.output.checks.includes("歌曲结构完整"));
+  assert.equal(generated.output.route, "managed");
+  assert.doesNotMatch(JSON.stringify(generated), /managed-secret-key|internal-model-id/);
 });
 
 test("customer credentials are encrypted, masked, owner-scoped, and tamper evident", () => {

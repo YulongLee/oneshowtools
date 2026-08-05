@@ -46,7 +46,16 @@ const statusClass = (status) => ["queued", "running", "completed", "failed"].inc
 
 export function MusicStudio({ locale = "zh-CN", authenticated, account, onBack, onAuth, onCompleted }) {
   const t = copy[locale] || copy["zh-CN"];
-  const [draft, setDraft] = useState(initialDraft);
+  const [draft, setDraft] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("oneshow-music-lyrics-draft") || "null");
+      if (saved?.lyrics) {
+        sessionStorage.removeItem("oneshow-music-lyrics-draft");
+        return { ...initialDraft, mode: "lyrics", title: String(saved.title || "").slice(0, 120), idea: String(saved.idea || "").slice(0, 1200), lyrics: String(saved.lyrics).slice(0, 3500) };
+      }
+    } catch { /* ignore malformed browser drafts */ }
+    return initialDraft;
+  });
   const [status, setStatus] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [busy, setBusy] = useState(false);
