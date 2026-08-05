@@ -169,7 +169,7 @@ export async function generateMusic(input, fetchImpl = fetch) {
         lyrics_optimizer: input.mode === "inspiration",
         is_instrumental: input.mode === "instrumental",
         output_format: "url",
-        audio_setting: { sample_rate: 44100, bitrate: config.outputFormat === "wav" ? 256000 : 192000, format: config.outputFormat },
+        audio_setting: { sample_rate: 44100, bitrate: 256000, format: config.outputFormat },
       }),
       signal: AbortSignal.timeout(600_000),
     });

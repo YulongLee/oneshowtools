@@ -23,6 +23,7 @@ const providerFetch = async (_url, options = {}) => {
   assert.equal(options.headers.authorization, "Bearer music-provider-secret-1234");
   const payload = JSON.parse(options.body);
   assert.equal(payload.model, "music-2.6");
+  if (payload.prompt) assert.equal(payload.audio_setting.bitrate, 256000);
   return new Response(JSON.stringify({
     data: { audio: Buffer.from("real-audio-result").toString("hex"), status: 2 },
     extra_info: { music_duration: 62_000 }, trace_id: "provider-trace-redacted",
