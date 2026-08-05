@@ -1,18 +1,86 @@
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, extname, join } from "node:path";
+import { promisify } from "node:util";
+import ffmpegPath from "ffmpeg-static";
 import { db, audit } from "./database.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
-import { generateMusic, musicProviderConfiguration } from "./music-provider.mjs";
+import { generateMusic, musicProviderConfiguration, preprocessMusicCover } from "./music-provider.mjs";
 import { generateMusicCover, imageProviderConfiguration } from "./image-provider.mjs";
 
 const studioError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 const clean = (value, max = 2000) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
-const allowedModes = new Set(["inspiration", "lyrics", "instrumental"]);
+const allowedModes = new Set(["inspiration", "lyrics", "instrumental", "cover"]);
+const runFile = promisify(execFile);
+const referenceExtensions = new Set([".mp3", ".wav", ".flac", ".m4a", ".mp4", ".webm", ".ogg"]);
 
 function creditBalance(userId) {
   return Number(db.prepare("SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_ledger WHERE user_id = ?").get(userId)?.balance || 0);
 }
 
-function normalizedInput(data) {
+async function normalizedReferenceAudio(file) {
+  if (!(file instanceof File) || !file.size) throw studioError("MUSIC_REFERENCE_REQUIRED", 422);
+  if (file.size > 50 * 1024 * 1024) throw studioError("MUSIC_REFERENCE_TOO_LARGE", 413);
+  const extension = extname(file.name || "").toLowerCase();
+  if (!referenceExtensions.has(extension) || (file.type && !file.type.startsWith("audio/") && file.type !== "video/mp4")) {
+    throw studioError("MUSIC_REFERENCE_FORMAT_UNSUPPORTED", 422);
+  }
+  const source = Buffer.from(await file.arrayBuffer());
+  if (![".webm", ".ogg"].includes(extension)) {
+    return { buffer: source, fileName: basename(file.name).slice(0, 160), mimeType: file.type || "audio/mpeg" };
+  }
+  if (!ffmpegPath) throw studioError("MUSIC_REFERENCE_CONVERSION_UNAVAILABLE", 503);
+  const directory = await mkdtemp(join(tmpdir(), "oneshow-cover-"));
+  try {
+    const inputPath = join(directory, `reference${extension}`);
+    const outputPath = join(directory, "reference.mp3");
+    await writeFile(inputPath, source);
+    try {
+      await runFile(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath, "-vn", "-map_metadata", "-1", "-c:a", "libmp3lame", "-b:a", "192k", outputPath], { timeout: 180_000, maxBuffer: 4 * 1024 * 1024 });
+    } catch { throw studioError("MUSIC_REFERENCE_CONVERSION_FAILED", 422); }
+    return { buffer: await readFile(outputPath), fileName: `${basename(file.name, extension).slice(0, 140) || "recording"}.mp3`, mimeType: "audio/mpeg" };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+export async function createMusicReference(user, file, fetchImpl = fetch) {
+  const configuration = musicProviderConfiguration();
+  if (!configuration.configured || !configuration.enabled) throw studioError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
+  const audio = await normalizedReferenceAudio(file);
+  const analyzed = await preprocessMusicCover(audio.buffer, fetchImpl);
+  const id = randomUUID();
+  const fileId = randomUUID();
+  const safeName = basename(audio.fileName || "reference.mp3").replace(/[\\/:*?"<>|]/g, "-").slice(0, 160) || "reference.mp3";
+  const stored = await putStoredFile({ userId: user.id, fileId, fileName: safeName, mimeType: audio.mimeType, buffer: audio.buffer });
+  const timestamp = Date.now();
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.prepare("INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(fileId, user.id, safeName, stored.storageName, audio.mimeType, audio.buffer.length, timestamp);
+    db.prepare("INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'available', ?, ?)")
+      .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
+    db.prepare(`INSERT INTO music_references
+      (id, user_id, file_id, cover_feature_id, formatted_lyrics, structure_json, audio_duration_seconds, expires_at, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?)`)
+      .run(id, user.id, fileId, analyzed.coverFeatureId, analyzed.formattedLyrics, analyzed.structureJson, analyzed.durationSeconds, analyzed.expiresAt, timestamp, timestamp);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    await deleteStoredFile({ provider: stored.provider, objectKey: stored.objectKey, storageName: stored.storageName }).catch(() => {});
+    throw error;
+  }
+  audit(user.id, "music.reference.preprocess", "music_reference", id, { fileId, durationSeconds: analyzed.durationSeconds });
+  return {
+    id, fileId, fileName: safeName, previewUrl: `/api/files/${fileId}/download`,
+    formattedLyrics: analyzed.formattedLyrics, durationSeconds: analyzed.durationSeconds,
+    expiresAt: analyzed.expiresAt,
+  };
+}
+
+function normalizedInput(userId, data) {
   const mode = allowedModes.has(data.mode) ? data.mode : "inspiration";
   const title = clean(data.title || "未命名音乐", 100);
   const idea = clean(data.idea, 1000);
@@ -26,7 +94,17 @@ function normalizedInput(data) {
   const variants = Math.max(1, Math.min(2, Number(data.variants || 1)));
   if (!idea) throw studioError("MUSIC_IDEA_REQUIRED", 422);
   if (mode === "lyrics" && !lyrics) throw studioError("MUSIC_LYRICS_REQUIRED", 422);
+  if (mode === "cover" && (lyrics.length < 10 || lyrics.length > 1000)) throw studioError("MUSIC_COVER_LYRICS_INVALID", 422);
   if (!data.rightsConfirmed) throw studioError("MUSIC_RIGHTS_CONFIRMATION_REQUIRED", 422);
+  let reference = null;
+  if (mode === "cover") {
+    reference = db.prepare("SELECT * FROM music_references WHERE id = ? AND user_id = ? AND status = 'ready'").get(clean(data.referenceId, 100), userId);
+    if (!reference) throw studioError("MUSIC_REFERENCE_NOT_FOUND", 404);
+    if (reference.expires_at <= Date.now()) {
+      db.prepare("UPDATE music_references SET status = 'expired', updated_at = ? WHERE id = ?").run(Date.now(), reference.id);
+      throw studioError("MUSIC_REFERENCE_EXPIRED", 422);
+    }
+  }
   const prompt = [
     idea,
     `Genre: ${genre}`,
@@ -35,9 +113,12 @@ function normalizedInput(data) {
     mode === "instrumental" ? "Instrumental only, no vocals" : `Vocal: ${vocal}`,
     instruments ? `Instruments: ${instruments}` : "",
     `Target duration: about ${durationSeconds} seconds`,
-    "Create an original composition. Do not imitate a named artist or reproduce an existing song.",
+    mode === "cover" ? "Create an authorized cover arrangement from the supplied reference. Do not imitate a named artist." : "Create an original composition. Do not imitate a named artist or reproduce an existing song.",
   ].filter(Boolean).join(". ");
-  return { mode, title, idea, lyrics, language, genre, mood, instruments, vocal, durationSeconds, variants, prompt };
+  return {
+    mode, title, idea, lyrics, language, genre, mood, instruments, vocal, durationSeconds, variants, prompt,
+    ...(reference ? { referenceId: reference.id, referenceFileId: reference.file_id, coverFeatureId: reference.cover_feature_id } : {}),
+  };
 }
 
 export function musicStudioStatus() {
@@ -49,7 +130,7 @@ export function musicStudioStatus() {
     creditCost: configuration.creditCost,
     maxDurationSeconds: configuration.maxDurationSeconds,
     outputFormat: configuration.outputFormat,
-    modes: ["inspiration", "lyrics", "instrumental"],
+    modes: ["inspiration", "lyrics", "cover", "instrumental"],
     cover: { ready: Boolean(coverConfiguration.configured && coverConfiguration.enabled), creditCost: coverConfiguration.creditCost },
   };
 }
@@ -57,7 +138,7 @@ export function musicStudioStatus() {
 export function createMusicGeneration(user, data) {
   const configuration = musicProviderConfiguration();
   if (!configuration.configured || !configuration.enabled) throw studioError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
-  const input = normalizedInput(data);
+  const input = normalizedInput(user.id, data);
   input.durationSeconds = Math.min(input.durationSeconds, configuration.maxDurationSeconds);
   const tool = db.prepare("SELECT * FROM tools WHERE slug = 'ai-music-studio' AND active = 1").get();
   if (!tool) throw studioError("MUSIC_TOOL_NOT_AVAILABLE", 404);
@@ -91,6 +172,7 @@ export function createMusicGeneration(user, data) {
       INSERT INTO execution_jobs (id, task_id, status, attempts, max_attempts, next_attempt_at, created_at, updated_at)
       VALUES (?, ?, 'queued', 0, 3, ?, ?, ?)
     `).run(randomUUID(), taskId, timestamp, timestamp, timestamp);
+    if (input.referenceFileId) db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, input.referenceFileId);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");

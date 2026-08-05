@@ -10,6 +10,7 @@ const platformInfrastructureMigration = await readFile(new URL("../db/migrations
 const seoAgentMigration = await readFile(new URL("../db/migrations/0015_seo_agent.sql", import.meta.url), "utf8");
 const objectStorageAdminMigration = await readFile(new URL("../db/migrations/0017_object_storage_admin_config.sql", import.meta.url), "utf8");
 const musicCoverMigration = await readFile(new URL("../db/migrations/0018_music_history_and_cover.sql", import.meta.url), "utf8");
+const musicReferenceMigration = await readFile(new URL("../db/migrations/0019_music_reference_cover.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -70,6 +71,9 @@ if (!objectStorageAdminMigration.includes("CREATE TABLE IF NOT EXISTS object_sto
 }
 if (!musicCoverMigration.includes("CREATE TABLE IF NOT EXISTS image_provider_configs ")) {
   throw new Error("Music cover migration is missing image_provider_configs");
+}
+if (!musicReferenceMigration.includes("CREATE TABLE IF NOT EXISTS music_references ")) {
+  throw new Error("Music reference migration is missing music_references");
 }
 
 for (const table of [

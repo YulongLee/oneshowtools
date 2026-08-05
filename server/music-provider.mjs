@@ -175,22 +175,61 @@ async function generateProviderLyrics(config, input, fetchImpl) {
   return { lyrics, title: clean(payload?.song_title, 120) || null, styleTags: clean(payload?.style_tags, 500) || null };
 }
 
+export async function preprocessMusicCover(buffer, fetchImpl = fetch) {
+  const config = musicProviderCredentials();
+  if (!config) throw providerError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
+  if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > 50 * 1024 * 1024) {
+    throw providerError("MUSIC_REFERENCE_INVALID", 422);
+  }
+  let response;
+  try {
+    response = await fetchImpl(`${config.baseUrl}/v1/music_cover_preprocess`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "music-cover", audio_base64: buffer.toString("base64") }),
+      signal: AbortSignal.timeout(180_000),
+    });
+  } catch (error) {
+    if (error?.name === "TimeoutError") throw providerError("MUSIC_REFERENCE_PREPROCESS_TIMEOUT", 504, true);
+    throw providerError("MUSIC_REFERENCE_PREPROCESS_UNREACHABLE", 502, true);
+  }
+  const payload = await response.json().catch(() => ({}));
+  const error = responseError(payload, response.status);
+  if (error) throw error;
+  if (!response.ok) throw providerError("MUSIC_REFERENCE_PREPROCESS_FAILED", 502, response.status >= 500);
+  const coverFeatureId = clean(payload?.cover_feature_id, 500);
+  const formattedLyrics = clean(payload?.formatted_lyrics, 12_000);
+  const durationSeconds = Number(payload?.audio_duration || 0);
+  if (!coverFeatureId || !Number.isFinite(durationSeconds)) throw providerError("MUSIC_REFERENCE_PREPROCESS_INVALID", 502);
+  if (durationSeconds < 6 || durationSeconds > 360) throw providerError("MUSIC_REFERENCE_DURATION_INVALID", 422);
+  return {
+    coverFeatureId,
+    formattedLyrics,
+    structureJson: clean(payload?.structure_result || "{}", 100_000),
+    durationSeconds,
+    expiresAt: Date.now() + 23 * 60 * 60 * 1000,
+  };
+}
+
 export async function generateMusic(input, fetchImpl = fetch) {
   const config = musicProviderCredentials();
   if (!config) throw providerError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
   const generatedLyrics = input.mode === "inspiration" ? await generateProviderLyrics(config, input, fetchImpl) : null;
   const resolvedLyrics = input.mode === "instrumental" ? "" : (input.lyrics || generatedLyrics?.lyrics || "");
+  if (input.mode === "cover" && !clean(input.coverFeatureId, 500)) throw providerError("MUSIC_REFERENCE_REQUIRED", 422);
   let response;
   try {
     response = await fetchImpl(`${config.baseUrl}/v1/music_generation`, {
       method: "POST",
       headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
-        model: config.modelId,
+        model: input.mode === "cover" ? "music-cover" : config.modelId,
         prompt: clean(input.prompt, 2000),
         lyrics: resolvedLyrics || undefined,
-        lyrics_optimizer: false,
-        is_instrumental: input.mode === "instrumental",
+        ...(input.mode === "cover" ? { cover_feature_id: clean(input.coverFeatureId, 500) } : {
+          lyrics_optimizer: false,
+          is_instrumental: input.mode === "instrumental",
+        }),
         output_format: "url",
         audio_setting: { sample_rate: 44100, bitrate: 256000, format: config.outputFormat },
       }),
@@ -219,6 +258,6 @@ export async function generateMusic(input, fetchImpl = fetch) {
     durationMs: Number(payload?.extra_info?.music_duration || 0) || null,
     providerTrackId: clean(payload?.trace_id || payload?.data?.id || "", 200) || null,
     lyrics: resolvedLyrics,
-    lyricsSource: input.mode === "inspiration" ? "provider_generated" : input.mode === "lyrics" ? "user_input" : "instrumental",
+    lyricsSource: input.mode === "inspiration" ? "provider_generated" : input.mode === "cover" ? "reference_edited" : input.mode === "lyrics" ? "user_input" : "instrumental",
   };
 }

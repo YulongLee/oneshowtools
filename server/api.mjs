@@ -20,7 +20,7 @@ import { writingCatalog } from "./writing-engine.mjs";
 import { seoCatalog } from "./seo-engine.mjs";
 import { handleSeoAgent } from "./seo-agent.mjs";
 import {
-  createMusicCover, createMusicGeneration, deleteMusicTrack, listMusicTracks, musicStudioStatus,
+  createMusicCover, createMusicGeneration, createMusicReference, deleteMusicTrack, listMusicTracks, musicStudioStatus,
 } from "./music-studio.mjs";
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
@@ -938,6 +938,15 @@ export async function handleApi(request) {
 
   if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) return handleSeoAgent(request, user, path);
   if (path === "/api/music/tracks" && request.method === "GET") return json({ tracks: listMusicTracks(user.id) });
+  if (path === "/api/music/references" && request.method === "POST") {
+    if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
+    try {
+      const form = await request.formData();
+      return json({ reference: await createMusicReference(user, form.get("file")) }, 201);
+    } catch (error) {
+      return fail(error.code || "MUSIC_REFERENCE_PREPROCESS_FAILED", error.status || 500);
+    }
+  }
   if (path === "/api/music/generations" && request.method === "POST") {
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try {

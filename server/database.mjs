@@ -260,6 +260,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0016_music_studio.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0017_object_storage_admin_config.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0018_music_history_and_cover.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0019_music_reference_cover.sql"), "utf8"));
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
@@ -271,6 +272,51 @@ export function initializeDatabase() {
   const musicTrackColumns = new Set(db.prepare("PRAGMA table_info(music_tracks)").all().map((item) => item.name));
   if (!musicTrackColumns.has("cover_file_id")) db.exec("ALTER TABLE music_tracks ADD COLUMN cover_file_id TEXT");
   if (!musicTrackColumns.has("lyrics_source")) db.exec("ALTER TABLE music_tracks ADD COLUMN lyrics_source TEXT NOT NULL DEFAULT 'input'");
+  const musicTrackSql = String(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'music_tracks'").get()?.sql || "");
+  if (!musicTrackSql.includes("'cover'")) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN IMMEDIATE;
+      CREATE TABLE music_tracks_next (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        file_id TEXT REFERENCES files(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK(mode IN ('inspiration','lyrics','instrumental','cover')),
+        prompt TEXT NOT NULL,
+        lyrics TEXT NOT NULL DEFAULT '',
+        options_json TEXT NOT NULL DEFAULT '{}',
+        variant_index INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','completed','failed')),
+        provider_alias TEXT NOT NULL DEFAULT 'OneShowMusic',
+        provider_track_id TEXT,
+        duration_ms INTEGER,
+        error_code TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        cover_file_id TEXT REFERENCES files(id) ON DELETE SET NULL,
+        lyrics_source TEXT NOT NULL DEFAULT 'input',
+        UNIQUE(task_id, variant_index)
+      );
+      INSERT INTO music_tracks_next (
+        id, user_id, task_id, file_id, title, mode, prompt, lyrics, options_json,
+        variant_index, status, provider_alias, provider_track_id, duration_ms,
+        error_code, created_at, updated_at, completed_at, cover_file_id, lyrics_source
+      ) SELECT
+        id, user_id, task_id, file_id, title, mode, prompt, lyrics, options_json,
+        variant_index, status, provider_alias, provider_track_id, duration_ms,
+        error_code, created_at, updated_at, completed_at, cover_file_id, lyrics_source
+      FROM music_tracks;
+      DROP TABLE music_tracks;
+      ALTER TABLE music_tracks_next RENAME TO music_tracks;
+      CREATE INDEX music_tracks_user_created_idx ON music_tracks(user_id, created_at DESC);
+      CREATE INDEX music_tracks_task_idx ON music_tracks(task_id, variant_index);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
 
   const sessionColumns = new Set(db.prepare("PRAGMA table_info(sessions)").all().map((column) => column.name));
   if (!sessionColumns.has("last_seen_at")) db.exec("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER");

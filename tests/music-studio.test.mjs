@@ -15,15 +15,28 @@ const {
   testMusicProviderConfiguration,
 } = await import(`../server/music-provider.mjs?test=${Date.now()}`);
 const {
-  createMusicCover, createMusicGeneration, executeMusicTask, listMusicTracks, musicStudioStatus,
+  createMusicCover, createMusicGeneration, createMusicReference, executeMusicTask, listMusicTracks, musicStudioStatus,
 } = await import(`../server/music-studio.mjs?test=${Date.now()}`);
 const { saveImageProviderConfiguration } = await import(`../server/image-provider.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 
-const providerFetch = async (_url, options = {}) => {
+const providerFetch = async (url, options = {}) => {
   assert.equal(options.headers.authorization, "Bearer music-provider-secret-1234");
   const payload = JSON.parse(options.body);
-  assert.equal(payload.model, "music-2.6");
+  if (String(url).includes("music_cover_preprocess")) {
+    assert.equal(payload.model, "music-cover");
+    assert.ok(payload.audio_base64);
+    return new Response(JSON.stringify({
+      cover_feature_id: "cover-feature-private-123", formatted_lyrics: "[Verse]\n沿着海岸慢慢走\n[Chorus]\n让风带我回家",
+      structure_result: "{\"num_segments\":2}", audio_duration: 62, base_resp: { status_code: 0 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (payload.model === "music-cover") {
+    assert.equal(payload.cover_feature_id, "cover-feature-private-123");
+    assert.ok(payload.lyrics.length >= 10);
+  } else {
+    assert.equal(payload.model, "music-2.6");
+  }
   if (payload.prompt) assert.equal(payload.audio_setting.bitrate, 256000);
   return new Response(JSON.stringify({
     data: { audio: Buffer.from("real-audio-result").toString("hex"), status: 2 },
@@ -102,6 +115,32 @@ test("music generation rejects unowned material declarations before reserving cr
   const before = db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance;
   assert.throws(() => createMusicGeneration(user, { mode: "inspiration", idea: "test", rightsConfirmed: false }), (error) => error.code === "MUSIC_RIGHTS_CONFIRMATION_REQUIRED");
   assert.equal(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance, before);
+});
+
+test("reference audio is privately stored, preprocessed, and used for a real cover task", async () => {
+  const user = addUser();
+  const reference = await createMusicReference(user, new File([Buffer.from("private-reference-audio")], "authorized-song.mp3", { type: "audio/mpeg" }), providerFetch);
+  assert.equal(reference.durationSeconds, 62);
+  assert.match(reference.formattedLyrics, /沿着海岸/);
+  assert.match(reference.previewUrl, /^\/api\/files\//);
+  assert.equal(db.prepare("SELECT provider FROM file_storage_objects WHERE file_id = ?").get(reference.fileId).provider, "local");
+
+  const generation = createMusicGeneration(user, {
+    mode: "cover", referenceId: reference.id, title: "海岸翻唱", idea: "爵士酒吧风格，萨克斯和轻柔鼓组",
+    lyrics: reference.formattedLyrics, language: "中文", genre: "爵士", mood: "平静", vocal: "自动选择",
+    durationSeconds: 60, variants: 1, rightsConfirmed: true,
+  });
+  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(generation.taskId);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM task_files WHERE task_id = ? AND file_id = ?").get(task.id, reference.fileId).count, 1);
+  const input = JSON.parse(task.input_json);
+  assert.equal(input.coverFeatureId, "cover-feature-private-123");
+  assert.equal(input.referenceFileId, reference.fileId);
+  assert.doesNotMatch(task.input_json, /private-reference-audio/);
+  await executeMusicTask(task, input, providerFetch);
+  const track = listMusicTracks(user.id)[0];
+  assert.equal(track.mode, "cover");
+  assert.equal(track.status, "completed");
+  assert.equal(track.lyricsSource, "reference_edited");
 });
 
 test("inspiration mode persists provider lyrics and a billed, private cover artifact", async () => {
