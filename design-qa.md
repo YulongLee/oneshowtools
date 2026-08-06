@@ -1,34 +1,39 @@
-# OneShowTools billing and membership design QA
+# Design QA — User System
 
-- Source visual truth: `artifacts/billing-reference.png`
-- Desktop implementation: `artifacts/billing-implementation-desktop.png`
-- Mobile implementation: `artifacts/billing-implementation-mobile.png`
-- Side-by-side comparison: `artifacts/billing-qa-comparison.png`
-- Tested states: authenticated Chinese billing page at browser default width and 390 × 844
+## Evidence
 
-## Findings
+- Source: `codex-clipboard-5159b932-baf5-4c52-8bbd-c5021296ed14.png`
+- Implementation: `artifacts/account-implementation-desktop.png`
+- Same-state comparison: `artifacts/account-design-comparison.png`
+- Verified route: `http://localhost:5173/?view=account`
 
-- No actionable P0, P1, or P2 differences remain.
-- Content fidelity: all five requested credit packs and all three requested monthly memberships match the supplied prices, base credits, bonuses, monthly credits, labels, and benefits.
-- Commercial hierarchy: the implementation preserves the reference's top-up-first and membership-second ordering, while translating the raw tables into scannable commercial cards.
-- Data integrity: plan values come from the public billing catalog API and persisted plan records. The UI does not hard-code payable prices independently from the backend.
-- Payment safety: every purchase action is disabled while the payment provider is not configured, and the page explicitly states that no real charge will be attempted.
-- Responsive behavior: the five-column top-up row collapses to three columns and then one column; membership cards collapse to a single column on narrow screens without overflow.
-- Accessibility: plan names use headings, credit breakdowns use definition lists, benefits use lists, and disabled payment state is visible in both text and control state.
+## Comparison
 
-## Deliberate differences from reference
+- Layout: passed. The implementation preserves the reference hierarchy: persistent platform navigation, account title and tabs, profile card, primary account form, security/session cards, and an account overview rail.
+- Visual system: passed. Blue accent, soft neutral canvas, compact bordered surfaces, status pills, typography, density, and spacing are consistent with both the reference and the existing OneShowTools shell.
+- Functional fidelity: passed. Profile and language save through the real profile endpoint; password and email changes, session listing/revocation, data export, deletion gating, runtime, credits, billing, and logout all use existing production routes.
+- Responsive behavior: passed by CSS breakpoint inspection and intrinsic grid constraints. Main columns collapse at 1240px/900px, forms become single-column on mobile, tabs scroll horizontally, and session/privacy rows reflow without fixed-width overflow.
+- Console: passed. No runtime errors were recorded during the verified account flow.
 
-- The reference's plain document tables were converted into product cards to match the existing OneShowTools workspace design system.
-- Actual received credits are shown explicitly as base credits plus bonus credits, eliminating ambiguity in the source table.
-- The current plan and payment-channel state are included because they are required for a real authenticated billing workflow.
-- No unsupported annual discount, unlimited-use language, countdown, or fake promotion was introduced.
+## Intentional differences
 
-## Interaction and runtime checks
+- Google/GitHub account linking, phone number, notification preferences, and 2FA from the visual reference are not shown because this product does not currently expose those backend capabilities. This prevents false commercial UI.
+- The right rail uses real membership and credit ledger data rather than sample values.
 
-- Billing navigation opens the real authenticated billing view.
-- The API returns eight active CNY offers in deterministic commercial order.
-- Current Free plan is correctly marked and disabled.
-- All paid actions are disabled while billing is unconfigured.
-- Browser console errors/warnings: none.
+## Interaction checks
+
+- Profile save: passed.
+- Security tab and password/email forms: passed.
+- Session tab with two live database records: passed.
+- Data export endpoint: covered by the existing account lifecycle test suite; UI action is present.
+- Full automated suite: 103/103 passed.
+- Production build: passed.
+
+## Open issues
+
+- P0: none.
+- P1: none.
+- P2: none.
+- P3: optional future enhancement — add third-party account linking only after a real provider lifecycle exists.
 
 final result: passed

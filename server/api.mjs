@@ -1179,7 +1179,11 @@ export async function handleApi(request) {
   if (path === "/api/files" && request.method === "GET") {
     return json({ files: db.prepare(`
       SELECT f.id, f.name, f.mime_type AS mimeType, f.size_bytes AS sizeBytes, f.created_at AS createdAt,
-        COALESCE(s.provider, 'local') AS storageProvider
+        COALESCE(s.provider, 'local') AS storageProvider,
+        COALESCE((SELECT x.name_zh FROM task_files tf JOIN tasks t ON t.id = tf.task_id JOIN tools x ON x.id = t.tool_id
+          WHERE tf.file_id = f.id ORDER BY t.created_at DESC LIMIT 1), '') AS sourceNameZh,
+        COALESCE((SELECT x.name_en FROM task_files tf JOIN tasks t ON t.id = tf.task_id JOIN tools x ON x.id = t.tool_id
+          WHERE tf.file_id = f.id ORDER BY t.created_at DESC LIMIT 1), '') AS sourceNameEn
       FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id
       WHERE f.user_id = ? ORDER BY f.created_at DESC
     `).all(user.id) });
