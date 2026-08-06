@@ -1,8 +1,11 @@
 import sharp from "sharp";
+import { createHash } from "node:crypto";
 import { db } from "./database.mjs";
 import { decryptCredential, encryptCredential } from "./model-gateway.mjs";
 
 const purposes = new Set(["image_editing", "image_upscaling"]);
+const recentValidations = new Map();
+const validationTtlMs = 10 * 60 * 1000;
 const owner = (purpose) => `platform:${purpose}`;
 const clean = (value, max = 2000) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
 const providerError = (code, status = 400, retryable = false) => Object.assign(new Error(code), { code, status, retryable });
@@ -31,9 +34,28 @@ function safeBaseUrl(value) {
 }
 
 const defaults = {
-  image_editing: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-3.0-pro", creditCost: 30 },
-  image_upscaling: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-3.0-pro", creditCost: 20 },
+  image_editing: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", creditCost: 30 },
+  image_upscaling: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", creditCost: 20 },
 };
+
+function validationKey(purpose, config, apiKey) {
+  return createHash("sha256").update(JSON.stringify([
+    purpose, config.adapter, config.baseUrl, config.modelId, apiKey,
+  ])).digest("hex");
+}
+
+function rememberValidation(purpose, config, apiKey, result) {
+  const timestamp = Date.now();
+  for (const [key, value] of recentValidations) if (timestamp - value.testedAt > validationTtlMs) recentValidations.delete(key);
+  if (recentValidations.size >= 32) recentValidations.delete(recentValidations.keys().next().value);
+  recentValidations.set(validationKey(purpose, config, apiKey), result);
+}
+
+function recentValidation(purpose, config, apiKey) {
+  const result = recentValidations.get(validationKey(purpose, config, apiKey));
+  if (!result || Date.now() - result.testedAt > validationTtlMs) return null;
+  return result;
+}
 
 function publicConfig(purpose, config = row(purpose)) {
   const fallback = defaults[purpose];
@@ -85,9 +107,12 @@ function endpoint(config) {
 }
 
 function providerFailure(payload, status) {
-  const message = clean(payload?.message || payload?.error?.message || payload?.code || "", 500).toLowerCase();
+  const providerCode = clean(payload?.code || payload?.error?.code || "", 160);
+  const message = clean(payload?.message || payload?.error?.message || providerCode, 500).toLowerCase();
   if ([401, 403].includes(status) || /api.?key|auth|token|unauthorized|invalidapikey|鉴权|认证/.test(message)) return providerError("IMAGE_PROVIDER_AUTH_FAILED", 422);
+  if (status === 429 && /allocationquota|insufficient_quota|quota exceeded|current quota|额度/.test(`${providerCode} ${message}`.toLowerCase())) return providerError("IMAGE_PROVIDER_QUOTA_EXCEEDED", 429, true);
   if (status === 429) return providerError("IMAGE_PROVIDER_RATE_LIMITED", 429, true);
+  if (status === 404 || /model.*(not found|not exist|unavailable|access)|not.*authorized.*model|permission.*model|未开通|模型.*无权限/.test(message)) return providerError("IMAGE_PROVIDER_MODEL_UNAVAILABLE", 422);
   if (status >= 500) return providerError("IMAGE_PROVIDER_UNAVAILABLE", 502, true);
   if (status >= 400 || payload?.code) return providerError("IMAGE_PROVIDER_REJECTED", 422);
   return null;
@@ -160,7 +185,9 @@ export async function testImageEditProviderConfiguration(purpose, data, fetchImp
   const apiKey = config.apiKey || decryptCredential(credentialRow(existing, purpose));
   const sample = await sharp({ create: { width: 512, height: 512, channels: 3, background: "#edf4ff" } }).png().toBuffer();
   const output = await invoke(config, apiKey, { buffer: sample, mimeType: "image/png" }, "Keep the composition. Improve clarity and use a clean professional white background.", fetchImpl);
-  return { status: "healthy", latencyMs: output.latencyMs, testedAt: Date.now() };
+  const result = { status: "healthy", latencyMs: output.latencyMs, testedAt: Date.now() };
+  rememberValidation(purpose, config, apiKey, result);
+  return result;
 }
 
 export async function saveImageEditProviderConfiguration(purpose, data, actorUserId = null, fetchImpl = fetch) {
@@ -168,7 +195,7 @@ export async function saveImageEditProviderConfiguration(purpose, data, actorUse
   const existing = row(purpose);
   const input = normalize(purpose, data, existing);
   const apiKey = input.apiKey || decryptCredential(credentialRow(existing, purpose));
-  const tested = await testImageEditProviderConfiguration(purpose, input, fetchImpl);
+  const tested = recentValidation(purpose, input, apiKey) || await testImageEditProviderConfiguration(purpose, input, fetchImpl);
   const version = existing ? existing.credential_version + (input.apiKey ? 1 : 0) : 1;
   const encrypted = input.apiKey ? encryptCredential(apiKey, owner(purpose), purpose, version) : { ciphertext: existing.key_ciphertext, iv: existing.key_iv, tag: existing.key_tag };
   const timestamp = Date.now();

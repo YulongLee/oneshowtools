@@ -12,7 +12,7 @@ process.env.APP_URL = "http://localhost";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const {
-  imageEditProviderConfiguration, saveImageEditProviderConfiguration,
+  imageEditProviderConfiguration, saveImageEditProviderConfiguration, testImageEditProviderConfiguration,
 } = await import(`../server/image-edit-provider.mjs?test=${Date.now()}`);
 const { aiImageToolSlugs, processAiImageTool } = await import(`../server/ai-image-tools.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
@@ -32,10 +32,14 @@ const providerFetch = async (url, options = {}) => {
 };
 
 test("image editing configuration is encrypted, redacted, and activates all commercial image tools", async () => {
-  const saved = await saveImageEditProviderConfiguration("image_editing", {
+  const configuration = {
     adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-3.0-pro",
     apiKey: "image-edit-secret-1234", creditCost: 30, status: "active",
-  }, "admin-test", providerFetch);
+  };
+  const promptCount = prompts.length;
+  await testImageEditProviderConfiguration("image_editing", configuration, providerFetch);
+  const saved = await saveImageEditProviderConfiguration("image_editing", configuration, "admin-test", providerFetch);
+  assert.equal(prompts.length, promptCount + 1, "save reuses a recent successful test instead of calling the provider twice");
   assert.equal(saved.configured, true);
   assert.equal(saved.keyHint, "••••1234");
   assert.doesNotMatch(JSON.stringify(saved), /image-edit-secret/);
