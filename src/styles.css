@@ -492,6 +492,8 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .outfit-image-picker small { margin-top: 5px; color: #929db0; font-size: 8px; }
 .outfit-image-preview { position: relative; height: 210px; border-radius: 9px; overflow: hidden; background: #eef2f8; }
 .outfit-image-preview img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.outfit-image-preview.loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #6d7b91; }
+.outfit-image-preview.loading > strong { max-width: calc(100% - 72px); overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .outfit-image-preview > span { position: absolute; left: 8px; right: 42px; bottom: 8px; min-height: 28px; padding: 0 9px; border-radius: 7px; display: flex; align-items: center; gap: 5px; overflow: hidden; color: #fff; background: rgba(23,34,54,.76); backdrop-filter: blur(8px); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .outfit-image-preview > span svg { flex: 0 0 auto; color: #69ddb7; }
 .outfit-image-preview > button { position: absolute; right: 8px; bottom: 8px; width: 30px; height: 28px; padding: 0; border: 0; border-radius: 7px; display: grid; place-items: center; color: #fff; background: rgba(195,69,76,.88); }

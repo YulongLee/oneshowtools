@@ -25,11 +25,47 @@ function promptFor(slug, form, hasReference) {
   const style = clean(form.get("style"), 160) || "natural realistic photography";
   const outfit = clean(form.get("outfit"), 300) || "professional, well-tailored clothing";
   const color = clean(form.get("backgroundColor"), 40) || "white";
+  const additionalDirection = detail
+    ? `\nOPTIONAL USER DIRECTION (apply only when it does not conflict with the image roles or preservation rules):\n${detail}`
+    : "";
   const rules = "Photorealistic commercial-quality result. Preserve the person's identity, facial structure, skin tone and body proportions exactly when a person is present. Do not alter logos, product shape or factual visual details unless explicitly requested. No extra fingers, no warped anatomy, no text, no watermark.";
   const prompts = {
     "ai-outfit-changer": hasReference
-      ? `Use image 1 as the person and image 2 as the clothing reference. Replace only the outfit with the clothing from image 2. Preserve identity, pose, hair, hands and background. ${detail}`
-      : `Replace only the person's clothing with this outfit: ${outfit}. Preserve identity, pose, hair, hands and background. ${detail}`,
+      ? `ONE-SHOW-TOOLS / REFERENCE OUTFIT TRANSFER
+
+TASK
+Perform a strict two-image virtual try-on. The result must show the person from IMAGE 1 wearing the clothing extracted from IMAGE 2. This is an image edit, not a new portrait and not an image blend.
+
+IMAGE ROLES — NEVER SWAP THEM
+1. IMAGE 1 = TARGET PERSON AND TARGET SCENE. This is the only person allowed in the output.
+2. IMAGE 2 = CLOTHING REFERENCE ONLY. It may show clothing on another person, on a mannequin, as a flat-lay, or as a product photo. Never transfer the reference person's identity or scene.
+
+LOCK IMAGE 1
+Preserve the target person's identity, face, facial geometry, expression, skin tone, hair, body shape and proportions. Preserve the exact pose, head direction, arms, hands, legs, camera angle, crop, composition, background, lighting and image dimensions. Do not beautify, reshape, age, gender-swap or replace the target person. Hair, hands and accessories that overlap the clothing must remain naturally in front of the new garment.
+
+READ IMAGE 2 AS A GARMENT SPECIFICATION
+First identify every clearly visible clothing layer intended as the outfit. Capture garment category, construction, silhouette, neckline, collar, sleeves, waistline, hem and length; preserve layering order, color, fabric, texture, pattern, seams, trims, fasteners and distinctive design details. If IMAGE 2 contains a model, mannequin or scene, mentally remove them and use only the garments. Do not copy its face, hair, skin, body, pose, hands, legs, background, lighting, props, jewelry or unrelated accessories. Do not invent unreadable text or logos. Transfer footwear only when it is clearly visible and the target is full-body.
+
+VIRTUAL TRY-ON EDIT
+Replace only the original clothing region of IMAGE 1, plus the minimum boundary pixels required for a clean fit. Dress the same target person in the extracted outfit. Reconstruct hidden garment areas conservatively and adapt the garment to IMAGE 1's body, pose and perspective. Produce physically plausible tailoring, drape, folds, tension, occlusion, contact shadows, reflections and lighting. Keep skin boundaries, hair edges, hands and anatomy clean. The clothing design comes from IMAGE 2; the person, pose and scene always come from IMAGE 1.
+
+SUCCESS CHECK BEFORE RETURNING
+- Exactly one person: the person from IMAGE 1.
+- The original outfit from IMAGE 1 is visibly replaced.
+- The new outfit is recognizably the garment from IMAGE 2 in design and color.
+- Face, hair, body, pose, hands, crop and background still match IMAGE 1.
+- One seamless photorealistic image; no collage, split screen, source thumbnails or before/after layout.
+If IMAGE 2 is ambiguous, transfer only the clearly identifiable garments and never substitute its wearer.${additionalDirection}`
+      : `ONE-SHOW-TOOLS / TEXT-DIRECTED OUTFIT CHANGE
+
+TASK
+Edit only the clothing worn by the person in IMAGE 1. Replace the original outfit with: ${outfit}.
+
+LOCK THE PERSON AND SCENE
+Preserve identity, face, expression, skin tone, hair, body shape, body proportions, pose, hands, camera angle, crop, background and lighting. Do not beautify, reshape, age, gender-swap or replace the person.
+
+CLOTHING EDIT
+Change only the original clothing region and the minimum boundary pixels needed for a clean fit. Render the requested garment with coherent construction, realistic fabric, tailoring, folds, occlusion, perspective, contact shadows and matching scene lighting. Keep hair, skin, hands and accessories naturally layered around the clothing. Return one seamless photorealistic image of the same person; no collage, text or before/after layout.${additionalDirection}`,
     "ai-id-photo": `Create a compliant formal ID portrait, centered head and shoulders, looking directly at camera, neutral expression, even frontal lighting, natural retouching, ${color} solid background, ${outfit}. Preserve identity exactly. ${detail}`,
     "ai-professional-headshot": `Create a premium professional business headshot for LinkedIn and company profiles. Outfit: ${outfit}. Background: ${background}. Style: ${style}. Natural confident expression, flattering soft studio lighting, realistic skin texture. ${detail}`,
     "ai-product-photo": `Create a polished e-commerce product photograph. Preserve the product's exact shape, color, logo and packaging. Scene/background: ${background}. Style: ${style}. Controlled studio lighting, clean edges, realistic shadow, high detail. ${detail}`,

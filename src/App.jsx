@@ -693,13 +693,40 @@ function OutfitImageSlot({ file, title, hint, badge, required, disabled = false,
   const [previewUrl, setPreviewUrl] = useState("");
   useEffect(() => {
     if (!file) { setPreviewUrl(""); return undefined; }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
+    let cancelled = false;
+    let url = "";
+    const release = () => {
+      if (!url) return;
+      const revoke = () => URL.revokeObjectURL(url);
+      if (window.requestIdleCallback) window.requestIdleCallback(revoke, { timeout: 1200 });
+      else window.setTimeout(revoke, 80);
+    };
+    const createPreview = async () => {
+      try {
+        const bitmap = await createImageBitmap(file);
+        const maxSide = 900;
+        const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        canvas.getContext("2d", { alpha: false }).drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", .86));
+        if (!blob) throw new Error("PREVIEW_UNAVAILABLE");
+        url = URL.createObjectURL(blob);
+      } catch {
+        url = URL.createObjectURL(file);
+      }
+      if (cancelled) release();
+      else setPreviewUrl(url);
+    };
+    setPreviewUrl("");
+    createPreview();
+    return () => { cancelled = true; release(); };
   }, [file]);
   return <article className={`outfit-image-slot ${file ? "selected" : ""}`}>
     <header><div><span>{badge}</span><strong>{title}</strong></div>{required && <em>{required}</em>}</header>
-    {previewUrl ? <div className="outfit-image-preview"><img src={previewUrl} alt={title} /><span><CheckCircle size={15} weight="fill" />{file.name}</span><button type="button" onClick={onRemove} aria-label={`Remove ${title}`}><Trash size={16} /></button></div> : disabled ? <div className="outfit-image-picker disabled"><LockKey size={23} /><strong>{hint}</strong><small>PNG · JPG · WEBP · HEIC · 25 MB</small></div> : <label className="outfit-image-picker"><input type="file" accept="image/*,.heic,.heif" onChange={(event) => onSelect(event.target.files?.[0] || null)} /><CloudArrowUp size={25} /><strong>{hint}</strong><small>PNG · JPG · WEBP · HEIC · 25 MB</small></label>}
+    {file ? previewUrl ? <div className="outfit-image-preview"><img src={previewUrl} alt={title} /><span><CheckCircle size={15} weight="fill" />{file.name}</span><button type="button" onClick={onRemove} aria-label={`Remove ${title}`}><Trash size={16} /></button></div> : <div className="outfit-image-preview loading"><SpinnerGap className="spin" size={25} /><strong>{file.name}</strong><button type="button" onClick={onRemove} aria-label={`Remove ${title}`}><Trash size={16} /></button></div> : disabled ? <div className="outfit-image-picker disabled"><LockKey size={23} /><strong>{hint}</strong><small>PNG · JPG · WEBP · HEIC · 25 MB</small></div> : <label className="outfit-image-picker"><input type="file" accept="image/*,.heic,.heif" onChange={(event) => onSelect(event.target.files?.[0] || null)} /><CloudArrowUp size={25} /><strong>{hint}</strong><small>PNG · JPG · WEBP · HEIC · 25 MB</small></label>}
   </article>;
 }
 

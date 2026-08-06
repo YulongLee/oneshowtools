@@ -21,10 +21,12 @@ const { runToolAction } = await import(`../server/tool-actions.mjs?test=${Date.n
 const resultPng = await sharp({ create: { width: 768, height: 1024, channels: 3, background: "#ffffff" } }).png().toBuffer();
 const sourcePng = await sharp({ create: { width: 600, height: 800, channels: 3, background: "#87aade" } }).png().toBuffer();
 const prompts = [];
+const providerRequests = [];
 const providerFetch = async (url, options = {}) => {
   if (String(url) === "https://provider.example/result.png") return new Response(resultPng, { status: 200, headers: { "content-type": "image/png" } });
   assert.equal(options.headers.authorization, "Bearer image-edit-secret-1234");
   const payload = JSON.parse(options.body);
+  providerRequests.push(payload);
   assert.equal(payload.model, "qwen-image-3.0-pro");
   assert.ok(payload.input.messages[0].content[0].image.startsWith("data:image/png;base64,"));
   prompts.push(payload.input.messages[0].content.at(-1).text);
@@ -76,7 +78,15 @@ test("outfit changer accepts a second clothing reference image", async () => {
   const before = prompts.length;
   const result = await processAiImageTool("ai-outfit-changer", form, providerFetch);
   assert.equal(result.output.referenceImages, 2);
-  assert.match(prompts[before], /image 1 as the person and image 2 as the clothing reference/i);
+  assert.match(prompts[before], /image 1 = target person and target scene/i);
+  assert.match(prompts[before], /only person allowed in the output/i);
+  assert.match(prompts[before], /may show clothing on another person, on a mannequin, as a flat-lay/i);
+  assert.match(prompts[before], /do not copy its face, hair, skin, body, pose/i);
+  assert.match(prompts[before], /clothing design comes from image 2; the person, pose and scene always come from image 1/i);
+  assert.match(prompts[before], /success check before returning/i);
+  assert.equal(providerRequests.at(-1).parameters.prompt_extend, false);
+  assert.match(providerRequests.at(-1).parameters.negative_prompt, /reference person's face/i);
+  assert.match(providerRequests.at(-1).parameters.negative_prompt, /swapping image roles/i);
 });
 
 test("an AI image action bills credits and archives the generated asset in the task and file centers", async () => {

@@ -159,19 +159,25 @@ async function invoke(config, apiKey, inputs, prompt, fetchImpl = fetch) {
   let body;
   const headers = { authorization: `Bearer ${apiKey}` };
   if (config.adapter === "dashscope") {
+    const preciseMultiImageEdit = normalized.length > 1;
     headers["content-type"] = "application/json";
     body = JSON.stringify({
       model: config.modelId,
       input: { messages: [{ role: "user", content: [
         ...normalized.map((image) => ({ image: `data:${image.mimeType};base64,${image.buffer.toString("base64")}` })),
-        { text: clean(prompt, 3000) },
+        { text: clean(prompt, 6000) },
       ] }] },
-      parameters: { prompt_extend: true, watermark: false, n: 1 },
+      parameters: {
+        prompt_extend: !preciseMultiImageEdit,
+        watermark: false,
+        n: 1,
+        ...(preciseMultiImageEdit ? { negative_prompt: "reference person's face, identity, skin, hair, body, pose, hands, legs or background; swapping image roles; replacing the target person; changed target face; changed target pose; changed target body shape; two people; second person; duplicated person; collage; split screen; before-and-after layout; source thumbnails; unchanged original outfit; wrong garment; missing garment details; mixed clothing from both images; floating garment; broken fabric; distorted anatomy; extra limbs; fused hands; invented text; invented logo; watermark" } : {}),
+      },
     });
   } else {
     const form = new FormData();
     form.append("model", config.modelId);
-    form.append("prompt", clean(prompt, 3000));
+    form.append("prompt", clean(prompt, 6000));
     normalized.forEach((image, index) => form.append("image[]", new Blob([image.buffer], { type: image.mimeType }), `source-${index + 1}.png`));
     form.append("size", "1536x1024");
     form.append("quality", "high");
