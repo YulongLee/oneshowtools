@@ -13,6 +13,7 @@ const musicCoverMigration = await readFile(new URL("../db/migrations/0018_music_
 const musicReferenceMigration = await readFile(new URL("../db/migrations/0019_music_reference_cover.sql", import.meta.url), "utf8");
 const aiImageMigration = await readFile(new URL("../db/migrations/0021_ai_image_suite.sql", import.meta.url), "utf8");
 const modelStudioWorkspaceMigration = await readFile(new URL("../db/migrations/0022_model_studio_workspace.sql", import.meta.url), "utf8");
+const customerSupportMigration = await readFile(new URL("../db/migrations/0023_customer_support.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -82,6 +83,11 @@ for (const purpose of ["image_editing", "image_upscaling"]) {
 }
 if (!modelStudioWorkspaceMigration.includes("CREATE TABLE IF NOT EXISTS model_studio_workspace_configs ")) {
   throw new Error("Model Studio workspace migration is missing model_studio_workspace_configs");
+}
+for (const table of ["support_conversations", "support_messages", "support_knowledge_articles"]) {
+  if (!customerSupportMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`Customer support migration is missing table: ${table}`);
+  }
 }
 
 for (const table of [

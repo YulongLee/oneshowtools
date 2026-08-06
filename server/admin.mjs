@@ -32,6 +32,9 @@ import {
 import {
   saveSingingProviderConfiguration, singingProviderConfiguration, testSingingProviderConfiguration,
 } from "./singing-provider.mjs";
+import {
+  adminSupportConversation, adminSupportOverview, replyToSupportConversation, resolveSupportConversation,
+} from "./customer-support.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -80,15 +83,17 @@ const permissions = [
   ["jobs.manage", "Retry and resolve operational jobs"],
   ["audit.read", "View and export administrative audit"],
   ["admins.manage", "Manage administrators and roles"],
+  ["support.read", "View customer support conversations and knowledge"],
+  ["support.manage", "Reply to and resolve customer support conversations"],
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "storage.read", "seo_sources.read", "audit.read"],
-  support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "storage.read", "seo_sources.read", "audit.read", "support.read", "support.manage"],
+  support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read", "support.read", "support.manage"],
   finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
   tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage", "storage.read", "storage.manage", "seo_sources.read", "seo_sources.manage"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "storage.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "storage.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read", "support.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -1311,6 +1316,40 @@ export function createAdminHandler(dependencies) {
     if (path === "/api/admin/v1/analytics/tools" && request.method === "GET") {
       const denied = requirePermission(context, "analytics.read"); if (denied) return denied;
       return json(toolAnalytics(request));
+    }
+    if (path === "/api/admin/v1/support" && request.method === "GET") {
+      const denied = requirePermission(context, "support.read"); if (denied) return denied;
+      const status = String(new URL(request.url).searchParams.get("status") || "");
+      return json(adminSupportOverview(status));
+    }
+    let supportMatch = path.match(/^\/api\/admin\/v1\/support\/([^/]+)$/);
+    if (supportMatch && request.method === "GET") {
+      const denied = requirePermission(context, "support.read"); if (denied) return denied;
+      const conversation = adminSupportConversation(supportMatch[1]);
+      return conversation ? json({ conversation }) : fail("SUPPORT_CONVERSATION_NOT_FOUND", 404);
+    }
+    supportMatch = path.match(/^\/api\/admin\/v1\/support\/([^/]+)\/reply$/);
+    if (supportMatch && request.method === "POST") {
+      const denied = requirePermission(context, "support.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      try {
+        const conversation = replyToSupportConversation({ conversationId: supportMatch[1], adminUserId: context.user.id, body: data.body, priority: data.priority });
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "support.manage", action: "admin.support.reply", targetType: "support_conversation", targetId: supportMatch[1] });
+        return json({ conversation }, 201);
+      } catch (error) { return fail(error.code || "SUPPORT_REPLY_FAILED", error.status || 400); }
+    }
+    supportMatch = path.match(/^\/api\/admin\/v1\/support\/([^/]+)\/resolve$/);
+    if (supportMatch && request.method === "POST") {
+      const denied = requirePermission(context, "support.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      try {
+        const conversation = resolveSupportConversation({
+          conversationId: supportMatch[1], adminUserId: context.user.id,
+          publishKnowledge: Boolean(data.publishKnowledge), knowledge: data.knowledge || {},
+        });
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "support.manage", action: "admin.support.resolve", targetType: "support_conversation", targetId: supportMatch[1], after: { publishKnowledge: Boolean(data.publishKnowledge) } });
+        return json({ conversation });
+      } catch (error) { return fail(error.code || "SUPPORT_RESOLVE_FAILED", error.status || 400); }
     }
     if (path === "/api/admin/v1/market-intelligence" && request.method === "GET") {
       const denied = requirePermission(context, "intelligence.read"); if (denied) return denied;

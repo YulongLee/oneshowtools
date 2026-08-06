@@ -31,6 +31,9 @@ import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-int
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import { billingPlanPayload } from "./billing-catalog.mjs";
 import {
+  askCustomerSupport, getUserSupportConversation, listUserSupportConversations, requestHumanSupport,
+} from "./customer-support.mjs";
+import {
   createModelConnection,
   deleteModelConnection,
   gatewayFlags,
@@ -1051,6 +1054,34 @@ export async function handleApi(request) {
   }
 
   if (path === "/api/dashboard" && request.method === "GET") return json(dashboard(user.id));
+  if (path === "/api/support/conversations" && request.method === "GET") {
+    return json({ conversations: listUserSupportConversations(user.id) });
+  }
+  const supportConversationMatch = path.match(/^\/api\/support\/conversations\/([^/]+)$/);
+  if (supportConversationMatch && request.method === "GET") {
+    const conversation = getUserSupportConversation(user.id, supportConversationMatch[1]);
+    return conversation ? json({ conversation }) : fail("SUPPORT_CONVERSATION_NOT_FOUND", 404);
+  }
+  if (path === "/api/support/messages" && request.method === "POST") {
+    const data = await body(request);
+    try {
+      const conversation = await askCustomerSupport({
+        user,
+        conversationId: String(data.conversationId || ""),
+        message: data.message,
+        locale: data.locale === "en" ? "en" : user.locale,
+      });
+      return json({ conversation }, 201);
+    } catch (error) {
+      return fail(error.code || "SUPPORT_MESSAGE_FAILED", error.status || 502);
+    }
+  }
+  const supportHandoffMatch = path.match(/^\/api\/support\/conversations\/([^/]+)\/handoff$/);
+  if (supportHandoffMatch && request.method === "POST") {
+    const data = await body(request);
+    try { return json({ conversation: requestHumanSupport(user.id, supportHandoffMatch[1], data.message) }); }
+    catch (error) { return fail(error.code || "SUPPORT_HANDOFF_FAILED", error.status || 400); }
+  }
   if (path === "/api/marketplace/search-events" && request.method === "POST") {
     const data = await body(request);
     recordMarketplaceSearch({

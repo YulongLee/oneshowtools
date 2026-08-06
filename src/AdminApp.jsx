@@ -5,7 +5,7 @@ import {
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
   BookOpenText,
-  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes, ImageSquare,
+  Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes, ImageSquare, Clock, Robot,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -17,6 +17,8 @@ const copy = {
     loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营",
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
+    supportCenter: "客服中心", supportQueue: "客服工单", supportKnowledge: "解决方案知识库", awaitingAgent: "等待人工", inProgress: "处理中", resolvedSupport: "已解决",
+    replyUser: "回复用户", resolveTicket: "标记已解决", publishKnowledge: "将本次方案沉淀到知识库", knowledgeTitle: "方案标题", knowledgeQuestion: "典型问题", knowledgeAnswer: "标准答案", knowledgeKeywords: "检索关键词", priority: "优先级", selectTicket: "选择一条工单查看完整对话", noTickets: "暂无客服工单",
     models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
     model_studio_workspace: "百炼工作空间", music_generation: "OneShowMusic", singing_cover: "歌曲翻唱模型", image_generation: "图片生成模型", image_editing: "图片编辑模型", image_upscaling: "高清修复模型", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
     musicModel: "音乐模型 ID", musicFormat: "输出格式", musicCredits: "每个版本积分", musicDuration: "最长时长（秒）", musicStatus: "运行状态", musicActive: "启用", musicDisabled: "停用",
@@ -94,6 +96,8 @@ const copy = {
     loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers",
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
+    supportCenter: "Support Center", supportQueue: "Support tickets", supportKnowledge: "Resolution knowledge", awaitingAgent: "Waiting for agent", inProgress: "In progress", resolvedSupport: "Resolved",
+    replyUser: "Reply to user", resolveTicket: "Resolve ticket", publishKnowledge: "Publish this resolution to the knowledge base", knowledgeTitle: "Resolution title", knowledgeQuestion: "Typical question", knowledgeAnswer: "Verified answer", knowledgeKeywords: "Search keywords", priority: "Priority", selectTicket: "Select a ticket to view the full conversation", noTickets: "No support tickets",
     models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
     model_studio_workspace: "Model Studio Workspace", music_generation: "OneShowMusic", singing_cover: "Song Cover Model", image_generation: "Image Generation Model", image_editing: "Image Editing Model", image_upscaling: "Image Restoration Model", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
     musicModel: "Music model ID", musicFormat: "Output format", musicCredits: "Credits per version", musicDuration: "Maximum duration (seconds)", musicStatus: "Runtime status", musicActive: "Enabled", musicDisabled: "Disabled",
@@ -861,6 +865,46 @@ function CustomerDrawer({ detail, locale, onClose, onMutate }) {
 function DetailRow({ label, value }) { return <div className="admin-detail-row"><small>{label}</small><strong>{value || "—"}</strong></div>; }
 function ListRow({ title, meta, value, body }) { return <div className="admin-list-row"><div><strong>{title}</strong>{meta && <small>{meta}</small>}{body && <p>{body}</p>}</div>{value != null && <b>{value}</b>}</div>; }
 
+function SupportCenterView({ data, detail, locale, status, onStatus, onSelect, onReply, onResolve, busy }) {
+  const t = copy[locale];
+  const [reply, setReply] = useState("");
+  const [priority, setPriority] = useState("normal");
+  const [publish, setPublish] = useState(true);
+  const [knowledge, setKnowledge] = useState({ title: "", question: "", answer: "", keywords: "", locale });
+  useEffect(() => {
+    if (!detail) return;
+    const latestUser = [...(detail.messages || [])].reverse().find((item) => item.senderType === "user")?.body || "";
+    const latestAdmin = [...(detail.messages || [])].reverse().find((item) => item.senderType === "admin")?.body || "";
+    setPriority(detail.priority || "normal");
+    setKnowledge({ title: detail.subject || "", question: latestUser, answer: latestAdmin, keywords: "", locale });
+    setReply("");
+  }, [detail?.id, detail?.messages?.length, locale]);
+  const submitReply = async () => {
+    if (!reply.trim()) return;
+    if (await onReply(detail.id, { body: reply, priority })) setReply("");
+  };
+  return <div className="admin-support-page">
+    <section className="admin-v2-metrics admin-v2-metrics-three support-metrics">
+      <Metric icon={ChatCircleDots} label={t.awaitingAgent} value={data?.counts?.awaiting_agent || 0} tone="warn" />
+      <Metric icon={Clock} label={t.inProgress} value={data?.counts?.in_progress || 0} tone="blue" />
+      <Metric icon={CheckCircle} label={t.resolvedSupport} value={data?.counts?.resolved || 0} tone="green" />
+    </section>
+    <section className="admin-support-layout">
+      <article className="admin-v2-panel support-ticket-list"><header><div><small>CUSTOMER SUPPORT</small><h2>{t.supportQueue}</h2></div><select value={status} onChange={(event) => onStatus(event.target.value)}><option value="">{t.all}</option><option value="awaiting_agent">{t.awaitingAgent}</option><option value="in_progress">{t.inProgress}</option><option value="open">AI</option><option value="resolved">{t.resolvedSupport}</option></select></header><div>
+        {data?.conversations?.map((ticket) => <button key={ticket.id} className={detail?.id === ticket.id ? "active" : ""} onClick={() => onSelect(ticket.id)}><span className={`support-ticket-avatar ${ticket.status}`}>{ticket.userName?.slice(0,1).toUpperCase()}</span><div><strong>{ticket.subject}</strong><small>{ticket.userName} · {ticket.userEmail}</small><p>{ticket.latestMessage}</p></div><aside><em className={`admin-badge ${ticket.status}`}>{ticket.status === "awaiting_agent" ? t.awaitingAgent : ticket.status === "in_progress" ? t.inProgress : ticket.status === "resolved" ? t.resolvedSupport : ticket.status}</em><small>{date(ticket.updatedAt, locale)}</small></aside></button>)}
+        {!data?.conversations?.length && <div className="admin-empty">{t.noTickets}</div>}
+      </div></article>
+      <article className="admin-v2-panel support-ticket-detail">{detail ? <>
+        <header><div><small>{detail.userEmail}</small><h2>{detail.subject}</h2><p>{detail.userName} · {detail.messageCount} messages</p></div><label>{t.priority}<select value={priority} onChange={(event) => setPriority(event.target.value)}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label></header>
+        <div className="admin-support-messages">{detail.messages?.map((item) => <div className={`admin-support-message ${item.senderType}`} key={item.id}><span>{item.senderType === "user" ? detail.userName?.slice(0,1).toUpperCase() : item.senderType === "admin" ? <UserCircle size={16} /> : <Robot size={16} />}</span><div><small>{item.senderType === "user" ? detail.userName : item.senderType === "admin" ? (locale === "en" ? "Human agent" : "人工客服") : item.senderType === "system" ? "System" : "OneShow AI"} · {date(item.createdAt, locale)}</small><p>{item.body}</p>{item.sourceType?.includes("knowledge") && <em>{locale === "en" ? "Knowledge assisted" : "知识库辅助"}</em>}</div></div>)}</div>
+        <div className="admin-support-reply"><textarea rows="4" value={reply} onChange={(event) => setReply(event.target.value)} placeholder={t.replyUser} /><button disabled={busy || !reply.trim()} onClick={submitReply}><PaperPlaneTilt size={17} />{t.replyUser}</button></div>
+        <div className="support-resolution-box"><label className="support-publish-toggle"><input type="checkbox" checked={publish} onChange={(event) => setPublish(event.target.checked)} />{t.publishKnowledge}</label>{publish && <div className="support-knowledge-form"><label>{t.knowledgeTitle}<input value={knowledge.title} onChange={(event) => setKnowledge({ ...knowledge, title: event.target.value })} /></label><label>{t.knowledgeQuestion}<textarea rows="2" value={knowledge.question} onChange={(event) => setKnowledge({ ...knowledge, question: event.target.value })} /></label><label>{t.knowledgeAnswer}<textarea rows="3" value={knowledge.answer} onChange={(event) => setKnowledge({ ...knowledge, answer: event.target.value })} /></label><label>{t.knowledgeKeywords}<input value={knowledge.keywords} onChange={(event) => setKnowledge({ ...knowledge, keywords: event.target.value })} /></label></div>}<button className="admin-support-resolve" disabled={busy || (publish && (!knowledge.title.trim() || !knowledge.question.trim() || !knowledge.answer.trim()))} onClick={() => onResolve(detail.id, { publishKnowledge: publish, knowledge })}><CheckCircle size={17} />{t.resolveTicket}</button></div>
+      </> : <div className="support-detail-empty"><ChatCircleDots size={42} weight="duotone" /><p>{t.selectTicket}</p></div>}</article>
+      <aside className="admin-v2-panel support-knowledge-list"><header><div><small>VERIFIED ANSWERS</small><h2>{t.supportKnowledge}</h2></div><BookOpenText size={22} /></header><div>{data?.knowledge?.map((item) => <article key={item.id}><strong>{item.title}</strong><small>{item.locale} · {date(item.updatedAt, locale)}</small><p>{item.answer}</p></article>)}</div></aside>
+    </section>
+  </div>;
+}
+
 function CommerceView({ data, locale, onApprove }) {
   const t = copy[locale];
   const [tab, setTab] = useState("approvals");
@@ -954,6 +998,8 @@ export function AdminApp() {
   const [intelligenceDate, setIntelligenceDate] = useState("");
   const [intelligenceRunning, setIntelligenceRunning] = useState(false);
   const [intelligenceChatRunning, setIntelligenceChatRunning] = useState(false);
+  const [supportStatus, setSupportStatus] = useState("");
+  const [selectedSupport, setSelectedSupport] = useState(null);
 
   const loadSession = useCallback(async () => {
     setBusy(true);
@@ -975,6 +1021,7 @@ export function AdminApp() {
     creditLedger: `/api/admin/v1/credits/ledger?page=${page}&pageSize=25`,
     finance: "/api/admin/v1/finance",
     analytics: "/api/admin/v1/analytics/tools?days=30",
+    supportCenter: `/api/admin/v1/support${supportStatus ? `?status=${encodeURIComponent(supportStatus)}` : ""}`,
     intelligence: `/api/admin/v1/market-intelligence${intelligenceDate ? `?date=${encodeURIComponent(intelligenceDate)}` : ""}`,
     models: "/api/admin/v1/platform-models",
     seoSources: "/api/admin/v1/seo-provider",
@@ -982,7 +1029,7 @@ export function AdminApp() {
     commerce: "/api/admin/v1/commerce", tools: "/api/admin/v1/tools",
     operations: "/api/admin/v1/operations", privacy: "/api/admin/v1/privacy",
     audit: `/api/admin/v1/audit?page=${page}&pageSize=25`, admins: "/api/admin/v1/administrators",
-  })[view], [view, query, userStatus, page, intelligenceDate]);
+  })[view], [view, query, userStatus, page, intelligenceDate, supportStatus]);
 
   const loadView = useCallback(async () => {
     if (!session || (session.mfa.enforced && !session.mfa.verified) || !endpoint) return;
@@ -1060,6 +1107,28 @@ export function AdminApp() {
       return true;
     } catch (error) { setMessage(error.code || t.loadFailed); return false; }
     finally { setIntelligenceChatRunning(false); }
+  };
+  const openSupportConversation = async (id) => {
+    setBusy(true); setMessage("");
+    try { setSelectedSupport((await api(`/api/admin/v1/support/${id}`)).conversation); }
+    catch (error) { setMessage(error.code || t.loadFailed); }
+    finally { setBusy(false); }
+  };
+  const replySupportConversation = async (id, payload) => {
+    setBusy(true); setMessage("");
+    try {
+      const result = await api(`/api/admin/v1/support/${id}/reply`, json("POST", payload));
+      setSelectedSupport(result.conversation); await loadView(); showToast(); return true;
+    } catch (error) { setMessage(error.code || t.loadFailed); return false; }
+    finally { setBusy(false); }
+  };
+  const resolveSupportTicket = async (id, payload) => {
+    setBusy(true); setMessage("");
+    try {
+      const result = await api(`/api/admin/v1/support/${id}/resolve`, json("POST", payload));
+      setSelectedSupport(result.conversation); await loadView(); showToast(); return true;
+    } catch (error) { setMessage(error.code || t.loadFailed); return false; }
+    finally { setBusy(false); }
   };
   const testPlatformModel = async (purpose, draft) => {
     try { return await api(`/api/admin/v1/platform-models/${purpose}/test`, json("POST", draft)); }
@@ -1142,6 +1211,7 @@ export function AdminApp() {
     ["command", Gauge, "dashboard.read"], ["users", Users, "users.read"],
     ["creditLedger", Coins, "credits.read"], ["finance", Bank, "finance.read"],
     ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
+    ["supportCenter", ChatCircleDots, "support.read"],
     ["intelligence", Binoculars, "intelligence.read"],
     ["models", Gear, "models.read"],
     ["seoSources", LinkSimple, "seo_sources.read"],
@@ -1155,6 +1225,7 @@ export function AdminApp() {
     creditLedger: <CreditLedgerView data={data.creditLedger} locale={locale} onPage={setPage} />,
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
+    supportCenter: <SupportCenterView data={data.supportCenter} detail={selectedSupport} locale={locale} status={supportStatus} onStatus={(next) => { setSupportStatus(next); setSelectedSupport(null); }} onSelect={openSupportConversation} onReply={replySupportConversation} onResolve={resolveSupportTicket} busy={busy} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
     models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onWorkspaceTest={testModelStudioWorkspace} onWorkspaceSave={saveModelStudioWorkspace} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,

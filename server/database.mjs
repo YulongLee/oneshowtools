@@ -275,6 +275,7 @@ export function initializeDatabase() {
     db.exec(readFileSync(resolve(projectRoot, "db/migrations/0021_ai_image_suite.sql"), "utf8"));
   }
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0022_model_studio_workspace.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0023_customer_support.sql"), "utf8"));
   const imageProviderColumns = new Set(db.prepare("PRAGMA table_info(image_provider_configs)").all().map((item) => item.name));
   if (!imageProviderColumns.has("credential_source")) db.exec("ALTER TABLE image_provider_configs ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'direct' CHECK(credential_source IN ('direct','workspace'))");
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
