@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { audit, db } from "./database.mjs";
 import { getServerConfig } from "./config.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
+import { assertUserFileCapacity } from "./file-quota.mjs";
 import { hashToken } from "./security.mjs";
 import {
   createSingingCover, createSingingVoice, deleteSingingVoice, querySingingCover,
@@ -18,6 +19,7 @@ function balance(userId) {
 }
 
 async function persistFile(userId, fileName, mimeType, buffer) {
+  assertUserFileCapacity(userId);
   const fileId = randomUUID();
   const safeName = basename(fileName || "audio.mp3").replace(/[\\/:*?"<>|]/g, "-").slice(0, 160) || "audio.mp3";
   const stored = await putStoredFile({ userId, fileId, fileName: safeName, mimeType, buffer });
@@ -66,6 +68,7 @@ export async function enrollSingingVoice(user, form, fetchImpl = fetch) {
   if (!name) throw singingError("SINGING_VOICE_NAME_REQUIRED", 422);
   const rawFiles = form.getAll("files").filter((file) => file instanceof File && file.size);
   if (!rawFiles.length || rawFiles.length > 25) throw singingError("SINGING_VOICE_FILES_REQUIRED", 422);
+  assertUserFileCapacity(user.id, rawFiles.length);
   const normalized = [];
   for (const file of rawFiles) {
     if (file.size > 10 * 1024 * 1024) throw singingError("SINGING_VOICE_FILE_TOO_LARGE", 413);
@@ -148,6 +151,7 @@ export async function submitSingingCover(user, form, fetchImpl = fetch) {
   if (!voice?.provider_voice_id) throw singingError("SINGING_VOICE_NOT_READY", 422);
   const targetFile = form.get("file");
   if (!(targetFile instanceof File) || !/\.(mp3|wav)$/i.test(targetFile.name || "")) throw singingError("SINGING_COVER_FORMAT_UNSUPPORTED", 422);
+  assertUserFileCapacity(user.id, 2);
   const audio = await normalizedReferenceAudio(targetFile);
   const title = clean(form.get("title") || "歌曲翻唱", 32);
   if (balance(user.id) < configuration.creditCost) throw singingError("INSUFFICIENT_CREDITS", 402);

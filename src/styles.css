@@ -500,6 +500,24 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .outfit-transfer-arrow { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #3175e4; background: #eaf2ff; }
 .outfit-upload-help { margin: 0; padding: 10px 12px; border-radius: 8px; display: flex; align-items: flex-start; gap: 7px; color: #5f6f86; background: #f3f7fc; font-size: 9px; line-height: 1.55; }
 .outfit-upload-help svg { flex: 0 0 auto; margin-top: 1px; color: #258460; }
+.outfit-history { margin-top: 18px; padding: 18px; }
+.outfit-history > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.outfit-history > header > div { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.outfit-history > header > div > svg { flex: 0 0 auto; color: #1769e8; }
+.outfit-history h2 { margin: 0; color: #26364f; font-size: 15px; }
+.outfit-history header p { margin: 4px 0 0; color: #7d8a9e; font-size: 9px; }
+.outfit-history > header > span { padding: 5px 8px; border-radius: 999px; color: #5f6f86; background: #f0f4f9; font-size: 8px; white-space: nowrap; }
+.outfit-history > div:not(.outfit-history-empty) { margin-top: 14px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.outfit-history > div > button { min-width: 0; padding: 7px; border: 1px solid #e2e8f1; border-radius: 10px; display: grid; grid-template-columns: 54px minmax(0,1fr) auto; align-items: center; gap: 8px; color: #54647a; text-align: left; background: #fff; }
+.outfit-history > div > button:hover,.outfit-history > div > button.active { color: #1769e8; border-color: #9fc1f3; background: #f7faff; }
+.outfit-history button img { width: 54px; height: 54px; border-radius: 7px; display: block; object-fit: cover; background: #eef2f7; }
+.outfit-history button span { min-width: 0; display: grid; gap: 4px; }
+.outfit-history button strong,.outfit-history button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outfit-history button strong { color: #33435b; font-size: 9px; }
+.outfit-history button small { color: #8d99aa; font-size: 7px; }
+.outfit-history-empty { min-height: 96px; margin-top: 12px; border: 1px dashed #d7e1ef; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #8592a6; background: #fafcff; font-size: 9px; }
+@media (max-width: 900px) { .outfit-history > div:not(.outfit-history-empty) { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 560px) { .outfit-history > div:not(.outfit-history-empty) { grid-template-columns: 1fr; } }
 .tool-textarea { min-height: 240px; padding: 14px; border: 1px solid #dce3ec; border-radius: 10px; outline: 0; color: var(--navy); background: #fbfcfe; resize: vertical; }
 .tool-textarea:focus { border-color: #78a7e8; box-shadow: 0 0 0 3px rgba(23,105,232,.09); }
 .range-field { margin-top: 19px; display: grid; gap: 9px; }

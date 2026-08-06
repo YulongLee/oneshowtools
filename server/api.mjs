@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { audit, db } from "./database.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
+import { assertUserFileCapacity, userFileQuota } from "./file-quota.mjs";
 import { getServerConfig, validateServerConfig } from "./config.mjs";
 import { sendAccountEmail } from "./email.mjs";
 import {
@@ -472,6 +473,8 @@ async function uploadFile(request, user) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File) || !file.size) return fail("FILE_REQUIRED");
+  try { assertUserFileCapacity(user.id); }
+  catch (error) { return fail(error.code || "USER_FILE_LIMIT_REACHED", error.status || 409); }
   const maxSize = Number(process.env.MAX_UPLOAD_BYTES || 25 * 1024 * 1024);
   if (file.size > maxSize) return fail("FILE_TOO_LARGE", 413);
   const id = randomUUID();
@@ -555,15 +558,34 @@ function listTasks(userId) {
     SELECT t.id, t.status, t.credit_cost AS creditCost, t.error_code AS errorCode,
       t.input_json AS inputJson, t.output_json AS outputJson, t.created_at AS createdAt,
       t.updated_at AS updatedAt, t.completed_at AS completedAt,
-      x.id AS toolId, x.slug AS toolSlug, x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon
+      x.id AS toolId, x.slug AS toolSlug, x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon,
+      (SELECT f.id FROM task_files tf JOIN files f ON f.id = tf.file_id
+        WHERE tf.task_id = t.id ORDER BY f.created_at DESC LIMIT 1) AS resultFileId,
+      (SELECT f.name FROM task_files tf JOIN files f ON f.id = tf.file_id
+        WHERE tf.task_id = t.id ORDER BY f.created_at DESC LIMIT 1) AS resultFileName,
+      (SELECT f.mime_type FROM task_files tf JOIN files f ON f.id = tf.file_id
+        WHERE tf.task_id = t.id ORDER BY f.created_at DESC LIMIT 1) AS resultMimeType,
+      (SELECT f.size_bytes FROM task_files tf JOIN files f ON f.id = tf.file_id
+        WHERE tf.task_id = t.id ORDER BY f.created_at DESC LIMIT 1) AS resultSizeBytes
     FROM tasks t JOIN tools x ON x.id = t.tool_id
     WHERE t.user_id = ? ORDER BY t.created_at DESC LIMIT 100
   `).all(userId).map((task) => ({
     ...task,
     input: JSON.parse(task.inputJson || "{}"),
     output: task.outputJson ? JSON.parse(task.outputJson) : null,
+    file: task.resultFileId ? {
+      id: task.resultFileId,
+      name: task.resultFileName,
+      mimeType: task.resultMimeType,
+      sizeBytes: task.resultSizeBytes,
+      downloadUrl: `/api/files/${task.resultFileId}/download`,
+    } : null,
     inputJson: undefined,
     outputJson: undefined,
+    resultFileId: undefined,
+    resultFileName: undefined,
+    resultMimeType: undefined,
+    resultSizeBytes: undefined,
   }));
 }
 
@@ -1186,7 +1208,7 @@ export async function handleApi(request) {
           WHERE tf.file_id = f.id ORDER BY t.created_at DESC LIMIT 1), '') AS sourceNameEn
       FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id
       WHERE f.user_id = ? ORDER BY f.created_at DESC
-    `).all(user.id) });
+    `).all(user.id), quota: userFileQuota(user.id) });
   }
   if (path === "/api/files" && request.method === "POST") return uploadFile(request, user);
   if (path.match(/^\/api\/files\/[^/]+\/download$/) && request.method === "GET") {

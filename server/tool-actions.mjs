@@ -4,6 +4,7 @@ import { PDFParse } from "pdf-parse";
 import { audit, db } from "./database.mjs";
 import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
+import { assertUserFileCapacity } from "./file-quota.mjs";
 import { generateWriting } from "./writing-engine.mjs";
 import { generateLyrics } from "./lyrics-engine.mjs";
 import { generateSeo } from "./seo-engine.mjs";
@@ -278,6 +279,10 @@ export async function runToolAction(request, user, tool) {
     "SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_ledger WHERE user_id = ?",
   ).get(user.id).balance);
   if (available < tool.creditCost) throw toolError("INSUFFICIENT_CREDITS", 402);
+  const alwaysCreatesFile = tool.slug === "background-remover" || tool.slug === "image-compressor"
+    || imageToolSlugs.has(tool.slug) || aiImageToolSlugs.has(tool.slug) || pdfToolSlugSet.has(tool.slug)
+    || mediaToolSlugs.has(tool.slug) || dataFileToolSlugs.has(tool.slug);
+  if (alwaysCreatesFile) assertUserFileCapacity(user.id);
 
   let processed;
   let input;
@@ -290,6 +295,11 @@ export async function runToolAction(request, user, tool) {
       ? toolModelSelection(user.id, tool.id, requestedModelConnectionId)
       : null;
     input = { fileName: file?.name || null, fileSize: file?.size || 0, fileNames: uploadedFiles.map((item) => item.name), fileCount: uploadedFiles.length || (file?.size ? 1 : 0), modelConnectionId };
+    if (tool.slug === "ai-outfit-changer") {
+      input.outfitMode = uploadedFiles.length > 1 ? "reference" : "description";
+      input.outfit = String(form.get("outfit") || "").trim().slice(0, 300);
+      input.prompt = String(form.get("prompt") || "").trim().slice(0, 1200);
+    }
     if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
     else if (imageToolSlugs.has(tool.slug)) processed = await processImageTool(tool.slug, form);
@@ -334,6 +344,7 @@ export async function runToolAction(request, user, tool) {
 
   let resultFile = null;
   if (processed.buffer) {
+    assertUserFileCapacity(user.id);
     const id = randomUUID();
     const stored = await putStoredFile({ userId: user.id, fileId: id, fileName: processed.name, mimeType: processed.mimeType, buffer: processed.buffer });
     resultFile = {

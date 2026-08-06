@@ -177,6 +177,13 @@ export function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS files_user_created_idx ON files(user_id, created_at DESC);
 
+    CREATE TRIGGER IF NOT EXISTS files_user_limit_before_insert
+    BEFORE INSERT ON files
+    WHEN (SELECT COUNT(*) FROM files WHERE user_id = NEW.user_id) >= 100
+    BEGIN
+      SELECT RAISE(ABORT, 'USER_FILE_LIMIT_REACHED');
+    END;
+
     CREATE TABLE IF NOT EXISTS task_files (
       task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
       file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,

@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 import { db, audit } from "./database.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
+import { assertUserFileCapacity } from "./file-quota.mjs";
 import { generateMusic, musicProviderConfiguration, preprocessMusicCover } from "./music-provider.mjs";
 import { generateMusicCover, imageProviderConfiguration } from "./image-provider.mjs";
 import { singingProviderConfiguration } from "./singing-provider.mjs";
@@ -50,6 +51,7 @@ export async function normalizedReferenceAudio(file) {
 export async function createMusicReference(user, file, fetchImpl = fetch) {
   const configuration = musicProviderConfiguration();
   if (!configuration.configured || !configuration.enabled) throw studioError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
+  assertUserFileCapacity(user.id);
   const audio = await normalizedReferenceAudio(file);
   const analyzed = await preprocessMusicCover(audio.buffer, fetchImpl);
   const id = randomUUID();
@@ -211,6 +213,7 @@ export function listMusicTracks(userId) {
 }
 
 async function storeTrackFile(task, track, generated) {
+  assertUserFileCapacity(task.user_id);
   const fileId = randomUUID();
   const safeTitle = track.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "OneShowMusic";
   const fileName = `${safeTitle}.${generated.extension}`;
@@ -239,6 +242,11 @@ export async function createMusicCover(user, trackId, fetchImpl = fetch) {
   const configuration = imageProviderConfiguration();
   if (!configuration.configured || !configuration.enabled) throw studioError("IMAGE_PROVIDER_NOT_CONFIGURED", 503);
   if (creditBalance(user.id) < configuration.creditCost) throw studioError("INSUFFICIENT_CREDITS", 402);
+  const oldCover = track.cover_file_id ? db.prepare(`
+    SELECT f.id, f.storage_name, COALESCE(s.provider, 'local') AS provider, s.object_key
+    FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ?
+  `).get(track.cover_file_id) : null;
+  assertUserFileCapacity(user.id, oldCover ? 0 : 1);
   const options = JSON.parse(track.options_json || "{}");
   const prompt = [
     "Create a commercial square album cover with no text, logo, watermark, border, or recognizable public figure.",
@@ -253,13 +261,10 @@ export async function createMusicCover(user, trackId, fetchImpl = fetch) {
   const safeTitle = track.title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "OneShowMusic";
   const fileName = `${safeTitle}-cover.${generated.extension}`;
   const stored = await putStoredFile({ userId: user.id, fileId, fileName, mimeType: generated.mimeType, buffer: generated.buffer });
-  const oldCover = track.cover_file_id ? db.prepare(`
-    SELECT f.id, f.storage_name, COALESCE(s.provider, 'local') AS provider, s.object_key
-    FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ?
-  `).get(track.cover_file_id) : null;
   const timestamp = Date.now();
   try {
     db.exec("BEGIN IMMEDIATE");
+    if (oldCover) db.prepare("DELETE FROM files WHERE id = ?").run(oldCover.id);
     db.prepare("INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(fileId, user.id, fileName, stored.storageName, generated.mimeType, generated.buffer.length, timestamp);
     db.prepare("INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at) VALUES (?, ?, ?, ?, 'available', ?, ?)")
@@ -271,7 +276,6 @@ export async function createMusicCover(user, trackId, fetchImpl = fetch) {
     db.prepare("INSERT INTO credit_ledger (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at) VALUES (?, ?, 'consumption', ?, '生成音乐封面', 'Generated music cover', 'task', ?, ?)")
       .run(randomUUID(), user.id, -configuration.creditCost, taskId, timestamp);
     db.prepare("UPDATE music_tracks SET cover_file_id = ?, updated_at = ? WHERE id = ?").run(fileId, timestamp, trackId);
-    if (oldCover) db.prepare("DELETE FROM files WHERE id = ?").run(oldCover.id);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");

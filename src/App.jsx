@@ -156,7 +156,7 @@ const dictionary = {
     name: "姓名", email: "邮箱", password: "密码", passwordHint: "至少 10 位", noAccount: "还没有账户？", hasAccount: "已有账户？",
     invalid: "请检查输入信息后重试。", welcome: "登录后使用完整平台", welcomeSub: "注册即可获得真实记录的 200 欢迎积分。",
     recentEmpty: "登录后，这里会显示你的真实任务和账户状态。", signInAction: "登录或注册", planPro: "专业版", planDesc: "适合持续使用多个 AI 工具的个人与团队。",
-    error: "操作失败，请稍后重试。", insufficient: "积分不足，请先充值或订阅。", loading: "正在加载真实数据…", inputRequired: "请输入任务内容，或选择一个文件。", noResults: "没有找到匹配的工具",
+    error: "操作失败，请稍后重试。", fileLimit: "文件数量已达到 100 个，请先到文件中心删除不需要的文件。", insufficient: "积分不足，请先充值或订阅。", loading: "正在加载真实数据…", inputRequired: "请输入任务内容，或选择一个文件。", noResults: "没有找到匹配的工具",
     backToMarket: "返回工具市场", toolWorkspace: "工具工作区", chooseFile: "选择文件", selectedFile: "已选择", startProcessing: "开始处理", processing: "正在处理",
     result: "处理结果", downloadResult: "下载结果", copyResult: "复制结果", copied: "已复制", imageTolerance: "背景容差", imageQuality: "压缩质量",
     textInput: "输入原始文案", pdfInput: "上传 PDF 文件", imageInput: "上传图片", speechInput: "实时语音识别", startSpeech: "开始识别", stopSpeech: "停止识别",
@@ -192,7 +192,7 @@ const dictionary = {
     name: "Name", email: "Email", password: "Password", passwordHint: "10 characters minimum", noAccount: "New to OneShowTools?", hasAccount: "Already have an account?",
     invalid: "Check your details and try again.", welcome: "Sign in for the complete platform", welcomeSub: "New accounts receive 200 credits recorded in the real ledger.",
     recentEmpty: "Your real tasks and account state will appear here after sign-in.", signInAction: "Sign in or sign up", planPro: "Pro", planDesc: "For individuals and teams using multiple AI tools regularly.",
-    error: "Something went wrong. Please try again.", insufficient: "Not enough credits. Top up or subscribe first.", loading: "Loading live data…", inputRequired: "Enter task content or select a file.", noResults: "No matching tools found",
+    error: "Something went wrong. Please try again.", fileLimit: "You have reached the 100-file limit. Delete unused files in File Center first.", insufficient: "Not enough credits. Top up or subscribe first.", loading: "Loading live data…", inputRequired: "Enter task content or select a file.", noResults: "No matching tools found",
     backToMarket: "Back to marketplace", toolWorkspace: "Tool workspace", chooseFile: "Choose file", selectedFile: "Selected", startProcessing: "Start processing", processing: "Processing",
     result: "Result", downloadResult: "Download result", copyResult: "Copy result", copied: "Copied", imageTolerance: "Background tolerance", imageQuality: "Compression quality",
     textInput: "Enter original copy", pdfInput: "Upload PDF", imageInput: "Upload image", speechInput: "Live speech recognition", startSpeech: "Start recognition", stopSpeech: "Stop recognition",
@@ -782,8 +782,12 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
   const [copied, setCopied] = useState(false);
   const [modelConnectionId, setModelConnectionId] = useState("managed");
   const recognitionRef = useRef(null);
+  const restoredTaskRef = useRef(null);
   const name = locale === "en" ? tool.nameEn : tool.nameZh;
   const description = locale === "en" ? tool.descriptionEn : tool.descriptionZh;
+  const outfitHistory = tool.slug === "ai-outfit-changer"
+    ? (historyTasks || []).filter((item) => item.status === "completed" && item.file?.mimeType?.startsWith("image/")).slice(0, 12)
+    : [];
   const isImage = imageToolSlugs.has(tool.slug);
   const isPdf = pdfToolSlugs.has(tool.slug);
   const isUtility = utilityToolSlugs.has(tool.slug);
@@ -810,6 +814,21 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
   useEffect(() => {
     setModelConnectionId(runtimeTool?.modelConnectionId || "managed");
   }, [runtimeTool?.modelConnectionId, tool.id]);
+
+  const restoreOutfitResult = useCallback((historyTask, updateUrl = false) => {
+    if (!historyTask?.file) return;
+    restoredTaskRef.current = historyTask.id;
+    setResult({ task: { id: historyTask.id, status: historyTask.status, createdAt: historyTask.createdAt }, output: historyTask.output || {}, file: historyTask.file });
+    setError("");
+    if (updateUrl) history.replaceState({}, "", `/tools/${tool.slug}?task=${encodeURIComponent(historyTask.id)}`);
+  }, [tool.slug]);
+
+  useEffect(() => {
+    if (tool.slug !== "ai-outfit-changer" || !authenticated) return;
+    const candidate = task?.file ? task : outfitHistory[0];
+    if (!candidate || restoredTaskRef.current === candidate.id) return;
+    restoreOutfitResult(candidate);
+  }, [authenticated, outfitHistory, restoreOutfitResult, task, tool.slug]);
 
   const run = async () => {
     if (!authenticated) return onAuth();
@@ -846,7 +865,7 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
       setResult(response);
       onCompleted?.(response);
     } catch (caught) {
-      setError(caught.status === 402 ? t.insufficient : t.error);
+      setError(caught.message === "USER_FILE_LIMIT_REACHED" ? t.fileLimit : caught.status === 402 ? t.insufficient : t.error);
     } finally {
       setBusy(false);
     }
@@ -929,6 +948,7 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
         {result?.output?.text && <div className="text-result"><pre>{result.output.text}</pre><button className="secondary-button" onClick={copyOutput}><Copy size={17} />{copied ? t.copied : t.copyResult}</button></div>}
       </section>
     </div>
+    {tool.slug === "ai-outfit-changer" && authenticated && <section className="surface outfit-history"><header><div><Clock size={20} weight="duotone" /><div><h2>{locale === "en" ? "Outfit history" : "历史换装记录"}</h2><p>{locale === "en" ? "Generated images are saved privately. Select one to restore it above." : "生成结果会保存到你的私有文件中心，点击记录即可重新查看和下载。"}</p></div></div><span>{outfitHistory.length} {locale === "en" ? "recent" : "条近期记录"}</span></header>{outfitHistory.length ? <div>{outfitHistory.map((item) => <button type="button" className={result?.task?.id === item.id ? "active" : ""} key={item.id} onClick={() => { restoreOutfitResult(item, true); document.querySelector(".tool-result-panel")?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><img src={item.file.downloadUrl} alt={item.file.name} loading="lazy" /><span><strong>{item.input?.outfitMode === "reference" ? (locale === "en" ? "Reference outfit" : "参考图换装") : (locale === "en" ? "Described outfit" : "描述服装换装")}</strong><small>{formatDate(item.createdAt, locale)}</small></span><ArrowRight size={15} /></button>)}</div> : <div className="outfit-history-empty"><ImageSquare size={26} weight="duotone" /><span>{locale === "en" ? "Your first generated outfit will appear here." : "完成第一次换装后，生成记录会显示在这里。"}</span></div>}</section>}
   </div>;
 }
 
@@ -1362,7 +1382,7 @@ function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onO
   </main><aside className="tasks-side"><article className="tasks-account surface"><span className="credits-avatar">{user?.name?.slice(0,1).toUpperCase()||"U"}</span><h2>{user?.name}</h2><p>{user?.email}</p><strong><Crown size={15} weight="fill"/>{planName}</strong><div><small>{t.creditsBalance}</small><b><Coins size={17} weight="duotone"/>{(credits?.balance||0).toLocaleString()} Credits</b><button onClick={()=>onNavigate?.("billing")}>{t.topup}</button></div></article><article className="tasks-usage surface"><h2>{copy.usage}</h2><div><TaskUsageDonut items={distribution}/><ul>{distribution.map((item)=><li key={item.name}><i style={{background:item.color}}/><span>{item.name}</span><strong>{item.value}</strong></li>)}</ul></div><footer>{copy.total}<strong>{tasks.length.toLocaleString()}</strong></footer></article><article className="tasks-quick surface"><h2>{copy.quick}</h2>{[[Sparkle,copy.newTask,copy.newTaskSub,"marketplace"],[SquaresFour,copy.marketplace,t.marketplaceSub,"marketplace"],[RocketLaunch,copy.runtime,t.runtimeSub,"runtime"],[Receipt,copy.ledger,t.creditsSub,"credits"]].map(([Icon,title,body,target])=><button key={title} onClick={()=>onNavigate?.(target)}><span><Icon size={16}/></span><p><strong>{title}</strong><small>{body}</small></p><ArrowRight size={14}/></button>)}</article><article className="tasks-recent-tools surface"><header><h2>{copy.recent}</h2><button onClick={()=>onNavigate?.("marketplace")}>{t.viewAll}<ArrowRight size={13}/></button></header>{recentTools.length?recentTools.map((task)=>{const Icon=iconMap[task.icon]||Wrench;return <button key={task.toolId} onClick={()=>onOpenTask(task)}><span><Icon size={15}/></span><strong>{isEn?task.toolNameEn:task.toolNameZh}</strong><small>{formatDate(task.createdAt,locale)}</small></button>}):<p className="account-empty">{t.noTasksHint}</p>}</article></aside></div>;
 }
 
-function Files({ files, user, billing, locale, onUpload, onDelete, onNavigate }) {
+function Files({ files, quota, user, billing, locale, onUpload, onDelete, onNavigate }) {
   const t = dictionary[locale];
   const isEn = locale === "en";
   const inputRef = useRef(null);
@@ -1372,9 +1392,9 @@ function Files({ files, user, billing, locale, onUpload, onDelete, onNavigate })
   const [layout, setLayout] = useState("list");
   const [page, setPage] = useState(1);
   const copy = isEn ? {
-    badge:"File Center", subtitle:"Manage every uploaded and generated file in one secure, searchable workspace.", total:"All files", storage:"Storage used", month:"Uploaded this month", oss:"OSS objects", local:"Local objects", all:"All files", image:"Images", audio:"Audio", video:"Video", document:"Documents", archive:"Archives", other:"Other", search:"Search file names", newest:"Newest first", oldest:"Oldest first", largest:"Largest first", name:"File name", size:"Size", type:"Type", time:"Uploaded", source:"Source", action:"Action", uploaded:"Manual upload", storageTitle:"Storage overview", storageBody:"Your files remain private and owner-scoped.", storageManage:"Storage settings", tools:"File tools", upload:"Upload a file", uploadSub:"Up to 25 MB per file", tasks:"Task outputs", tasksSub:"Files created by your AI tools", privacy:"Private storage", privacySub:"Only your account can access files", formats:"Supported file types", formatsBody:"Images, audio, video, documents, PDFs and archives", empty:"No files match these filters.", page:"Page", plan:"Plan", download:"Download", remove:"Delete", list:"List view", grid:"Grid view",
+    badge:"File Center", subtitle:"Manage every uploaded and generated file in one secure, searchable workspace.", total:"All files", storage:"Storage used", month:"Uploaded this month", oss:"OSS objects", local:"Local objects", all:"All files", image:"Images", audio:"Audio", video:"Video", document:"Documents", archive:"Archives", other:"Other", search:"Search file names", newest:"Newest first", oldest:"Oldest first", largest:"Largest first", name:"File name", size:"Size", type:"Type", time:"Uploaded", source:"Source", action:"Action", uploaded:"Manual upload", storageTitle:"File allowance", storageBody:"Each account can retain up to 100 private files.", storageManage:"Storage settings", tools:"File tools", upload:"Upload a file", uploadSub:"Up to 25 MB per file", tasks:"Task outputs", tasksSub:"Files created by your AI tools", privacy:"Private storage", privacySub:"Only your account can access files", formats:"Supported file types", formatsBody:"Images, audio, video, documents, PDFs and archives", empty:"No files match these filters.", page:"Page", plan:"Plan", download:"Download", remove:"Delete", list:"List view", grid:"Grid view",
   } : {
-    badge:"File Center", subtitle:"集中管理所有上传与生成文件，支持安全存储、分类查找和便捷下载。", total:"全部文件", storage:"文件大小", month:"本月上传", oss:"OSS 文件", local:"本地文件", all:"全部文件", image:"图片", audio:"音频", video:"视频", document:"文档", archive:"压缩包", other:"其他", search:"搜索文件名", newest:"按更新时间", oldest:"按最早时间", largest:"按文件大小", name:"文件名", size:"大小", type:"类型", time:"上传时间", source:"来源", action:"操作", uploaded:"手动上传", storageTitle:"存储概览", storageBody:"所有文件均按用户隔离并保持私有。", storageManage:"存储设置", tools:"文件工具", upload:"上传文件", uploadSub:"单个文件最大 25 MB", tasks:"任务产物", tasksSub:"由 AI 工具生成并保存的文件", privacy:"私有存储", privacySub:"仅当前账户可以访问", formats:"支持的文件类型", formatsBody:"图片、音频、视频、文档、PDF 与压缩包", empty:"当前筛选条件下没有文件。", page:"页", plan:"当前方案", download:"下载", remove:"删除", list:"列表视图", grid:"网格视图",
+    badge:"File Center", subtitle:"集中管理所有上传与生成文件，支持安全存储、分类查找和便捷下载。", total:"全部文件", storage:"文件大小", month:"本月上传", oss:"OSS 文件", local:"本地文件", all:"全部文件", image:"图片", audio:"音频", video:"视频", document:"文档", archive:"压缩包", other:"其他", search:"搜索文件名", newest:"按更新时间", oldest:"按最早时间", largest:"按文件大小", name:"文件名", size:"大小", type:"类型", time:"上传时间", source:"来源", action:"操作", uploaded:"手动上传", storageTitle:"文件额度", storageBody:"每个账户最多保留 100 个私有文件。", storageManage:"存储设置", tools:"文件工具", upload:"上传文件", uploadSub:"单个文件最大 25 MB", tasks:"任务产物", tasksSub:"由 AI 工具生成并保存的文件", privacy:"私有存储", privacySub:"仅当前账户可以访问", formats:"支持的文件类型", formatsBody:"图片、音频、视频、文档、PDF 与压缩包", empty:"当前筛选条件下没有文件。", page:"页", plan:"当前方案", download:"下载", remove:"删除", list:"列表视图", grid:"网格视图",
   };
   const fileType = (mime="",name="") => {
     const value = `${mime} ${name}`.toLowerCase();
@@ -1402,7 +1422,7 @@ function Files({ files, user, billing, locale, onUpload, onDelete, onNavigate })
     <section className="surface files-browser"><header><nav>{categoryTabs.map(([id,label])=><button key={id} className={category===id?"active":""} onClick={()=>{setCategory(id);setPage(1);}}>{label}{id!=="all"&&categoryCounts[id]?<small>{categoryCounts[id]}</small>:null}</button>)}</nav><div><label className="files-search"><MagnifyingGlass size={15}/><input value={search} onChange={(event)=>{setSearch(event.target.value);setPage(1);}} placeholder={copy.search}/></label><label className="files-sort"><select value={sort} onChange={(event)=>{setSort(event.target.value);setPage(1);}}><option value="newest">{copy.newest}</option><option value="oldest">{copy.oldest}</option><option value="largest">{copy.largest}</option></select><CaretDown size={13}/></label><div className="files-layout-toggle"><button className={layout==="list"?"active":""} onClick={()=>setLayout("list")} title={copy.list}><ListChecks size={16}/></button><button className={layout==="grid"?"active":""} onClick={()=>setLayout("grid")} title={copy.grid}><GridFour size={16}/></button></div></div></header>
       {layout==="list"?<div className="files-list"><div className="files-list-head"><span>{copy.name}</span><span>{copy.size}</span><span>{copy.type}</span><span>{copy.time}</span><span>{copy.source}</span><span>{copy.action}</span></div>{visible.map((file)=>{const [label,Icon,tone]=typeMeta[fileType(file.mimeType,file.name)];return <article key={file.id}><span className={`files-type-icon ${tone}`}><Icon size={18} weight="duotone"/></span><strong title={file.name}>{file.name}</strong><span>{formatBytes(file.sizeBytes)}</span><span className={`files-type-pill ${tone}`}>{label}</span><time>{formatDate(file.createdAt,locale)}</time><span>{(isEn?file.sourceNameEn:file.sourceNameZh)||copy.uploaded}</span><div><a href={`/api/files/${file.id}/download`} title={copy.download}><DownloadSimple size={16}/></a><button onClick={()=>onDelete(file.id)} title={copy.remove}><Trash size={16}/></button></div></article>})}</div>:<div className="files-grid">{visible.map((file)=>{const [label,Icon,tone]=typeMeta[fileType(file.mimeType,file.name)];return <article key={file.id}><span className={`files-type-icon ${tone}`}><Icon size={24} weight="duotone"/></span><div><strong title={file.name}>{file.name}</strong><small>{label} · {formatBytes(file.sizeBytes)}</small></div><footer><time>{formatDate(file.createdAt,locale)}</time><a href={`/api/files/${file.id}/download`} title={copy.download}><DownloadSimple size={16}/></a><button onClick={()=>onDelete(file.id)} title={copy.remove}><Trash size={16}/></button></footer></article>})}</div>}
       {!visible.length&&<div className="files-empty"><FolderOpen size={27}/><strong>{copy.empty}</strong><button onClick={chooseFile}>{t.upload}</button></div>}<footer><span>{filtered.length.toLocaleString()} {isEn?"files":"个文件"}</span><div><button disabled={safePage<=1} onClick={()=>setPage((value)=>Math.max(1,value-1))}><ArrowLeft size={15}/></button><strong>{safePage}</strong><span>/ {pageCount} {copy.page}</span><button disabled={safePage>=pageCount} onClick={()=>setPage((value)=>Math.min(pageCount,value+1))}><ArrowRight size={15}/></button></div></footer></section>
-  </main><aside className="files-side"><article className="surface files-account"><span className="credits-avatar">{user?.name?.slice(0,1).toUpperCase()||"U"}</span><h2>{user?.name}</h2><p>{user?.email}</p><strong><Crown size={14} weight="fill"/>{planName}</strong><div><header><small>{copy.storageTitle}</small><b>{formatBytes(totalBytes)}</b></header><div className="files-storage-bar"><i style={{width:`${Math.min(100,totalBytes/(1024*1024*1024)*10)}%`}}/></div><p>{copy.storageBody}</p><button onClick={()=>onNavigate?.("account")}>{copy.storageManage}</button></div></article><article className="surface files-tools"><h2>{copy.tools}</h2>{[[CloudArrowUp,copy.upload,copy.uploadSub,chooseFile],[ListChecks,copy.tasks,copy.tasksSub,()=>onNavigate?.("tasks")],[LockKey,copy.privacy,copy.privacySub,()=>onNavigate?.("account")]].map(([Icon,title,body,action])=><button key={title} onClick={action}><span><Icon size={17}/></span><p><strong>{title}</strong><small>{body}</small></p><ArrowRight size={14}/></button>)}</article><article className="surface files-formats"><h2>{copy.formats}</h2><div>{[ImageSquare,MusicNotes,VideoCamera,FileText,FilePdf,Database].map((Icon,index)=><span key={index}><Icon size={17} weight="duotone"/></span>)}</div><p>{copy.formatsBody}</p></article></aside></div>;
+  </main><aside className="files-side"><article className="surface files-account"><span className="credits-avatar">{user?.name?.slice(0,1).toUpperCase()||"U"}</span><h2>{user?.name}</h2><p>{user?.email}</p><strong><Crown size={14} weight="fill"/>{planName}</strong><div><header><small>{copy.storageTitle}</small><b>{quota?.used ?? files.length} / {quota?.limit ?? 100}</b></header><div className="files-storage-bar"><i style={{width:`${Math.min(100,((quota?.used ?? files.length)/(quota?.limit ?? 100))*100)}%`}}/></div><p>{copy.storageBody}</p><button onClick={()=>onNavigate?.("account")}>{copy.storageManage}</button></div></article><article className="surface files-tools"><h2>{copy.tools}</h2>{[[CloudArrowUp,copy.upload,copy.uploadSub,chooseFile],[ListChecks,copy.tasks,copy.tasksSub,()=>onNavigate?.("tasks")],[LockKey,copy.privacy,copy.privacySub,()=>onNavigate?.("account")]].map(([Icon,title,body,action])=><button key={title} onClick={action}><span><Icon size={17}/></span><p><strong>{title}</strong><small>{body}</small></p><ArrowRight size={14}/></button>)}</article><article className="surface files-formats"><h2>{copy.formats}</h2><div>{[ImageSquare,MusicNotes,VideoCamera,FileText,FilePdf,Database].map((Icon,index)=><span key={index}><Icon size={17} weight="duotone"/></span>)}</div><p>{copy.formatsBody}</p></article></aside></div>;
 }
 
 function Account({ user, health, credits, billing, locale, onLogout, onUserChange, onLocaleChange, onNotice, onNavigate }) {
@@ -1702,7 +1722,7 @@ export function App() {
   const [plans, setPlans] = useState([]);
   const [writingCatalog, setWritingCatalog] = useState(null);
   const [seoCatalog, setSeoCatalog] = useState(null);
-  const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [] });
+  const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [], fileQuota: { used: 0, limit: 100, remaining: 100 } });
   const [query, setQuery] = useState("");
   const [authOpen, setAuthOpen] = useState(() => Boolean(new URLSearchParams(location.search).get("resetToken")));
   const [routeSlug, setRouteSlug] = useState(() => location.pathname.match(/^\/tools\/([^/]+)$/)?.[1] || null);
@@ -1722,7 +1742,7 @@ export function App() {
     const [dashboard, runtime, credits, billing, tasks, files] = await Promise.all([
       api("/api/dashboard"), api("/api/runtime/status"), api("/api/credits"), api("/api/billing/status"), api("/api/tasks"), api("/api/files"),
     ]);
-    setPrivateData({ dashboard, runtime, credits, billing, tasks: tasks.tasks, files: files.files });
+    setPrivateData({ dashboard, runtime, credits, billing, tasks: tasks.tasks, files: files.files, fileQuota: files.quota || { used: files.files.length, limit: 100, remaining: Math.max(0, 100 - files.files.length) } });
   }, [session]);
 
   useEffect(() => { loadPublic(); }, [loadPublic]);
@@ -1800,7 +1820,7 @@ export function App() {
   };
   const upload = async (file) => {
     const form = new FormData(); form.append("file", file);
-    try { await api("/api/files", { method: "POST", body: form }); await loadPrivate(); } catch { setToast(t.error); }
+    try { await api("/api/files", { method: "POST", body: form }); await loadPrivate(); } catch (caught) { setToast(caught.message === "USER_FILE_LIMIT_REACHED" ? t.fileLimit : t.error); }
   };
   const deleteFile = async (id) => { await api(`/api/files/${id}`, { method: "DELETE" }).catch(() => setToast(t.error)); await loadPrivate(); };
   const cancelTask = async (id) => { await api(`/api/tasks/${id}/cancel`, { method: "POST" }).catch(() => setToast(t.error)); await loadPrivate(); };
@@ -1823,7 +1843,7 @@ export function App() {
     credits: <Credits data={privateData.credits} user={session} billing={privateData.billing} tasks={privateData.tasks} locale={locale} onNavigate={setView} />,
     billing: <Billing plans={plans} status={privateData.billing} credits={privateData.credits} user={session} tasks={privateData.tasks} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} onNavigate={setView} />,
     tasks: <Tasks tasks={privateData.tasks} user={session} credits={privateData.credits} billing={privateData.billing} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} onOpenTask={openTask} onNavigate={setView} />,
-    files: <Files files={privateData.files} user={session} billing={privateData.billing} locale={locale} onUpload={upload} onDelete={deleteFile} onNavigate={setView} />,
+    files: <Files files={privateData.files} quota={privateData.fileQuota} user={session} billing={privateData.billing} locale={locale} onUpload={upload} onDelete={deleteFile} onNavigate={setView} />,
     account: <Account user={session} health={health} credits={privateData.credits} billing={privateData.billing} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} onNavigate={setView} />,
     tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} task={routeTask} historyTasks={privateData.tasks.filter((task) => task.toolId === routeTool.id)} locale={locale} authenticated runtime={privateData.runtime} account={{ session, credits: privateData.credits }} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} />,
   }[view];
