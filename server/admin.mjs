@@ -24,6 +24,9 @@ import {
   imageProviderConfiguration, saveImageProviderConfiguration, testImageProviderConfiguration,
 } from "./image-provider.mjs";
 import {
+  imageEditProviderConfiguration, saveImageEditProviderConfiguration, testImageEditProviderConfiguration,
+} from "./image-edit-provider.mjs";
+import {
   saveSingingProviderConfiguration, singingProviderConfiguration, testSingingProviderConfiguration,
 } from "./singing-provider.mjs";
 
@@ -1343,6 +1346,8 @@ export function createAdminHandler(dependencies) {
         music: musicProviderConfiguration(),
         singing: singingProviderConfiguration(),
         image: imageProviderConfiguration(),
+        imageEditing: imageEditProviderConfiguration("image_editing"),
+        imageUpscaling: imageEditProviderConfiguration("image_upscaling"),
         storage: objectStorageConfiguration(),
       });
     }
@@ -1436,6 +1441,26 @@ export function createAdminHandler(dependencies) {
         const before = imageProviderConfiguration();
         const configuration = await saveImageProviderConfiguration(data, context.user.id);
         richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.image_provider.update", targetType: "image_provider", targetId: "music_cover", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_UPDATE_FAILED", error?.status || 502); }
+    }
+    const imageEditMatch = path.match(/^\/api\/admin\/v1\/image-edit-provider\/(image_editing|image_upscaling)(?:\/(test))?$/);
+    if (imageEditMatch && request.method === "POST" && imageEditMatch[2] === "test") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testImageEditProviderConfiguration(imageEditMatch[1], await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.image_edit_provider.test", targetType: "image_provider", targetId: imageEditMatch[1], after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    if (imageEditMatch && request.method === "PUT" && !imageEditMatch[2]) {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = imageEditProviderConfiguration(imageEditMatch[1]);
+        const configuration = await saveImageEditProviderConfiguration(imageEditMatch[1], data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.image_edit_provider.update", targetType: "image_provider", targetId: imageEditMatch[1], reason: String(data.reason), before, after: configuration });
         return json({ configuration });
       } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }

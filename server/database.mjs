@@ -263,6 +263,10 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0018_music_history_and_cover.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0019_music_reference_cover.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0020_singing_cover.sql"), "utf8"));
+  const imageProviderSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'image_provider_configs'").get()?.sql || "";
+  if (!imageProviderSchema.includes("image_editing")) {
+    db.exec(readFileSync(resolve(projectRoot, "db/migrations/0021_ai_image_suite.sql"), "utf8"));
+  }
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
@@ -353,6 +357,14 @@ export function initializeDatabase() {
     ["tool_image_watermark", "image-watermark", "图片加水印", "Image Watermark", "添加可调透明度和字号的文字水印。", "Add a text watermark with adjustable opacity and size.", "image", "TextAa", 1, "builtin-image"],
     ["tool_nine_grid", "nine-grid-image", "九宫格切图", "Nine-grid Image Splitter", "将方形区域切成九张图片并打包下载。", "Split a square image into nine tiles and download them as a package.", "image", "GridFour", 1, "builtin-image"],
     ["tool_id_photo", "id-photo-maker", "证件照尺寸与背景", "ID Photo Maker", "裁剪常用证件照尺寸并替换纯色背景；复杂发丝抠图接口已预留。", "Crop common ID-photo sizes and replace solid-color backgrounds; advanced AI matting is reserved.", "image", "UserCircle", 3, "builtin-image"],
+    ["tool_ai_outfit", "ai-outfit-changer", "AI 一键换装", "AI Outfit Changer", "上传人像并描述服装，或同时上传服装参考图，生成保留本人特征的真实换装效果。", "Change an outfit from a description or clothing reference while preserving the person's identity.", "image", "MagicWand", 30, "platform-image-edit"],
+    ["tool_ai_id_photo", "ai-id-photo", "AI 证件照", "AI ID Photo", "智能生成规范构图、自然光线和指定底色的高清证件照。", "Create a polished ID photo with compliant framing, natural lighting, and a selected background.", "image", "UserCircle", 25, "platform-image-edit"],
+    ["tool_ai_headshot", "ai-professional-headshot", "AI 职业形象照", "AI Professional Headshot", "保留人物身份特征，生成适合简历、LinkedIn 和企业主页的职业形象照。", "Create identity-preserving professional headshots for resumes, LinkedIn, and company profiles.", "image", "Briefcase", 35, "platform-image-edit"],
+    ["tool_ai_product", "ai-product-photo", "AI 商品图", "AI Product Photo", "保留商品外观与包装信息，生成电商白底图、场景图和广告级商品图。", "Create commercial product photos while preserving shape, colors, logos, and packaging.", "image", "ImageSquare", 35, "platform-image-edit"],
+    ["tool_ai_portrait", "ai-portrait-studio", "AI 写真", "AI Portrait Studio", "根据风格和场景描述生成保留本人特征的高品质个人写真。", "Generate premium identity-preserving portraits from a chosen style and scene.", "image", "Sparkle", 40, "platform-image-edit"],
+    ["tool_ai_cutout", "ai-smart-cutout", "智能抠图", "Smart AI Cutout", "识别人物、商品和复杂边缘，生成透明背景 PNG。", "Extract people and products with fine edges into a transparent PNG.", "image", "GridFour", 20, "platform-image-edit"],
+    ["tool_ai_bg_replace", "ai-background-replacer", "背景替换", "AI Background Replacer", "保留主体细节并根据描述生成光影与透视自然的新背景。", "Replace a background while matching the subject's lighting, perspective, and contact shadow.", "image", "ArrowsClockwise", 25, "platform-image-edit"],
+    ["tool_ai_restore", "ai-image-restorer", "图片高清修复", "AI Image Restorer", "修复模糊、噪点、压缩痕迹和老照片划痕，输出高清图片。", "Restore blur, noise, compression artifacts, and scratches into a high-resolution image.", "image", "Sparkle", 25, "platform-image-upscale"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
@@ -453,6 +465,10 @@ export function refreshRuntimeStatuses() {
   const musicReady = db.prepare("SELECT 1 AS ready FROM music_provider_configs WHERE status = 'active' LIMIT 1").get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'builtin-music'")
     .run(musicReady ? "ready" : "configuration_required");
+  const imageEditingReady = db.prepare("SELECT 1 AS ready FROM image_provider_configs WHERE purpose = 'image_editing' AND status = 'active'").get();
+  const imageUpscalingReady = db.prepare("SELECT 1 AS ready FROM image_provider_configs WHERE purpose IN ('image_upscaling','image_editing') AND status = 'active' LIMIT 1").get();
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(imageEditingReady ? "ready" : "configuration_required");
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(imageUpscalingReady ? "ready" : "configuration_required");
 }
 
 export function audit(userId, action, targetType = null, targetId = null, metadata = {}) {

@@ -11,6 +11,7 @@ const seoAgentMigration = await readFile(new URL("../db/migrations/0015_seo_agen
 const objectStorageAdminMigration = await readFile(new URL("../db/migrations/0017_object_storage_admin_config.sql", import.meta.url), "utf8");
 const musicCoverMigration = await readFile(new URL("../db/migrations/0018_music_history_and_cover.sql", import.meta.url), "utf8");
 const musicReferenceMigration = await readFile(new URL("../db/migrations/0019_music_reference_cover.sql", import.meta.url), "utf8");
+const aiImageMigration = await readFile(new URL("../db/migrations/0021_ai_image_suite.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -74,6 +75,9 @@ if (!musicCoverMigration.includes("CREATE TABLE IF NOT EXISTS image_provider_con
 }
 if (!musicReferenceMigration.includes("CREATE TABLE IF NOT EXISTS music_references ")) {
   throw new Error("Music reference migration is missing music_references");
+}
+for (const purpose of ["image_editing", "image_upscaling"]) {
+  if (!aiImageMigration.includes(`'${purpose}'`)) throw new Error(`AI image migration is missing purpose: ${purpose}`);
 }
 
 for (const table of [

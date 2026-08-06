@@ -9,6 +9,7 @@ import { generateLyrics } from "./lyrics-engine.mjs";
 import { generateSeo } from "./seo-engine.mjs";
 import { seoSpecialistBySlug } from "./seo-specialists.mjs";
 import { imageToolSlugs, processImageTool } from "./image-tools.mjs";
+import { aiImageToolSlugs, processAiImageTool } from "./ai-image-tools.mjs";
 import { pdfToolSlugSet, processPdfTool } from "./pdf-tools.mjs";
 import { processUtilityTool, utilityToolSlugs } from "./utility-tools.mjs";
 import { mediaToolSlugs, processMediaTool } from "./media-tools.mjs";
@@ -292,6 +293,7 @@ export async function runToolAction(request, user, tool) {
     if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
     else if (imageToolSlugs.has(tool.slug)) processed = await processImageTool(tool.slug, form);
+    else if (aiImageToolSlugs.has(tool.slug)) processed = await processAiImageTool(tool.slug, form);
     else if (pdfToolSlugSet.has(tool.slug)) processed = await processPdfTool(tool.slug, form);
     else if (mediaToolSlugs.has(tool.slug)) processed = await processMediaTool(tool.slug, form);
     else if (dataFileToolSlugs.has(tool.slug)) processed = await processDataFileTool(tool.slug, form);
