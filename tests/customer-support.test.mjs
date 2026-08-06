@@ -16,7 +16,7 @@ const { db } = await import("../server/database.mjs");
 const { createSessionToken, hashToken } = await import("../server/security.mjs");
 const {
   adminSupportConversation, askCustomerSupport, replyToSupportConversation,
-  requestHumanSupport, resolveSupportConversation,
+  submitSupportTicket, resolveSupportConversation,
 } = await import("../server/customer-support.mjs");
 
 function makeUser(email, name = "Support Customer") {
@@ -50,9 +50,9 @@ test("support assistant keeps conversation history and learns only from publishe
   assert.equal(conversation.messages[1].senderType, "assistant");
   assert.match(prompt, /已审核客服知识/);
 
-  const handedOff = requestHumanSupport(customer.id, conversation.id, "我还需要人工核对任务");
-  assert.equal(handedOff.status, "awaiting_agent");
-  assert.match(handedOff.messages.at(-1).body, /转交人工/);
+  const ticket = submitSupportTicket(customer.id, conversation.id, "请核对这个任务的积分流水");
+  assert.equal(ticket.status, "awaiting_agent");
+  assert.match(ticket.messages.at(-1).body, /工单已提交/);
 
   const replied = replyToSupportConversation({ conversationId: conversation.id, adminUserId: admin.id, body: "已核对，任务结果可以正常下载。", priority: "high" });
   assert.equal(replied.status, "in_progress");
@@ -80,9 +80,9 @@ test("authenticated support and admin queue APIs are connected", async () => {
   assert.equal(answered.conversation.messages.length, 2);
   assert.match(answered.conversation.messages[1].body, /积分/);
 
-  const handoff = await handleApi(post(`/api/support/conversations/${answered.conversation.id}/handoff`, customer.cookie, { message: "请人工继续处理" }));
-  assert.equal(handoff.status, 200);
-  assert.equal((await handoff.json()).conversation.status, "awaiting_agent");
+  const ticket = await handleApi(post(`/api/support/conversations/${answered.conversation.id}/ticket`, customer.cookie, { message: "请核对这个任务" }));
+  assert.equal(ticket.status, 200);
+  assert.equal((await ticket.json()).conversation.status, "awaiting_agent");
 
   assert.equal((await handleApi(authenticated("/api/admin/v1/session", admin.cookie))).status, 200);
   const queue = await handleApi(authenticated("/api/admin/v1/support", admin.cookie));

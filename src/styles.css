@@ -90,6 +90,14 @@ h1, h2, h3, h4, p { margin-top: 0; }
 .support-composer textarea { flex: 1; min-height: 42px; max-height: 96px; resize: none; border: 0; outline: 0; color: #27344b; background: transparent; font: inherit; font-size: 12px; line-height: 1.5; }
 .support-composer form button { flex: 0 0 38px; width: 38px; height: 38px; border: 0; border-radius: 11px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg,#236fe9,#6452e8); }
 .support-composer form button:disabled { opacity: .42; }
+.support-ticket-form { margin-bottom: 10px; padding: 12px; border: 1px solid #d8e3f5; border-radius: 13px; display: grid; gap: 7px; background: linear-gradient(145deg,#f7faff,#f4f1ff); }
+.support-ticket-form strong { color: #263651; font-size: 12px; }
+.support-ticket-form p { margin: 0; color: #738198; font-size: 10px; line-height: 1.55; }
+.support-ticket-form textarea { min-height: 66px; padding: 9px 10px; border: 1px solid #d9e2f0; border-radius: 9px; background: #fff; }
+.support-ticket-form > div { display: flex; justify-content: flex-end; gap: 7px; }
+.support-ticket-form > div button { height: 30px; padding: 0 12px; border: 1px solid #d7e0ee; border-radius: 8px; color: #65738b; background: #fff; font-size: 10px; }
+.support-ticket-form > div button.primary { border-color: #2d6fe5; color: #fff; background: #2d6fe5; }
+.support-ticket-form > div button:disabled { opacity: .45; }
 .support-handoff { margin-top: 8px; width: 100%; height: 34px; border: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: #68758b; background: transparent; font-size: 10px; }
 .support-handoff:hover { color: #1769e8; }
 .support-history-list { flex: 1; min-height: 0; padding: 12px; display: grid; align-content: start; gap: 8px; overflow-y: auto; background: #f8faff; }

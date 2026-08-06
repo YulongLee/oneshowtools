@@ -14,20 +14,26 @@ const json = (data) => ({ method: "POST", headers: { "content-type": "applicatio
 
 const words = {
   "zh-CN": {
-    label: "智能客服", online: "OneShow 客服在线", intro: "你好，我可以解答账户、积分、模型、任务和文件等问题。",
-    placeholder: "请输入你的问题…", send: "发送", human: "仍未解决，转人工", newChat: "发起新咨询",
-    history: "历史咨询", empty: "开始提问，我会先查询已审核的解决方案。", waiting: "已转人工，等待处理",
-    resolved: "已解决", inProgress: "人工处理中", open: "智能客服处理中", error: "客服暂时不可用，请稍后重试。",
-    typing: "正在查询解决方案…", back: "返回对话", close: "关闭客服", humanNote: "请补充希望人工处理的问题（可选）",
-    handoffDone: "已经保存留言，人工客服会在后台处理。你可以稍后回到这里查看回复。",
+    label: "智能客服", online: "OneShow 智能客服", intro: "你好，我可以解答账户、积分、模型、任务和文件等问题。",
+    placeholder: "请输入你的问题…", send: "发送", human: "提交客服工单", newChat: "发起新咨询",
+    history: "历史咨询", empty: "开始提问，我会先查询已审核的解决方案。", waiting: "工单待处理",
+    resolved: "已解决", inProgress: "工单处理中", open: "AI 客服", error: "客服暂时不可用，请稍后重试。",
+    typing: "正在查询解决方案…", back: "返回对话", close: "关闭客服",
+    ticketTitle: "提交异步客服工单", ticketBody: "请补充问题、任务时间或相关工具名称。管理员会定期处理，并在本对话中回复。",
+    ticketPlaceholder: "补充问题细节（必填）", cancel: "取消", submitTicket: "确认提交",
+    handoffDone: "留言已经保存为工单。无需在线等待，稍后回到这里即可查看管理员回复。",
+    adminReply: "工单回复",
   },
   en: {
     label: "Support", online: "OneShow Support", intro: "Hi! I can help with accounts, credits, models, tasks, and files.",
-    placeholder: "Type your question…", send: "Send", human: "Still need help", newChat: "New conversation",
-    history: "Conversation history", empty: "Ask a question and I will search verified solutions first.", waiting: "Waiting for an agent",
-    resolved: "Resolved", inProgress: "Agent is helping", open: "AI support", error: "Support is temporarily unavailable.",
-    typing: "Checking verified solutions…", back: "Back to chat", close: "Close support", humanNote: "Add a note for the agent (optional)",
-    handoffDone: "Your message is saved. An agent will respond here, so you can check back later.",
+    placeholder: "Type your question…", send: "Send", human: "Submit support ticket", newChat: "New conversation",
+    history: "Conversation history", empty: "Ask a question and I will search verified solutions first.", waiting: "Ticket pending",
+    resolved: "Resolved", inProgress: "Ticket in progress", open: "AI support", error: "Support is temporarily unavailable.",
+    typing: "Checking verified solutions…", back: "Back to chat", close: "Close support",
+    ticketTitle: "Submit an asynchronous ticket", ticketBody: "Add the issue details, task time, or tool name. An administrator will review it and reply in this conversation.",
+    ticketPlaceholder: "Add issue details (required)", cancel: "Cancel", submitTicket: "Submit ticket",
+    handoffDone: "Your message is saved as a ticket. You do not need to wait online; check this conversation later for the administrator's reply.",
+    adminReply: "Ticket reply",
   },
 };
 
@@ -45,6 +51,8 @@ export function SupportWidget({ locale = "zh-CN" }) {
   const [conversations, setConversations] = useState([]);
   const [conversation, setConversation] = useState(null);
   const [message, setMessage] = useState("");
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [ticketDraft, setTicketDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const messagesRef = useRef(null);
@@ -93,14 +101,13 @@ export function SupportWidget({ locale = "zh-CN" }) {
     finally { setBusy(false); }
   };
 
-  const handoff = async () => {
-    if (!conversation?.id || busy) return;
-    const note = window.prompt(t.humanNote, "") ?? null;
-    if (note == null) return;
+  const submitTicket = async () => {
+    const note = ticketDraft.trim();
+    if (!conversation?.id || !note || busy) return;
     setBusy(true); setError("");
     try {
-      const data = await request(`/api/support/conversations/${conversation.id}/handoff`, json({ message: note }));
-      setConversation(data.conversation); await load();
+      const data = await request(`/api/support/conversations/${conversation.id}/ticket`, json({ message: note }));
+      setConversation(data.conversation); setTicketDraft(""); setTicketOpen(false); await load();
     } catch (caught) { setError(caught.message || t.error); }
     finally { setBusy(false); }
   };
@@ -118,7 +125,7 @@ export function SupportWidget({ locale = "zh-CN" }) {
     </button>
     {open && <div className="support-panel-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}>
       <section className="support-panel" role="dialog" aria-modal="true" aria-label={t.label}>
-        <header className="support-panel-header"><div className="support-bot-avatar"><Robot size={27} weight="duotone" /></div><div><strong>{t.online}</strong><small><i />OneShowModel · {locale === "en" ? "Human handoff available" : "可转人工处理"}</small></div><button onClick={() => setOpen(false)} aria-label={t.close}><X size={20} /></button></header>
+        <header className="support-panel-header"><div className="support-bot-avatar"><Robot size={27} weight="duotone" /></div><div><strong>{t.online}</strong><small><i />OneShowModel · {locale === "en" ? "Asynchronous ticket support" : "支持异步工单跟进"}</small></div><button onClick={() => setOpen(false)} aria-label={t.close}><X size={20} /></button></header>
         <nav className="support-panel-nav"><button className={!historyOpen ? "active" : ""} onClick={() => setHistoryOpen(false)}><ChatCircleDots size={16} />{t.back}</button><button className={historyOpen ? "active" : ""} onClick={() => setHistoryOpen(true)}><Clock size={16} />{t.history}<span>{conversations.length}</span></button></nav>
         {historyOpen ? <div className="support-history-list">
           <button className="support-new-chat" onClick={() => { setConversation(null); setHistoryOpen(false); setMessage(""); }}><span>+</span>{t.newChat}</button>
@@ -128,11 +135,11 @@ export function SupportWidget({ locale = "zh-CN" }) {
           <div className="support-messages" ref={messagesRef}>
             <article className="support-message assistant"><span><Robot size={18} weight="duotone" /></span><div><p>{t.intro}</p></div></article>
             {!conversation?.messages?.length && <div className="support-empty"><ChatCircleDots size={30} weight="duotone" /><p>{t.empty}</p></div>}
-            {conversation?.messages?.map((item) => item.senderType === "system" ? <div className="support-system-message" key={item.id}><CheckCircle size={14} />{item.body}</div> : <article className={`support-message ${item.senderType}`} key={item.id}><span>{item.senderType === "user" ? <UserCircle size={18} /> : <Robot size={18} weight="duotone" />}</span><div><p>{item.body}</p><small>{item.senderType === "admin" ? (locale === "en" ? "Human agent" : "人工客服") : item.senderType === "assistant" ? "OneShow AI" : ""}</small></div></article>)}
+            {conversation?.messages?.map((item) => item.senderType === "system" ? <div className="support-system-message" key={item.id}><CheckCircle size={14} />{item.body}</div> : <article className={`support-message ${item.senderType}`} key={item.id}><span>{item.senderType === "user" ? <UserCircle size={18} /> : <Robot size={18} weight="duotone" />}</span><div><p>{item.body}</p><small>{item.senderType === "admin" ? t.adminReply : item.senderType === "assistant" ? "OneShow AI" : ""}</small></div></article>)}
             {busy && <article className="support-message assistant typing"><span><Robot size={18} weight="duotone" /></span><div><SpinnerGap className="spin" size={17} />{t.typing}</div></article>}
           </div>
           {error && <div className="support-error">{error === "SUPPORT_REQUEST_FAILED" ? t.error : error}</div>}
-          <footer className="support-composer"><form onSubmit={send}><textarea rows="2" maxLength="2000" value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t.placeholder} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(event); } }} /><button disabled={busy || !message.trim()} aria-label={t.send}><PaperPlaneRight size={20} weight="fill" /></button></form>{conversation?.id && !["awaiting_agent", "resolved", "closed"].includes(conversation.status) && <button className="support-handoff" disabled={busy} onClick={handoff}><UserCircle size={16} />{t.human}</button>}</footer>
+          <footer className="support-composer">{ticketOpen && <section className="support-ticket-form"><strong>{t.ticketTitle}</strong><p>{t.ticketBody}</p><textarea rows="3" maxLength="2000" value={ticketDraft} onChange={(event) => setTicketDraft(event.target.value)} placeholder={t.ticketPlaceholder} /><div><button onClick={() => { setTicketOpen(false); setTicketDraft(""); }}>{t.cancel}</button><button className="primary" disabled={busy || !ticketDraft.trim()} onClick={submitTicket}>{t.submitTicket}</button></div></section>}<form onSubmit={send}><textarea rows="2" maxLength="2000" value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t.placeholder} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(event); } }} /><button disabled={busy || !message.trim()} aria-label={t.send}><PaperPlaneRight size={20} weight="fill" /></button></form>{conversation?.id && !ticketOpen && !["awaiting_agent", "resolved", "closed"].includes(conversation.status) && <button className="support-handoff" disabled={busy} onClick={() => setTicketOpen(true)}><ChatCircleDots size={16} />{t.human}</button>}</footer>
         </>}
       </section>
     </div>}

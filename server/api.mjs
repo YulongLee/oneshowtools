@@ -31,7 +31,7 @@ import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-int
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import { billingPlanPayload } from "./billing-catalog.mjs";
 import {
-  askCustomerSupport, getUserSupportConversation, listUserSupportConversations, requestHumanSupport,
+  askCustomerSupport, getUserSupportConversation, listUserSupportConversations, submitSupportTicket,
 } from "./customer-support.mjs";
 import {
   createModelConnection,
@@ -1076,11 +1076,11 @@ export async function handleApi(request) {
       return fail(error.code || "SUPPORT_MESSAGE_FAILED", error.status || 502);
     }
   }
-  const supportHandoffMatch = path.match(/^\/api\/support\/conversations\/([^/]+)\/handoff$/);
-  if (supportHandoffMatch && request.method === "POST") {
+  const supportTicketMatch = path.match(/^\/api\/support\/conversations\/([^/]+)\/(?:ticket|handoff)$/);
+  if (supportTicketMatch && request.method === "POST") {
     const data = await body(request);
-    try { return json({ conversation: requestHumanSupport(user.id, supportHandoffMatch[1], data.message) }); }
-    catch (error) { return fail(error.code || "SUPPORT_HANDOFF_FAILED", error.status || 400); }
+    try { return json({ conversation: submitSupportTicket(user.id, supportTicketMatch[1], data.message) }); }
+    catch (error) { return fail(error.code || "SUPPORT_TICKET_FAILED", error.status || 400); }
   }
   if (path === "/api/marketplace/search-events" && request.method === "POST") {
     const data = await body(request);
