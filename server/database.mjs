@@ -267,6 +267,9 @@ export function initializeDatabase() {
   if (!imageProviderSchema.includes("image_editing")) {
     db.exec(readFileSync(resolve(projectRoot, "db/migrations/0021_ai_image_suite.sql"), "utf8"));
   }
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0022_model_studio_workspace.sql"), "utf8"));
+  const imageProviderColumns = new Set(db.prepare("PRAGMA table_info(image_provider_configs)").all().map((item) => item.name));
+  if (!imageProviderColumns.has("credential_source")) db.exec("ALTER TABLE image_provider_configs ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'direct' CHECK(credential_source IN ('direct','workspace'))");
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 
@@ -465,8 +468,23 @@ export function refreshRuntimeStatuses() {
   const musicReady = db.prepare("SELECT 1 AS ready FROM music_provider_configs WHERE status = 'active' LIMIT 1").get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'builtin-music'")
     .run(musicReady ? "ready" : "configuration_required");
-  const imageEditingReady = db.prepare("SELECT 1 AS ready FROM image_provider_configs WHERE purpose = 'image_editing' AND status = 'active'").get();
-  const imageUpscalingReady = db.prepare("SELECT 1 AS ready FROM image_provider_configs WHERE purpose IN ('image_upscaling','image_editing') AND status = 'active' LIMIT 1").get();
+  const imageEditingReady = db.prepare(`
+    SELECT 1 AS ready FROM image_provider_configs AS provider
+    WHERE provider.purpose = 'image_editing' AND provider.status = 'active'
+      AND (COALESCE(provider.credential_source, 'direct') = 'direct' OR EXISTS (
+        SELECT 1 FROM model_studio_workspace_configs AS workspace
+        WHERE workspace.id = 'default' AND workspace.status = 'active'
+      ))
+  `).get();
+  const imageUpscalingReady = db.prepare(`
+    SELECT 1 AS ready FROM image_provider_configs AS provider
+    WHERE provider.purpose IN ('image_upscaling','image_editing') AND provider.status = 'active'
+      AND (COALESCE(provider.credential_source, 'direct') = 'direct' OR EXISTS (
+        SELECT 1 FROM model_studio_workspace_configs AS workspace
+        WHERE workspace.id = 'default' AND workspace.status = 'active'
+      ))
+    LIMIT 1
+  `).get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(imageEditingReady ? "ready" : "configuration_required");
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(imageUpscalingReady ? "ready" : "configuration_required");
 }

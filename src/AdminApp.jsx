@@ -18,7 +18,7 @@ const copy = {
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
     models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
-    music_generation: "OneShowMusic", singing_cover: "歌曲翻唱模型", image_generation: "图片生成模型", image_editing: "图片编辑模型", image_upscaling: "高清修复模型", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
+    model_studio_workspace: "百炼工作空间", music_generation: "OneShowMusic", singing_cover: "歌曲翻唱模型", image_generation: "图片生成模型", image_editing: "图片编辑模型", image_upscaling: "高清修复模型", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
     musicModel: "音乐模型 ID", musicFormat: "输出格式", musicCredits: "每个版本积分", musicDuration: "最长时长（秒）", musicStatus: "运行状态", musicActive: "启用", musicDisabled: "停用",
     seoSources: "SEO 数据源", seoSourceTitle: "DataForSEO 数据源", seoSourceHint: "用于关键词指标、实时排名、外链和竞争分析。API 密码加密保存，提交后不再显示明文。",
     seoLogin: "API 登录名", seoPassword: "API 密码（留空则保留现有密码）", seoConnectionTest: "测试账户连接",
@@ -95,7 +95,7 @@ const copy = {
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
     models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
-    music_generation: "OneShowMusic", singing_cover: "Song Cover Model", image_generation: "Image Generation Model", image_editing: "Image Editing Model", image_upscaling: "Image Restoration Model", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
+    model_studio_workspace: "Model Studio Workspace", music_generation: "OneShowMusic", singing_cover: "Song Cover Model", image_generation: "Image Generation Model", image_editing: "Image Editing Model", image_upscaling: "Image Restoration Model", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
     musicModel: "Music model ID", musicFormat: "Output format", musicCredits: "Credits per version", musicDuration: "Maximum duration (seconds)", musicStatus: "Runtime status", musicActive: "Enabled", musicDisabled: "Disabled",
     seoSources: "SEO Sources", seoSourceTitle: "DataForSEO source", seoSourceHint: "Provides keyword metrics, live rankings, backlinks, and competitor data. The API password is encrypted and never displayed again.",
     seoLogin: "API login", seoPassword: "API password (leave blank to keep the stored password)", seoConnectionTest: "Test account connection",
@@ -506,7 +506,45 @@ function ObjectStorageView({ configuration, locale, canManage, onTest, onSave })
   </section>;
 }
 
-function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onSingingTest, onSingingSave, onImageTest, onImageSave, onImageEditTest, onImageEditSave, onStorageTest, onStorageSave }) {
+function ModelStudioWorkspaceView({ configuration, locale, canManage, onTest, onSave }) {
+  const t = copy[locale];
+  const [draft, setDraft] = useState({});
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    setDraft({
+      name: configuration?.name || (locale === "en" ? "Default Model Studio Workspace" : "阿里云百炼默认工作空间"),
+      region: configuration?.region || "cn-beijing", workspaceId: configuration?.workspaceId || "",
+      endpointMode: configuration?.endpointMode || "public", apiKey: "",
+      status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "",
+    });
+    setTestResult(null);
+  }, [configuration?.updatedAt, configuration?.configured, locale]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const endpoint = draft.endpointMode === "workspace" && draft.workspaceId
+    ? `https://${draft.workspaceId}.${draft.region || "cn-beijing"}.maas.aliyuncs.com/api/v1`
+    : draft.region === "ap-southeast-1" ? "https://dashscope-intl.aliyuncs.com/api/v1" : "https://dashscope.aliyuncs.com/api/v1";
+  const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(draft)); } finally { setTesting(false); } };
+  const save = async (event) => { event.preventDefault(); setSaving(true); try { const ok = await onSave(draft); if (ok) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); } finally { setSaving(false); } };
+  return <section className="platform-model-layout"><article className="admin-v2-panel platform-model-editor">
+    <div className="platform-model-current"><span className={`admin-metric-state ${configuration?.configured && configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.configured ? configuration.name : (locale === "en" ? "Not configured" : "尚未配置工作空间")}</strong><small>{configuration?.configured ? `${configuration.keyHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : (locale === "en" ? "Configure one encrypted key for inherited platform models" : "配置一个加密密钥，供平台模型统一继承")}</small></div></div>
+    <form className="platform-model-form" onSubmit={save}>
+      <label>{locale === "en" ? "Workspace name" : "工作空间名称"}<input value={draft.name || ""} onChange={change("name")} disabled={!canManage} required /></label>
+      <label>{locale === "en" ? "Region" : "地域"}<select value={draft.region || "cn-beijing"} onChange={change("region")} disabled={!canManage}><option value="cn-beijing">华北 2（北京）</option><option value="ap-southeast-1">Singapore</option></select></label>
+      <label>{locale === "en" ? "Endpoint mode" : "接口模式"}<select value={draft.endpointMode || "public"} onChange={change("endpointMode")} disabled={!canManage}><option value="public">{locale === "en" ? "Public DashScope endpoint" : "公共 DashScope 地址"}</option><option value="workspace">{locale === "en" ? "Workspace dedicated endpoint" : "工作空间专属地址"}</option></select></label>
+      <label>{t.workspaceId}<input value={draft.workspaceId || ""} onChange={change("workspaceId")} disabled={!canManage} required={draft.endpointMode === "workspace"} placeholder="ws-xxxxxxxx" /></label>
+      <label className="wide">API Host<input value={endpoint} readOnly /></label>
+      <label>{t.musicStatus}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{t.musicActive}</option><option value="disabled">{t.musicDisabled}</option></select></label>
+      <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured} placeholder="sk-... / sk-ws-..." /></label>
+      <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
+      {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{t.modelTestHealthy}</span><em>{testResult.latencyMs} ms</em></div>}
+      {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.testModel}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.saveModel}</button></div>}
+    </form>
+  </article><aside className="admin-v2-panel platform-model-guidance"><Globe size={25} /><h3>{locale === "en" ? "Alibaba Cloud Model Studio" : "阿里云百炼工作空间"}</h3><p>{locale === "en" ? "Centralize the region, endpoint, workspace ID and API key. Image models can inherit this connection without storing another key." : "统一管理地域、接口地址、Workspace ID 与 API Key，图片模型可直接继承，无需重复保存密钥。"}</p><ul><li>{locale === "en" ? "The test validates authentication without generating a billable image" : "连接测试使用无计费鉴权探针，不生成图片"}</li><li>{locale === "en" ? "Use the exact API Host shown when the API key was created" : "专属接口必须与创建 API Key 时显示的 API Host 一致"}</li><li>{locale === "en" ? "Keys are encrypted and never returned in plaintext" : "密钥加密保存，提交后不再返回明文"}</li></ul></aside></section>;
+}
+
+function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onSingingTest, onSingingSave, onImageTest, onImageSave, onImageEditTest, onImageEditSave, onWorkspaceTest, onWorkspaceSave, onStorageTest, onStorageSave }) {
   const t = copy[locale];
   const [purpose, setPurpose] = useState("managed_runtime");
   const selected = data?.models?.find((item) => item.purpose === purpose);
@@ -532,20 +570,22 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
     try { const result = await onSave(purpose, draft); if (result) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); }
     finally { setSaving(false); }
   };
-  const purposes = ["managed_runtime", "market_intelligence", "music_generation", "singing_cover", "image_generation", "image_editing", "image_upscaling", "storage_management"];
+  const purposes = ["managed_runtime", "market_intelligence", "model_studio_workspace", "music_generation", "singing_cover", "image_generation", "image_editing", "image_upscaling", "storage_management"];
   return <div className="admin-page-stack platform-model-page">
     <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE AI ROUTING</small><h2>{t.platformModels}</h2></div><Gear size={23} /></header><p>{t.platformModelsHint}</p></section>
     <nav className="admin-v2-panel admin-section-tabs platform-model-purpose-tabs">{purposes.map((item) => <button key={item} className={purpose === item ? "active" : ""} onClick={() => setPurpose(item)}>{t[item]}</button>)}</nav>
     {purpose === "storage_management"
       ? <ObjectStorageView configuration={data?.storage} locale={locale} canManage={canManageStorage} onTest={onStorageTest} onSave={onStorageSave} />
+      : purpose === "model_studio_workspace"
+      ? <ModelStudioWorkspaceView configuration={data?.modelStudioWorkspace} locale={locale} canManage={canManage} onTest={onWorkspaceTest} onSave={onWorkspaceSave} />
       : purpose === "music_generation"
       ? <section className="platform-model-layout"><MusicProviderView data={{ configuration: data?.music }} locale={locale} canManage={canManage} onTest={onMusicTest} onSave={onMusicSave} embedded /></section>
       : purpose === "singing_cover"
       ? <section className="platform-model-layout"><SingingProviderView configuration={data?.singing} locale={locale} canManage={canManage} onTest={onSingingTest} onSave={onSingingSave} /></section>
       : purpose === "image_generation"
-      ? <section className="platform-model-layout"><ImageProviderView configuration={data?.image} locale={locale} canManage={canManage} onTest={onImageTest} onSave={onImageSave} /></section>
+      ? <section className="platform-model-layout"><ImageProviderView configuration={data?.image} workspace={data?.modelStudioWorkspace} locale={locale} canManage={canManage} onTest={onImageTest} onSave={onImageSave} /></section>
       : purpose === "image_editing" || purpose === "image_upscaling"
-      ? <section className="platform-model-layout"><ImageEditProviderView purpose={purpose} configuration={purpose === "image_editing" ? data?.imageEditing : data?.imageUpscaling} locale={locale} canManage={canManage} onTest={onImageEditTest} onSave={onImageEditSave} /></section>
+      ? <section className="platform-model-layout"><ImageEditProviderView purpose={purpose} configuration={purpose === "image_editing" ? data?.imageEditing : data?.imageUpscaling} workspace={data?.modelStudioWorkspace} locale={locale} canManage={canManage} onTest={onImageEditTest} onSave={onImageEditSave} /></section>
       : <section className="platform-model-layout">
       <article className="admin-v2-panel platform-model-editor">
         <div className="platform-model-current"><span className={`admin-metric-state ${selected?.configured ? "healthy" : "warning"}`} /><div><strong>{selected?.modelId || t.notReporting}</strong><small>{selected?.source === "admin" ? `${selected.keyHint || "••••"} · ${selected.lastTestStatus || t.pending}` : `${locale === "en" ? "Environment configuration" : "环境变量配置"}`}</small></div></div>
@@ -566,35 +606,38 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
   </div>;
 }
 
-function ImageProviderView({ configuration, locale, canManage, onTest, onSave }) {
+function ImageProviderView({ configuration, workspace, locale, canManage, onTest, onSave }) {
   const t = copy[locale];
   const [draft, setDraft] = useState({});
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState(null);
   useEffect(() => {
-    const adapter = configuration?.adapter || "minimax";
-    setDraft({ adapter, baseUrl: configuration?.baseUrl || (adapter === "minimax" ? "https://api.minimaxi.com" : "https://api.openai.com"), modelId: configuration?.modelId || (adapter === "minimax" ? "image-01" : "gpt-image-1"), apiKey: "", creditCost: configuration?.creditCost || 10, status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "" });
+    const credentialSource = configuration?.credentialSource || (workspace?.configured ? "workspace" : "direct");
+    const adapter = credentialSource === "workspace" ? "dashscope" : (configuration?.adapter || "minimax");
+    setDraft({ adapter, credentialSource, baseUrl: credentialSource === "workspace" ? workspace?.baseUrl : (configuration?.baseUrl || (adapter === "minimax" ? "https://api.minimaxi.com" : "https://api.openai.com")), modelId: configuration?.modelId || (adapter === "dashscope" ? "qwen-image-2.0" : adapter === "minimax" ? "image-01" : "gpt-image-1"), apiKey: "", creditCost: configuration?.creditCost || 10, status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "" });
     setTestResult(null);
-  }, [configuration?.updatedAt, configuration?.configured]);
+  }, [configuration?.updatedAt, configuration?.configured, workspace?.updatedAt, workspace?.configured]);
   const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
-  const changeAdapter = (event) => { const adapter = event.target.value; setDraft((current) => ({ ...current, adapter, baseUrl: adapter === "minimax" ? "https://api.minimaxi.com" : "https://api.openai.com", modelId: adapter === "minimax" ? "image-01" : "gpt-image-1" })); };
+  const changeCredentialSource = (event) => { const credentialSource = event.target.value; setDraft((current) => credentialSource === "workspace" ? { ...current, credentialSource, adapter: "dashscope", baseUrl: workspace?.baseUrl || "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", apiKey: "" } : { ...current, credentialSource: "direct", adapter: "minimax", baseUrl: "https://api.minimaxi.com", modelId: "image-01" }); };
+  const changeAdapter = (event) => { const adapter = event.target.value; setDraft((current) => ({ ...current, adapter, credentialSource: "direct", baseUrl: adapter === "minimax" ? "https://api.minimaxi.com" : "https://api.openai.com", modelId: adapter === "minimax" ? "image-01" : "gpt-image-1" })); };
   const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(draft)); } finally { setTesting(false); } };
   const save = async (event) => { event.preventDefault(); setSaving(true); try { const ok = await onSave(draft); if (ok) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); } finally { setSaving(false); } };
   return <><article className="admin-v2-panel platform-model-editor"><div className="platform-model-current"><span className={`admin-metric-state ${configuration?.configured && configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.configured ? configuration.modelId : t.notReporting}</strong><small>{configuration?.configured ? `${configuration.keyHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : (locale === "en" ? "No image model configured" : "尚未配置图片模型")}</small></div></div><form className="platform-model-form" onSubmit={save}>
-    <label>{locale === "en" ? "API format" : "接口格式"}<select value={draft.adapter || "minimax"} onChange={changeAdapter} disabled={!canManage}><option value="minimax">MiniMax Images</option><option value="openai">OpenAI Images</option></select></label>
-    <label>{t.modelId}<input value={draft.modelId || ""} onChange={change("modelId")} disabled={!canManage} required /></label>
-    <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.baseUrl || ""} onChange={change("baseUrl")} disabled={!canManage} required /></label>
+    <label>{locale === "en" ? "Credential source" : "连接来源"}<select value={draft.credentialSource || "direct"} onChange={changeCredentialSource} disabled={!canManage}><option value="workspace" disabled={!workspace?.configured}>{locale === "en" ? "Inherit default Model Studio workspace" : "继承默认百炼工作空间"}</option><option value="direct">{locale === "en" ? "Independent API key" : "使用独立 API Key"}</option></select></label>
+    <label>{locale === "en" ? "API format" : "接口格式"}<select value={draft.adapter || "minimax"} onChange={changeAdapter} disabled={!canManage || draft.credentialSource === "workspace"}>{draft.credentialSource === "workspace" && <option value="dashscope">Alibaba Cloud Model Studio</option>}<option value="minimax">MiniMax Images</option><option value="openai">OpenAI Images</option></select></label>
+    <label>{t.modelId}<input list="image-generation-model-options" value={draft.modelId || ""} onChange={change("modelId")} disabled={!canManage} required /><datalist id="image-generation-model-options"><option value="qwen-image-2.0" /><option value="qwen-image-2.0-pro" /><option value="gpt-image-1" /><option value="image-01" /></datalist></label>
+    <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.credentialSource === "workspace" ? (workspace?.baseUrl || draft.baseUrl || "") : (draft.baseUrl || "")} onChange={change("baseUrl")} disabled={!canManage || draft.credentialSource === "workspace"} required /></label>
     <label>{locale === "en" ? "Credits per image" : "每张图片积分"}<input type="number" min="1" max="10000" value={draft.creditCost || 10} onChange={change("creditCost")} disabled={!canManage} required /></label>
     <label>{t.musicStatus}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{t.musicActive}</option><option value="disabled">{t.musicDisabled}</option></select></label>
-    <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured} /></label>
+    {draft.credentialSource === "direct" && <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured || configuration?.credentialSource === "workspace"} /></label>}
     <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
     {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{t.modelTestHealthy}</span><em>{testResult.latencyMs} ms</em></div>}
     {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.testModel}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.saveModel}</button></div>}
   </form></article><aside className="admin-v2-panel platform-model-guidance"><ImageSquare size={25} /><h3>{locale === "en" ? "Image generation" : "图片生成能力"}</h3><p>{locale === "en" ? "Provides a shared image-generation service for music covers and future image tools. Generated assets are stored with the user's files." : "为音乐封面以及后续图片工具提供统一的图片生成服务，生成结果归档到用户文件中心与 OSS。"}</p><ul><li>{locale === "en" ? "Users never see provider credentials" : "用户不会接触模型密钥"}</li><li>{locale === "en" ? "Testing creates one real image" : "连接测试会真实生成一张测试图片"}</li><li>{locale === "en" ? "Available to approved platform tools" : "仅向已接入的平台工具提供能力"}</li></ul></aside></>;
 }
 
-function ImageEditProviderView({ purpose, configuration, locale, canManage, onTest, onSave }) {
+function ImageEditProviderView({ purpose, configuration, workspace, locale, canManage, onTest, onSave }) {
   const t = copy[locale];
   const [draft, setDraft] = useState({});
   const [testing, setTesting] = useState(false);
@@ -602,21 +645,23 @@ function ImageEditProviderView({ purpose, configuration, locale, canManage, onTe
   const [testResult, setTestResult] = useState(null);
   useEffect(() => {
     const adapter = configuration?.adapter || "dashscope";
-    setDraft({ adapter, baseUrl: configuration?.baseUrl || "https://dashscope.aliyuncs.com/api/v1", modelId: configuration?.modelId || "qwen-image-2.0", apiKey: "", creditCost: configuration?.creditCost || (purpose === "image_upscaling" ? 20 : 30), status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "" });
+    setDraft({ adapter, credentialSource: configuration?.credentialSource || (workspace?.configured ? "workspace" : "direct"), baseUrl: configuration?.baseUrl || "https://dashscope.aliyuncs.com/api/v1", modelId: configuration?.modelId || "qwen-image-2.0", apiKey: "", creditCost: configuration?.creditCost || (purpose === "image_upscaling" ? 20 : 30), status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "" });
     setTestResult(null);
-  }, [configuration?.updatedAt, configuration?.configured, purpose]);
+  }, [configuration?.updatedAt, configuration?.configured, purpose, workspace?.updatedAt, workspace?.configured]);
   const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
-  const changeAdapter = (event) => { const adapter = event.target.value; setDraft((current) => ({ ...current, adapter, baseUrl: adapter === "dashscope" ? "https://dashscope.aliyuncs.com/api/v1" : "https://api.openai.com/v1", modelId: adapter === "dashscope" ? "qwen-image-2.0" : "gpt-image-1.5" })); };
+  const changeCredentialSource = (event) => { const credentialSource = event.target.value; setDraft((current) => credentialSource === "workspace" ? { ...current, credentialSource, adapter: "dashscope", baseUrl: workspace?.baseUrl || "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", apiKey: "" } : { ...current, credentialSource: "direct", adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0" }); };
+  const changeAdapter = (event) => { const adapter = event.target.value; setDraft((current) => ({ ...current, adapter, credentialSource: adapter === "openai" ? "direct" : current.credentialSource, baseUrl: adapter === "dashscope" ? "https://dashscope.aliyuncs.com/api/v1" : "https://api.openai.com/v1", modelId: adapter === "dashscope" ? "qwen-image-2.0" : "gpt-image-1.5" })); };
   const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(purpose, draft)); } finally { setTesting(false); } };
   const save = async (event) => { event.preventDefault(); setSaving(true); try { const ok = await onSave(purpose, draft); if (ok) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); } finally { setSaving(false); } };
   const title = purpose === "image_upscaling" ? (locale === "en" ? "Image restoration and upscale" : "图片高清修复") : (locale === "en" ? "AI image editing" : "AI 图片编辑");
   return <><article className="admin-v2-panel platform-model-editor"><div className="platform-model-current"><span className={`admin-metric-state ${configuration?.configured && configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.configured ? configuration.modelId : t.notReporting}</strong><small>{configuration?.configured ? `${configuration.keyHint || "••••"} · ${configuration.lastTestStatus || t.pending}` : (locale === "en" ? "No provider configured" : "尚未配置模型")}</small></div></div><form className="platform-model-form" onSubmit={save}>
+    <label>{locale === "en" ? "Credential source" : "连接来源"}<select value={draft.credentialSource || "direct"} onChange={changeCredentialSource} disabled={!canManage}><option value="workspace" disabled={!workspace?.configured}>{locale === "en" ? "Inherit default Model Studio workspace" : "继承默认百炼工作空间"}</option><option value="direct">{locale === "en" ? "Independent API key" : "使用独立 API Key"}</option></select></label>
     <label>{locale === "en" ? "API format" : "接口格式"}<select value={draft.adapter || "dashscope"} onChange={changeAdapter} disabled={!canManage}><option value="dashscope">Alibaba Cloud Model Studio</option><option value="openai">OpenAI Images</option></select></label>
     <label>{t.modelId}<input list={`image-model-options-${purpose}`} value={draft.modelId || ""} onChange={change("modelId")} disabled={!canManage} required /><datalist id={`image-model-options-${purpose}`}><option value="qwen-image-2.0" /><option value="qwen-image-2.0-pro" /><option value="wan2.7-image-pro" /><option value="wan2.7-image" /><option value="qwen-image-3.0-pro" /></datalist></label>
-    <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.baseUrl || ""} onChange={change("baseUrl")} disabled={!canManage} required /></label>
+    <label className="wide">{t.modelBaseUrl}<input type="url" value={draft.credentialSource === "workspace" ? (workspace?.baseUrl || draft.baseUrl || "") : (draft.baseUrl || "")} onChange={change("baseUrl")} disabled={!canManage || draft.credentialSource === "workspace"} required /></label>
     <label>{locale === "en" ? "Credits per result" : "每次处理积分"}<input type="number" min="1" max="10000" value={draft.creditCost || 20} onChange={change("creditCost")} disabled={!canManage} required /></label>
     <label>{t.musicStatus}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{t.musicActive}</option><option value="disabled">{t.musicDisabled}</option></select></label>
-    <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured} /></label>
+    {draft.credentialSource === "direct" && <label className="wide">{t.replaceApiKey}<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured || configuration?.credentialSource === "workspace"} /></label>}
     <label className="wide">{t.changeReason}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
     {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{t.modelTestHealthy}</span><em>{testResult.latencyMs} ms</em></div>}
     {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{t.testModel}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{t.saveModel}</button></div>}
@@ -1061,6 +1106,15 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/image-edit-provider/${purpose}`, json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const testModelStudioWorkspace = async (draft) => {
+    try { return await api("/api/admin/v1/model-studio-workspace/test", json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const saveModelStudioWorkspace = async (draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/model-studio-workspace", json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const testObjectStorage = async (draft) => {
     try { return await api("/api/admin/v1/object-storage/test", json("POST", draft)); }
     catch (error) { setMessage(error.code || t.loadFailed); return null; }
@@ -1102,7 +1156,7 @@ export function AdminApp() {
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
-    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
+    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onWorkspaceTest={testModelStudioWorkspace} onWorkspaceSave={saveModelStudioWorkspace} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,

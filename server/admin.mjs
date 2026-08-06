@@ -27,6 +27,9 @@ import {
   imageEditProviderConfiguration, saveImageEditProviderConfiguration, testImageEditProviderConfiguration,
 } from "./image-edit-provider.mjs";
 import {
+  modelStudioWorkspaceConfiguration, saveModelStudioWorkspaceConfiguration, testModelStudioWorkspaceConfiguration,
+} from "./model-studio-workspace.mjs";
+import {
   saveSingingProviderConfiguration, singingProviderConfiguration, testSingingProviderConfiguration,
 } from "./singing-provider.mjs";
 
@@ -1348,6 +1351,7 @@ export function createAdminHandler(dependencies) {
         image: imageProviderConfiguration(),
         imageEditing: imageEditProviderConfiguration("image_editing"),
         imageUpscaling: imageEditProviderConfiguration("image_upscaling"),
+        modelStudioWorkspace: modelStudioWorkspaceConfiguration(),
         storage: objectStorageConfiguration(),
       });
     }
@@ -1463,6 +1467,25 @@ export function createAdminHandler(dependencies) {
         richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.image_edit_provider.update", targetType: "image_provider", targetId: imageEditMatch[1], reason: String(data.reason), before, after: configuration });
         return json({ configuration });
       } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_UPDATE_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/model-studio-workspace/test" && request.method === "POST") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testModelStudioWorkspaceConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.model_studio_workspace.test", targetType: "model_studio_workspace", targetId: "default", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "MODEL_STUDIO_WORKSPACE_TEST_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/model-studio-workspace" && request.method === "PUT") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = modelStudioWorkspaceConfiguration();
+        const configuration = await saveModelStudioWorkspaceConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.model_studio_workspace.update", targetType: "model_studio_workspace", targetId: "default", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "MODEL_STUDIO_WORKSPACE_UPDATE_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/seo-provider/test" && request.method === "POST") {
       const denied = requirePermission(context, "seo_sources.manage"); if (denied) return denied;

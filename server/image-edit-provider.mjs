@@ -2,6 +2,7 @@ import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { db } from "./database.mjs";
 import { decryptCredential, encryptCredential } from "./model-gateway.mjs";
+import { modelStudioWorkspaceCredentials } from "./model-studio-workspace.mjs";
 
 const purposes = new Set(["image_editing", "image_upscaling"]);
 const recentValidations = new Map();
@@ -59,10 +60,10 @@ function recentValidation(purpose, config, apiKey) {
 
 function publicConfig(purpose, config = row(purpose)) {
   const fallback = defaults[purpose];
-  if (!config) return { purpose, configured: false, enabled: false, ...fallback, keyHint: null, lastTestStatus: null, lastTestLatencyMs: null, lastTestedAt: null, updatedAt: null };
+  if (!config) return { purpose, configured: false, enabled: false, ...fallback, credentialSource: "direct", keyHint: null, lastTestStatus: null, lastTestLatencyMs: null, lastTestedAt: null, updatedAt: null };
   return {
     purpose, configured: true, enabled: config.status === "active", adapter: config.adapter,
-    baseUrl: config.base_url, modelId: config.model_id, keyHint: config.key_hint,
+    baseUrl: config.base_url, modelId: config.model_id, keyHint: config.key_hint, credentialSource: config.credential_source || "direct",
     creditCost: config.credit_cost, lastTestStatus: config.last_test_status,
     lastTestLatencyMs: config.last_test_latency_ms, lastTestedAt: config.last_tested_at,
     updatedAt: config.updated_at,
@@ -77,20 +78,33 @@ function credentials(purpose) {
   const config = row(purpose) || (purpose === "image_upscaling" ? row("image_editing") : null);
   if (!config || config.status !== "active") return null;
   const credentialPurpose = config.purpose;
+  if (config.credential_source === "workspace") {
+    const workspace = modelStudioWorkspaceCredentials();
+    if (!workspace) return null;
+    return { ...publicConfig(credentialPurpose, config), requestedPurpose: purpose, adapter: "dashscope", baseUrl: workspace.baseUrl, apiKey: workspace.apiKey };
+  }
   return { ...publicConfig(credentialPurpose, config), requestedPurpose: purpose, apiKey: decryptCredential(credentialRow(config, credentialPurpose)) };
 }
 
 function normalize(purpose, data, existing = row(purpose)) {
-  const adapter = ["dashscope", "openai"].includes(data.adapter) ? data.adapter : (existing?.adapter || defaults[purpose].adapter);
+  const credentialSource = data.credentialSource === "workspace" ? "workspace" : (data.credentialSource === "direct" ? "direct" : (existing?.credential_source || "direct"));
+  const adapter = credentialSource === "workspace" ? "dashscope" : (["dashscope", "openai"].includes(data.adapter) ? data.adapter : (existing?.adapter || defaults[purpose].adapter));
   const fallback = defaults[purpose];
-  const baseUrl = safeBaseUrl(data.baseUrl || existing?.base_url || fallback.baseUrl);
+  const workspace = credentialSource === "workspace" ? modelStudioWorkspaceCredentials() : null;
+  if (credentialSource === "workspace" && !workspace) throw providerError("MODEL_STUDIO_WORKSPACE_NOT_CONFIGURED", 422);
+  const baseUrl = safeBaseUrl(workspace?.baseUrl || data.baseUrl || existing?.base_url || fallback.baseUrl);
   const modelId = clean(data.modelId || existing?.model_id || fallback.modelId, 120);
   const apiKey = clean(data.apiKey, 2048);
   const status = data.status === "disabled" ? "disabled" : "active";
   const creditCost = Math.max(1, Math.min(10000, Number(data.creditCost || existing?.credit_cost || fallback.creditCost)));
   if (!modelId || !/^[\w./:-]+$/.test(modelId)) throw providerError("IMAGE_MODEL_INVALID", 422);
-  if (!apiKey && !existing) throw providerError("IMAGE_API_KEY_REQUIRED", 422);
-  return { purpose, adapter, baseUrl, modelId, apiKey, status, creditCost };
+  if (credentialSource === "direct" && !apiKey && (!existing || existing.credential_source === "workspace")) throw providerError("IMAGE_API_KEY_REQUIRED", 422);
+  return { purpose, adapter, baseUrl, modelId, apiKey, status, creditCost, credentialSource, workspace };
+}
+
+function resolvedApiKey(purpose, input, existing) {
+  if (input.credentialSource === "workspace") return input.workspace.apiKey;
+  return input.apiKey || decryptCredential(credentialRow(existing, purpose));
 }
 
 async function normalizedInput(buffer, mimeType = "image/png") {
@@ -182,7 +196,7 @@ export async function testImageEditProviderConfiguration(purpose, data, fetchImp
   assertPurpose(purpose);
   const existing = row(purpose);
   const config = normalize(purpose, data, existing);
-  const apiKey = config.apiKey || decryptCredential(credentialRow(existing, purpose));
+  const apiKey = resolvedApiKey(purpose, config, existing);
   const sample = await sharp({ create: { width: 512, height: 512, channels: 3, background: "#edf4ff" } }).png().toBuffer();
   const output = await invoke(config, apiKey, { buffer: sample, mimeType: "image/png" }, "Keep the composition. Improve clarity and use a clean professional white background.", fetchImpl);
   const result = { status: "healthy", latencyMs: output.latencyMs, testedAt: Date.now() };
@@ -194,23 +208,24 @@ export async function saveImageEditProviderConfiguration(purpose, data, actorUse
   assertPurpose(purpose);
   const existing = row(purpose);
   const input = normalize(purpose, data, existing);
-  const apiKey = input.apiKey || decryptCredential(credentialRow(existing, purpose));
+  const apiKey = resolvedApiKey(purpose, input, existing);
   const tested = recentValidation(purpose, input, apiKey) || await testImageEditProviderConfiguration(purpose, input, fetchImpl);
-  const version = existing ? existing.credential_version + (input.apiKey ? 1 : 0) : 1;
-  const encrypted = input.apiKey ? encryptCredential(apiKey, owner(purpose), purpose, version) : { ciphertext: existing.key_ciphertext, iv: existing.key_iv, tag: existing.key_tag };
+  const changedCredential = Boolean(input.apiKey) || input.credentialSource === "workspace" || existing?.credential_source !== input.credentialSource;
+  const version = existing ? existing.credential_version + (changedCredential ? 1 : 0) : 1;
+  const encrypted = changedCredential ? encryptCredential(input.credentialSource === "workspace" ? "workspace-managed" : apiKey, owner(purpose), purpose, version) : { ciphertext: existing.key_ciphertext, iv: existing.key_iv, tag: existing.key_tag };
   const timestamp = Date.now();
   db.prepare(`
     INSERT INTO image_provider_configs
-    (purpose, adapter, base_url, model_id, key_ciphertext, key_iv, key_tag, key_hint, credential_version, status, credit_cost, last_test_status, last_test_latency_ms, last_tested_at, updated_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'healthy', ?, ?, ?, ?, ?)
+    (purpose, adapter, base_url, model_id, key_ciphertext, key_iv, key_tag, key_hint, credential_version, status, credit_cost, last_test_status, last_test_latency_ms, last_tested_at, updated_by, created_at, updated_at, credential_source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'healthy', ?, ?, ?, ?, ?, ?)
     ON CONFLICT(purpose) DO UPDATE SET adapter=excluded.adapter, base_url=excluded.base_url, model_id=excluded.model_id,
       key_ciphertext=excluded.key_ciphertext, key_iv=excluded.key_iv, key_tag=excluded.key_tag, key_hint=excluded.key_hint,
       credential_version=excluded.credential_version, status=excluded.status, credit_cost=excluded.credit_cost,
       last_test_status=excluded.last_test_status, last_test_latency_ms=excluded.last_test_latency_ms,
-      last_tested_at=excluded.last_tested_at, updated_by=excluded.updated_by, updated_at=excluded.updated_at
+      last_tested_at=excluded.last_tested_at, updated_by=excluded.updated_by, updated_at=excluded.updated_at, credential_source=excluded.credential_source
   `).run(purpose, input.adapter, input.baseUrl, input.modelId, encrypted.ciphertext, encrypted.iv, encrypted.tag,
-    input.apiKey ? keyHint(apiKey) : existing.key_hint, version, input.status, input.creditCost,
-    tested.latencyMs, tested.testedAt, actorUserId, existing?.created_at || timestamp, timestamp);
+    input.credentialSource === "workspace" ? input.workspace.keyHint : (input.apiKey ? keyHint(apiKey) : existing.key_hint), version, input.status, input.creditCost,
+    tested.latencyMs, tested.testedAt, actorUserId, existing?.created_at || timestamp, timestamp, input.credentialSource);
   if (purpose === "image_editing") {
     db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(input.status === "active" ? "ready" : "configuration_required");
     const upscale = row("image_upscaling");

@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS model_studio_workspace_configs (
+  id TEXT PRIMARY KEY CHECK(id = 'default'),
+  name TEXT NOT NULL,
+  region TEXT NOT NULL CHECK(region IN ('cn-beijing','ap-southeast-1')),
+  workspace_id TEXT,
+  endpoint_mode TEXT NOT NULL DEFAULT 'public' CHECK(endpoint_mode IN ('public','workspace')),
+  base_url TEXT NOT NULL,
+  key_ciphertext TEXT NOT NULL,
+  key_iv TEXT NOT NULL,
+  key_tag TEXT NOT NULL,
+  key_hint TEXT NOT NULL,
+  credential_version INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
+  last_test_status TEXT,
+  last_test_latency_ms INTEGER,
+  last_tested_at INTEGER,
+  updated_by TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
