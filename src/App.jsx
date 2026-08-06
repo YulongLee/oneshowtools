@@ -8,7 +8,7 @@ import {
   GearSix, Plus, PlugsConnected, ShieldCheck, PenNib, ChartLineUp, Megaphone, Code,
   Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, MusicNotes, Robot,
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
-  PaperPlaneRight, CheckSquare, FileText, Crown,
+  PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
 } from "@phosphor-icons/react";
 import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
 import { MusicStudio } from "./MusicStudio.jsx";
@@ -1061,9 +1061,38 @@ function Credits({ data, locale }) {
 function Billing({ plans, status, locale, onCheckout, onPortal }) {
   const t = dictionary[locale];
   if (!status) return <Loading locale={locale} />;
-  return <div className="page-stack"><PageHeading title={t.billing} subtitle={t.billingSub} /><div className={`notice-card ${status.configured ? "success" : "warning"}`}>{status.configured ? <CheckCircle size={21} /> : <Warning size={21} />}<p>{status.configured ? t.billingReady : t.billingUnavailable}</p></div>
-    <section><SectionTitle title={t.currentPlan} action={status.subscription && status.configured ? <button className="secondary-button" onClick={onPortal}>{t.billingPortal}</button> : null} /><article className="current-plan surface"><div><span className="plan-icon"><CreditCard size={24} /></span><div><small>{t.currentPlan}</small><h3>{status.subscription ? (locale === "en" ? status.subscription.nameEn : status.subscription.nameZh) : t.free}</h3></div></div><span className="status-pill completed"><CheckCircle size={14} weight="fill" />{status.subscription?.status || "active"}</span></article><p className="billing-note">{t.pendingConfirmation}</p></section>
-    <div className="plan-grid">{plans.map((plan) => <article className={`plan-card surface ${plan.code === "pro-monthly" ? "featured" : ""}`} key={plan.id}><span className="plan-badge">{plan.code === "pro-monthly" ? t.planPro : t.free}</span><h2>{locale === "en" ? plan.nameEn : plan.nameZh}</h2><p>{plan.code === "pro-monthly" ? t.planDesc : t.welcomeSub}</p><strong className="plan-price">{new Intl.NumberFormat(locale === "en" ? "en-US" : "zh-CN", { style: "currency", currency: plan.currency }).format(plan.amountMinor / 100)}<small> / {t.monthly}</small></strong><div className="plan-credit"><Coins size={18} />{plan.recurringCredits.toLocaleString()} {t.credits}</div>{plan.code === "pro-monthly" && <button className="primary-button full" disabled={!status.configured} onClick={() => onCheckout(plan.id)}>{t.subscribe}</button>}</article>)}</div>
+  const isEn = locale === "en";
+  const copy = isEn ? {
+    title: "Credits & membership", subtitle: "Top up when you need more, or subscribe for monthly credits and advanced access.",
+    topup: "Credit top-ups", topupSub: "One-time purchase · Credits never expire", membership: "Monthly membership", membershipSub: "Monthly credits plus capability upgrades",
+    credits: "base credits", bonus: "bonus", total: "credits received", buy: "Buy credits", subscribe: "Choose plan", current: "Current plan", unavailable: "Payment channel coming soon",
+    monthlyCredits: "credits / month", perMonth: "/ month", value: "A clear internal reference: approximately 100 credits ≈ ¥1 of tool usage.",
+    paymentPending: "Checkout will open after the payment provider is configured. No charge is attempted today.", manage: "Manage billing",
+  } : {
+    title: "积分与会员", subtitle: "按需充值积分，或订阅会员持续获得月度积分和高级权益。",
+    topup: "积分充值", topupSub: "一次购买 · 积分长期有效", membership: "会员月付", membershipSub: "每月积分 + 高级能力权益",
+    credits: "基础积分", bonus: "额外赠送", total: "实际到账", buy: "充值积分", subscribe: "选择会员", current: "当前方案", unavailable: "支付通道配置后开放",
+    monthlyCredits: "积分 / 月", perMonth: "/ 月", value: "平台内部价值参考：约 100 积分 ≈ ¥1 的工具使用额度。",
+    paymentPending: "当前尚未配置支付通道，页面不会发起真实扣款。配置后即可安全结账。", manage: "管理付款与发票",
+  };
+  const topups = plans.filter((plan) => plan.kind === "topup");
+  const memberships = plans.filter((plan) => plan.kind === "membership");
+  const price = (plan) => new Intl.NumberFormat(isEn ? "en-US" : "zh-CN", { style: "currency", currency: plan.currency, maximumFractionDigits: plan.amountMinor % 100 ? 1 : 0 }).format(plan.amountMinor / 100);
+  const activeCode = status.subscription?.code || "free";
+  const actionLabel = (plan, kind) => {
+    if (kind === "membership" && plan.code === activeCode) return copy.current;
+    if (!status.configured) return copy.unavailable;
+    return kind === "topup" ? copy.buy : copy.subscribe;
+  };
+  return <div className="page-stack billing-page">
+    <section className="billing-hero"><div><span className="billing-kicker">ONESHOWTOOLS BILLING</span><h1>{copy.title}</h1><p>{copy.subtitle}</p></div><div className="billing-balance"><span><Coins size={22} weight="duotone" /></span><div><small>{t.currentPlan}</small><strong>{status.subscription ? (isEn ? status.subscription.nameEn : status.subscription.nameZh) : t.free}</strong></div>{status.subscription && status.configured ? <button onClick={onPortal}>{copy.manage}<ArrowRight size={14} /></button> : <span className="billing-active"><CheckCircle size={14} weight="fill" />{copy.current}</span>}</div></section>
+
+    <div className={`billing-channel ${status.configured ? "ready" : "pending"}`}>{status.configured ? <CheckCircle size={18} weight="fill" /> : <ShieldCheck size={18} weight="fill" />}<span>{status.configured ? t.billingReady : copy.paymentPending}</span></div>
+
+    <section className="billing-section"><header><div><span className="billing-section-icon topup"><Lightning size={20} weight="fill" /></span><div><h2>{copy.topup}</h2><p>{copy.topupSub}</p></div></div><span className="billing-value-note">{copy.value}</span></header><div className="topup-grid">{topups.map((plan) => <article className={`topup-card surface ${plan.code === "pro-topup" ? "featured" : ""}`} key={plan.id}><div className="topup-card-head"><span className="plan-badge">{isEn ? plan.badgeEn : plan.badgeZh}</span>{plan.bonusCredits > 0 && <span className="bonus-pill"><Gift size={13} weight="fill" />+{plan.bonusCredits.toLocaleString()}</span>}</div><h3>{isEn ? plan.nameEn : plan.nameZh}</h3><strong className="billing-price">{price(plan)}</strong><dl><div><dt>{copy.credits}</dt><dd>{plan.recurringCredits.toLocaleString()}</dd></div><div><dt>{copy.bonus}</dt><dd className={plan.bonusCredits ? "positive" : ""}>+{plan.bonusCredits.toLocaleString()}</dd></div></dl><div className="topup-total"><span>{copy.total}</span><strong>{plan.totalCredits.toLocaleString()}</strong></div><button className={plan.code === "pro-topup" ? "primary-button full" : "secondary-button full"} disabled={!status.configured} onClick={() => onCheckout(plan.id)}>{actionLabel(plan, "topup")}</button></article>)}</div></section>
+
+    <section className="billing-section"><header><div><span className="billing-section-icon membership"><Crown size={20} weight="fill" /></span><div><h2>{copy.membership}</h2><p>{copy.membershipSub}</p></div></div></header><div className="membership-grid">{memberships.map((plan) => { const active = plan.code === activeCode; return <article className={`membership-card surface ${plan.code === "pro-monthly" ? "featured" : ""} ${active ? "active" : ""}`} key={plan.id}>{plan.code === "pro-monthly" && <span className="membership-ribbon">{isEn ? plan.badgeEn : plan.badgeZh}</span>}<div className="membership-card-head"><div><span>{isEn ? plan.badgeEn : plan.badgeZh}</span><h3>{isEn ? plan.nameEn : plan.nameZh}</h3></div><span className={`membership-mark ${plan.code}`}><Crown size={22} weight="duotone" /></span></div><strong className="membership-price">{price(plan)}<small>{copy.perMonth}</small></strong><div className="membership-credits"><Coins size={18} weight="duotone" /><strong>{plan.recurringCredits.toLocaleString()}</strong><span>{copy.monthlyCredits}</span></div><ul>{(isEn ? plan.benefitsEn : plan.benefitsZh).map((benefit) => <li key={benefit}><CheckCircle size={15} weight="fill" />{benefit}</li>)}</ul><button className={plan.code === "pro-monthly" ? "primary-button full" : "secondary-button full"} disabled={active || !status.configured || plan.amountMinor === 0} onClick={() => onCheckout(plan.id)}>{actionLabel(plan, "membership")}</button></article>; })}</div></section>
+
     <section><SectionTitle title={t.invoices} /><div className="surface account-list">{status.invoices?.length ? status.invoices.map((invoice) => <div className="account-list-row" key={invoice.id}><div><strong>{invoice.status}</strong><small>{formatDate(invoice.createdAt, locale)}</small></div><span>{new Intl.NumberFormat(locale === "en" ? "en-US" : "zh-CN", { style: "currency", currency: invoice.currency }).format(invoice.amountPaid / 100)}</span>{invoice.hostedUrl && <a href={invoice.hostedUrl} target="_blank" rel="noreferrer">{t.download}</a>}</div>) : <p className="account-empty">{t.noInvoices}</p>}</div></section>
   </div>;
 }

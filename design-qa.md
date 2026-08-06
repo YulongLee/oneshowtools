@@ -1,40 +1,34 @@
-# OneShowTools workspace dashboard design QA
+# OneShowTools billing and membership design QA
 
-- Source visual truth: `artifacts/dashboard-reference.png`
-- Browser implementation capture: `artifacts/dashboard-implementation-desktop.png`
-- Mobile implementation capture: `artifacts/dashboard-implementation-mobile.png`
-- Side-by-side comparison: `artifacts/dashboard-qa-comparison.png`
-- Source pixels: 1536 × 1024
-- Desktop implementation pixels: 1639 × 1329
-- Tested states: authenticated Chinese workspace at browser default width, 1024 × 900, and 390 × 844
+- Source visual truth: `artifacts/billing-reference.png`
+- Desktop implementation: `artifacts/billing-implementation-desktop.png`
+- Mobile implementation: `artifacts/billing-implementation-mobile.png`
+- Side-by-side comparison: `artifacts/billing-qa-comparison.png`
+- Tested states: authenticated Chinese billing page at browser default width and 390 × 844
 
 ## Findings
 
 - No actionable P0, P1, or P2 differences remain.
-- Hierarchy: the implementation matches the reference's dashboard rhythm: greeting/search hero, five KPI cards, quick access, recommendations, runtime/task context, and category exploration.
-- Data integrity: every displayed number and status comes from the authenticated user's real dashboard, subscription, task, file, credit, runtime, and tool-catalog data. Decorative fake metrics, notifications, and fabricated usage counts from the reference were intentionally excluded.
-- Visual language: cool blue-violet gradient, white cards, compact icon tiles, subtle borders, and soft shadows preserve the OneShowTools product system while increasing density and polish.
-- Hero artwork: a custom transparent 3D OneShowTools toolkit illustration is used at desktop and crops safely at mobile width.
-- Responsive behavior: 1024 px switches KPI and content grids without clipping; 390 px retains the hero search, two-column KPI layout, full-width plan card, and existing bottom navigation.
-- Accessibility: headings remain semantic, actions are buttons, search retains a visible input and label placeholder, status does not rely on color alone, and mobile controls remain comfortably tappable.
+- Content fidelity: all five requested credit packs and all three requested monthly memberships match the supplied prices, base credits, bonuses, monthly credits, labels, and benefits.
+- Commercial hierarchy: the implementation preserves the reference's top-up-first and membership-second ordering, while translating the raw tables into scannable commercial cards.
+- Data integrity: plan values come from the public billing catalog API and persisted plan records. The UI does not hard-code payable prices independently from the backend.
+- Payment safety: every purchase action is disabled while the payment provider is not configured, and the page explicitly states that no real charge will be attempted.
+- Responsive behavior: the five-column top-up row collapses to three columns and then one column; membership cards collapse to a single column on narrow screens without overflow.
+- Accessibility: plan names use headings, credit breakdowns use definition lists, benefits use lists, and disabled payment state is visible in both text and control state.
 
 ## Deliberate differences from reference
 
-- The left sidebar preserves the product's existing navigation and account system instead of adding unimplemented API/team/settings entries.
-- Upgrade, gifts, notification badges, favorites, announcements, and social-proof counters were not copied because the current backend does not provide those capabilities or data.
-- The right column uses real AI Runtime and recent-task data instead of decorative demo content.
-- The lower explore rail uses the live tool-category counts rather than hard-coded category totals.
+- The reference's plain document tables were converted into product cards to match the existing OneShowTools workspace design system.
+- Actual received credits are shown explicitly as base credits plus bonus credits, eliminating ambiguity in the source table.
+- The current plan and payment-channel state are included because they are required for a real authenticated billing workflow.
+- No unsupported annual discount, unlimited-use language, countdown, or fake promotion was introduced.
 
-## Interaction checks
+## Interaction and runtime checks
 
-- Dashboard search routed to the real tool marketplace and retained the search query.
-- Sidebar navigation returned to the dashboard correctly.
-- Quick-access and recommendation cards use the existing real tool-opening handler.
+- Billing navigation opens the real authenticated billing view.
+- The API returns eight active CNY offers in deterministic commercial order.
+- Current Free plan is correctly marked and disabled.
+- All paid actions are disabled while billing is unconfigured.
 - Browser console errors/warnings: none.
-- Production build, 101 automated tests, and database migration check: passed.
-
-## Comparison history
-
-- Initial implementation passed desktop and mobile review without P0/P1/P2 corrections.
 
 final result: passed

@@ -28,6 +28,7 @@ import {
 import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
+import { billingPlanPayload } from "./billing-catalog.mjs";
 import {
   createModelConnection,
   deleteModelConnection,
@@ -712,19 +713,33 @@ async function billingCheckout(request, user) {
   if (!user.email_verified) return fail("EMAIL_UNVERIFIED", 403);
   if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
   const data = await body(request);
-  if (data.planId !== "plan_pro") return fail("PLAN_NOT_FOUND", 404);
+  const plan = db.prepare("SELECT * FROM plans WHERE id = ? AND active = 1").get(String(data.planId || ""));
+  if (!plan || plan.amount_minor <= 0) return fail("PLAN_NOT_FOUND", 404);
+  const offer = billingPlanPayload(plan);
+  const subscription = plan.interval === "month";
   const Stripe = (await import("stripe")).default;
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const appUrl = process.env.APP_URL || new URL(request.url).origin;
-  const checkout = await stripe.checkout.sessions.create({
-    mode: "subscription",
+  const metadata = { userId: user.id, planId: plan.id, credits: String(offer.totalCredits) };
+  const checkoutPayload = {
+    mode: subscription ? "subscription" : "payment",
     customer_email: user.email,
     client_reference_id: user.id,
-    line_items: [{ price: process.env.STRIPE_PRO_PRICE_ID, quantity: 1 }],
+    line_items: [{
+      price_data: {
+        currency: plan.currency.toLowerCase(),
+        unit_amount: plan.amount_minor,
+        product_data: { name: plan.name_zh, metadata: { planId: plan.id } },
+        ...(subscription ? { recurring: { interval: "month" } } : {}),
+      },
+      quantity: 1,
+    }],
     success_url: `${appUrl}/?billing=success`,
     cancel_url: `${appUrl}/?billing=cancelled`,
-    metadata: { userId: user.id, planId: "plan_pro" },
-  });
+    metadata,
+  };
+  if (subscription) checkoutPayload.subscription_data = { metadata };
+  const checkout = await stripe.checkout.sessions.create(checkoutPayload);
   return json({ url: checkout.url });
 }
 
@@ -771,12 +786,14 @@ function reconcileStripeEvent(event) {
     if (!user) return;
     mapStripeCustomer(user.id, object.customer);
     if (object.mode === "subscription" && object.subscription) {
+      const planId = String(object.metadata?.planId || "");
+      if (!db.prepare("SELECT id FROM plans WHERE id = ? AND interval = 'month'").get(planId)) return;
       db.prepare(`
         INSERT INTO subscriptions
         (id, user_id, plan_id, provider, provider_subscription_id, status, created_at, updated_at)
-        VALUES (?, ?, 'plan_pro', 'stripe', ?, 'pending', ?, ?)
+        VALUES (?, ?, ?, 'stripe', ?, 'pending', ?, ?)
         ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
-      `).run(`stripe:${object.subscription}`, user.id, String(object.subscription), timestamp, timestamp);
+      `).run(`stripe:${object.subscription}`, user.id, planId, String(object.subscription), timestamp, timestamp);
     }
     if (object.mode === "payment" && Number(object.metadata?.credits) > 0) {
       db.prepare(`
@@ -792,15 +809,19 @@ function reconcileStripeEvent(event) {
     const user = userForStripeCustomer(object.customer);
     if (!user) return;
     const status = event.type === "customer.subscription.deleted" ? "cancelled" : String(object.status || "unknown");
+    const existing = db.prepare("SELECT plan_id FROM subscriptions WHERE provider = 'stripe' AND provider_subscription_id = ?").get(String(object.id));
+    const planId = String(object.metadata?.planId || existing?.plan_id || "");
+    if (!db.prepare("SELECT id FROM plans WHERE id = ? AND interval = 'month'").get(planId)) return;
     db.prepare(`
       INSERT INTO subscriptions
       (id, user_id, plan_id, provider, provider_subscription_id, status, current_period_end, created_at, updated_at)
-      VALUES (?, ?, 'plan_pro', 'stripe', ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, 'stripe', ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET status = excluded.status,
-        current_period_end = excluded.current_period_end, updated_at = excluded.updated_at
+        plan_id = excluded.plan_id, current_period_end = excluded.current_period_end, updated_at = excluded.updated_at
     `).run(
       `stripe:${object.id}`,
       user.id,
+      planId,
       object.id,
       status,
       object.current_period_end ? object.current_period_end * 1000 : null,
@@ -831,11 +852,22 @@ function reconcileStripeEvent(event) {
       timestamp,
     );
     if (event.type === "invoice.paid") {
+      const providerSubscriptionId = String(object.subscription || object.parent?.subscription_details?.subscription || "");
+      const subscription = db.prepare(`
+        SELECT s.plan_id AS planId, p.name_zh AS nameZh, p.name_en AS nameEn,
+          p.recurring_credits AS recurringCredits
+        FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+        WHERE s.provider = 'stripe' AND s.provider_subscription_id = ?
+      `).get(providerSubscriptionId);
+      if (!subscription?.recurringCredits) return;
       db.prepare(`
         INSERT OR IGNORE INTO credit_ledger
         (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
-        VALUES (?, ?, 'subscription_grant', 2000, '专业版月度积分', 'Pro monthly credits', 'stripe_invoice', ?, ?)
-      `).run(randomUUID(), user.id, object.id, timestamp);
+        VALUES (?, ?, 'subscription_grant', ?, ?, ?, 'stripe_invoice', ?, ?)
+      `).run(
+        randomUUID(), user.id, subscription.recurringCredits,
+        `${subscription.nameZh}月度积分`, `${subscription.nameEn} monthly credits`, object.id, timestamp,
+      );
     }
   }
 }
@@ -931,10 +963,8 @@ export async function handleApi(request) {
   if (path === "/api/seo/catalog" && request.method === "GET") return json(seoCatalog());
   if (path === "/api/music/status" && request.method === "GET") return json(musicStudioStatus());
   if (path === "/api/plans" && request.method === "GET") {
-    const plans = db.prepare(`
-      SELECT id, code, name_zh AS nameZh, name_en AS nameEn, amount_minor AS amountMinor,
-        currency, interval, recurring_credits AS recurringCredits FROM plans WHERE active = 1 ORDER BY amount_minor
-    `).all();
+    const plans = db.prepare("SELECT * FROM plans WHERE active = 1").all().map(billingPlanPayload)
+      .sort((left, right) => left.sortOrder - right.sortOrder);
     return json({ plans });
   }
   if (path.startsWith("/api/admin/v1/")) return handleAdminV1(request, path);
@@ -1187,7 +1217,7 @@ export async function handleApi(request) {
   }
   if (path === "/api/billing/status" && request.method === "GET") {
     const subscription = db.prepare(`
-      SELECT s.status, s.current_period_end AS currentPeriodEnd, p.id AS planId,
+      SELECT s.status, s.current_period_end AS currentPeriodEnd, p.id AS planId, p.code,
         p.name_zh AS nameZh, p.name_en AS nameEn
       FROM subscriptions s JOIN plans p ON p.id = s.plan_id
       WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 1

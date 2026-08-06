@@ -615,6 +615,75 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .plan-badge { display: inline-flex; padding: 5px 9px; border-radius: 6px; color: var(--blue); background: #eaf2ff; font-size: 10px; font-weight: 700; }
 .plan-card h2 { margin: 18px 0 7px; font-size: 21px; }
 .plan-card > p { min-height: 42px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+/* Billing catalog */
+.workspace-layout:has(.billing-page) { grid-template-columns: minmax(0,1fr); }
+.workspace-layout:has(.billing-page) > .context-panel { display: none; }
+.workspace-main:has(.billing-page) { padding: 26px clamp(24px,3vw,52px) 64px; background: linear-gradient(180deg,#f5f8ff 0,#f8fafc 420px); }
+.billing-page { width: 100%; max-width: 1420px; gap: 22px; }
+.billing-hero { min-height: 150px; padding: 27px 30px; border: 1px solid #dbe5f8; border-radius: 18px; display: flex; align-items: center; justify-content: space-between; gap: 28px; background: radial-gradient(circle at 82% 12%,rgba(127,104,243,.18),transparent 30%),linear-gradient(120deg,#edf3ff,#f3efff); box-shadow: 0 14px 34px rgba(45,67,118,.055); }
+.billing-kicker { color: #2863db; font-size: 9px; font-weight: 800; letter-spacing: .15em; }
+.billing-hero h1 { margin: 8px 0 5px; color: #142348; font-size: 29px; letter-spacing: -.035em; }
+.billing-hero > div > p { margin: 0; color: #65748c; font-size: 12px; }
+.billing-balance { min-width: 340px; min-height: 86px; padding: 16px 18px; border: 1px solid rgba(255,255,255,.75); border-radius: 14px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 12px; background: rgba(255,255,255,.78); box-shadow: 0 12px 28px rgba(56,67,126,.08); }
+.billing-balance > span:first-child { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; color: #6e4ee6; background: #eee9ff; }
+.billing-balance div { display: grid; gap: 3px; }
+.billing-balance small { color: #8491a4; font-size: 9px; }
+.billing-balance strong { color: #172542; font-size: 17px; }
+.billing-balance button { padding: 0; border: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--blue); background: transparent; font-size: 9px; }
+.billing-active { min-height: 26px; padding: 0 9px; border-radius: 13px; display: inline-flex !important; align-items: center; gap: 5px; color: #16805d !important; background: #e8f7f1 !important; font-size: 9px; }
+.billing-channel { min-height: 44px; padding: 0 15px; border: 1px solid; border-radius: 11px; display: flex; align-items: center; gap: 9px; font-size: 10px; }
+.billing-channel.ready { color: #147b5a; border-color: #c8eadf; background: #effaf6; }
+.billing-channel.pending { color: #776523; border-color: #ebe1bb; background: #fffaf0; }
+.billing-section { display: grid; gap: 13px; }
+.billing-section > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.billing-section > header > div { display: flex; align-items: center; gap: 11px; }
+.billing-section-icon { width: 41px; height: 41px; border-radius: 12px; display: grid; place-items: center; }
+.billing-section-icon.topup { color: #d47916; background: #fff1dc; }
+.billing-section-icon.membership { color: #714ee0; background: #eee9ff; }
+.billing-section h2 { margin: 0; color: #1b2941; font-size: 17px; }
+.billing-section header p { margin: 4px 0 0; color: #7d8a9d; font-size: 10px; }
+.billing-value-note { max-width: 440px; color: #74839a; font-size: 9px; text-align: right; }
+.topup-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 11px; }
+.topup-card { position: relative; min-width: 0; padding: 18px 17px 16px; border-radius: 14px; overflow: hidden; }
+.topup-card.featured { border-color: #8fb1f1; box-shadow: 0 12px 30px rgba(42,91,181,.1); }
+.topup-card.featured::before { content: ""; position: absolute; top: 0; right: 0; width: 74px; height: 74px; border-radius: 0 0 0 74px; background: linear-gradient(135deg,rgba(61,102,236,.12),rgba(112,75,232,.16)); }
+.topup-card-head { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.topup-card .plan-badge { min-height: 24px; padding: 0 8px; border: 0; border-radius: 12px; color: #42618f; background: #eff4fc; font-size: 8px; }
+.topup-card.featured .plan-badge { color: #315dc1; background: #e9f0ff; }
+.bonus-pill { min-height: 24px; padding: 0 7px; border-radius: 12px; display: inline-flex; align-items: center; gap: 3px; color: #d17013; background: #fff2df; font-size: 8px; }
+.topup-card h3 { margin: 20px 0 4px; color: #182742; font-size: 18px; }
+.billing-price { display: block; color: #1a2c52; font-size: 25px; letter-spacing: -.04em; }
+.topup-card dl { margin: 17px 0 0; padding: 12px 0; border-top: 1px solid #edf0f5; border-bottom: 1px solid #edf0f5; display: grid; gap: 8px; }
+.topup-card dl div, .topup-total { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.topup-card dt, .topup-total span { color: #8490a2; font-size: 9px; }
+.topup-card dd { margin: 0; color: #34435b; font-size: 10px; font-weight: 700; }
+.topup-card dd.positive { color: #e17b17; }
+.topup-total { padding: 13px 0 14px; }
+.topup-total strong { color: #205bc7; font-size: 17px; }
+.topup-card button, .membership-card button { min-height: 39px; font-size: 10px; }
+.topup-card button:disabled, .membership-card button:disabled { color: #8c98a9; border-color: #e3e8ef; background: #f2f4f7; opacity: 1; }
+.membership-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 13px; }
+.membership-card { position: relative; min-width: 0; min-height: 330px; padding: 23px; border-radius: 15px; display: flex; flex-direction: column; overflow: hidden; }
+.membership-card.featured { border-color: #8daef3; box-shadow: 0 14px 36px rgba(61,87,175,.11); }
+.membership-card.active { border-color: #b8c9e8; }
+.membership-ribbon { position: absolute; top: 0; right: 21px; min-height: 26px; padding: 0 12px; border-radius: 0 0 9px 9px; display: inline-flex; align-items: center; color: #fff; background: linear-gradient(135deg,#2868eb,#7250df); font-size: 8px; font-weight: 700; }
+.membership-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.membership-card-head > div { display: grid; gap: 5px; }
+.membership-card-head > div > span { color: #77869c; font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.membership-card h3 { margin: 0; color: #182741; font-size: 20px; }
+.membership-mark { width: 45px; height: 45px; border-radius: 14px; display: grid; place-items: center; color: #64758f; background: #f1f4f8; }
+.membership-mark.pro-monthly { color: #5e42d8; background: #eee9ff; }
+.membership-mark.max-monthly { color: #d2871d; background: #fff2dc; }
+.membership-price { margin-top: 25px; color: #14284c; font-size: 31px; letter-spacing: -.045em; }
+.membership-price small { margin-left: 6px; color: #8490a3; font-size: 10px; font-weight: 500; letter-spacing: 0; }
+.membership-credits { min-height: 52px; margin-top: 17px; padding: 0 13px; border-radius: 11px; display: flex; align-items: center; gap: 7px; color: #3767ca; background: #f2f6ff; }
+.membership-credits strong { font-size: 16px; }
+.membership-credits span { color: #6f7f96; font-size: 9px; }
+.membership-card ul { margin: 17px 0 21px; padding: 0; display: grid; gap: 9px; list-style: none; }
+.membership-card li { display: flex; align-items: center; gap: 7px; color: #526177; font-size: 10px; }
+.membership-card li svg { flex: 0 0 auto; color: #169b70; }
+.membership-card > button { margin-top: auto; }
 .plan-price { display: block; margin: 19px 0; font-size: 29px; }
 .plan-price small { color: var(--muted); font-size: 11px; font-weight: 500; }
 .plan-credit { margin-bottom: 18px; display: flex; align-items: center; gap: 7px; color: #526176; font-size: 12px; }
@@ -1932,6 +2001,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .dashboard-recommended > div { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .dashboard-explore { grid-template-columns: 190px minmax(0,1fr); }
   .dashboard-explore > div { grid-template-columns: repeat(6,minmax(58px,1fr)); }
+  .topup-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
 
 @media (max-width: 960px) {
@@ -1945,6 +2015,11 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .dashboard-side-stack { grid-column: auto; }
   .dashboard-recommended > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .dashboard-explore { grid-template-columns: 1fr; }
+  .workspace-main:has(.billing-page) { padding: 20px 18px 54px; }
+  .billing-hero { align-items: flex-start; flex-direction: column; }
+  .billing-balance { width: 100%; min-width: 0; }
+  .membership-grid { grid-template-columns: 1fr; }
+  .membership-card { min-height: 0; }
 }
 
 @media (max-width: 620px) {
@@ -1967,4 +2042,14 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .dashboard-recommended > div { grid-template-columns: 1fr 1fr; gap: 7px; }
   .dashboard-recommended > div > button { min-height: 142px; padding: 10px; }
   .dashboard-explore > div { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .workspace-main:has(.billing-page) { padding: 14px 12px 84px; }
+  .billing-page { gap: 17px; }
+  .billing-hero { min-height: 0; padding: 22px 18px; }
+  .billing-hero h1 { font-size: 25px; }
+  .billing-balance { grid-template-columns: auto minmax(0,1fr); }
+  .billing-balance > button, .billing-balance > .billing-active { grid-column: 1 / -1; justify-self: start; }
+  .billing-section > header { align-items: flex-start; flex-direction: column; }
+  .billing-value-note { text-align: left; }
+  .topup-grid { grid-template-columns: 1fr; }
+  .topup-card { padding: 17px; }
 }

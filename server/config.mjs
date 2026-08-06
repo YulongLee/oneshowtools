@@ -27,8 +27,7 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
   const developmentEmail = !production && enabled("ALLOW_DEV_EMAIL_DELIVERY", false);
   const stripeConfigured = Boolean(
     process.env.STRIPE_SECRET_KEY
-    && process.env.STRIPE_WEBHOOK_SECRET
-    && process.env.STRIPE_PRO_PRICE_ID,
+    && process.env.STRIPE_WEBHOOK_SECRET,
   );
 
   return Object.freeze({

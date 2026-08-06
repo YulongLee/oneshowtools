@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { seoSpecialists } from "./seo-specialists.mjs";
+import { billingPlanSeeds } from "./billing-catalog.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 export const dataDirectory = resolve(projectRoot, process.env.DATA_DIR || "data");
@@ -426,10 +427,7 @@ export function initializeDatabase() {
   `);
   for (const tool of tools) insertTool.run(...tool, "configuration_required", timestamp, timestamp);
 
-  const plans = [
-    ["plan_free", "free", "免费版", "Free", 0, "USD", "month", 200],
-    ["plan_pro", "pro-monthly", "专业版", "Pro", 1200, "USD", "month", 2000],
-  ];
+  const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`
     INSERT INTO plans (id, code, name_zh, name_en, amount_minor, currency, interval, recurring_credits, active)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
