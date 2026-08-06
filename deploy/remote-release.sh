@@ -11,6 +11,7 @@ KEEP_RELEASES="$7"
 KEEP_DB_BACKUPS="$8"
 APP_DIR="$APP_ROOT/app"
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE_ID"
+PREVIOUS_MODULES="$APP_ROOT/incoming/.previous-node-modules-$RELEASE_ID"
 
 export PATH="$NODE_ROOT/bin:$PATH"
 mkdir -p "$APP_DIR" "$RELEASE_DIR/app" "$APP_ROOT/releases" "$APP_ROOT/incoming"
@@ -33,24 +34,32 @@ rollback() {
   trap - ERR
   echo "Deployment failed; restoring $RELEASE_ID snapshot." >&2
   systemctl stop "$SERVICE_NAME" || true
+  rm -rf -- "$APP_DIR/node_modules"
+  if [[ -d "$PREVIOUS_MODULES" ]]; then
+    mv "$PREVIOUS_MODULES" "$APP_DIR/node_modules"
+  fi
   rsync -a --delete \
     --exclude='node_modules/' \
     --exclude='data/' \
     --exclude='.env' \
     "$RELEASE_DIR/app/" "$APP_DIR/"
-  (cd "$APP_DIR" && npm ci --omit=dev --no-audit --no-fund)
   chown -R oneshowtools:oneshowtools "$APP_DIR"
   systemctl restart "$SERVICE_NAME"
 }
 trap rollback ERR
 
 systemctl stop "$SERVICE_NAME"
+if [[ -d "$APP_DIR/node_modules" ]]; then
+  rm -rf -- "$PREVIOUS_MODULES"
+  mv "$APP_DIR/node_modules" "$PREVIOUS_MODULES"
+fi
 rsync -a --delete \
   --exclude='node_modules/' \
   --exclude='data/' \
   --exclude='.env' \
   "$STAGE/" "$APP_DIR/"
-(cd "$APP_DIR" && npm ci --omit=dev --no-audit --no-fund && npm run db:check)
+mv "$STAGE/node_modules" "$APP_DIR/node_modules"
+(cd "$APP_DIR" && npm run db:check)
 chown -R oneshowtools:oneshowtools "$APP_DIR"
 systemctl restart "$SERVICE_NAME"
 
@@ -65,6 +74,7 @@ done
 [[ "$healthy" == "true" ]]
 trap - ERR
 
+rm -rf -- "$PREVIOUS_MODULES"
 rm -rf -- "$STAGE"
 
 mapfile -t old_releases < <(find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -rn | awk -v keep="$KEEP_RELEASES" 'NR > keep {sub(/^[^ ]+ /, ""); print}')

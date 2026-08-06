@@ -35,5 +35,7 @@ test("remote release has backup, health check, rollback, and bounded retention",
   assert.match(source, /HEALTH_URL/);
   assert.match(source, /KEEP_RELEASES/);
   assert.match(source, /KEEP_DB_BACKUPS/);
+  assert.match(source, /PREVIOUS_MODULES/);
+  assert.match(source, /mv "\$STAGE\/node_modules"/);
   assert.doesNotMatch(source, /rm -rf \/|rm -rf "\$APP_ROOT"/);
 });
