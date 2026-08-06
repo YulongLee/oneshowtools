@@ -689,6 +689,46 @@ function SeoAgentCommercialPage({ tool, locale, authenticated, account, onBack, 
   </div>;
 }
 
+function OutfitImageSlot({ file, title, hint, badge, required, disabled = false, onSelect, onRemove }) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  useEffect(() => {
+    if (!file) { setPreviewUrl(""); return undefined; }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return <article className={`outfit-image-slot ${file ? "selected" : ""}`}>
+    <header><div><span>{badge}</span><strong>{title}</strong></div>{required && <em>{required}</em>}</header>
+    {previewUrl ? <div className="outfit-image-preview"><img src={previewUrl} alt={title} /><span><CheckCircle size={15} weight="fill" />{file.name}</span><button type="button" onClick={onRemove} aria-label={`Remove ${title}`}><Trash size={16} /></button></div> : disabled ? <div className="outfit-image-picker disabled"><LockKey size={23} /><strong>{hint}</strong><small>PNG · JPG · WEBP · HEIC · 25 MB</small></div> : <label className="outfit-image-picker"><input type="file" accept="image/*,.heic,.heif" onChange={(event) => onSelect(event.target.files?.[0] || null)} /><CloudArrowUp size={25} /><strong>{hint}</strong><small>PNG · JPG · WEBP · HEIC · 25 MB</small></label>}
+  </article>;
+}
+
+function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }) {
+  const zh = locale !== "en";
+  const setAt = (index, selected) => {
+    const next = files.slice(0, 2);
+    if (index === 0 && !selected) return onFilesChange([]);
+    if (!selected) return onFilesChange(next.slice(0, index));
+    next[index] = selected;
+    onFilesChange(next.filter(Boolean));
+  };
+  const switchMode = (nextMode) => {
+    onModeChange(nextMode);
+    if (nextMode === "description" && files.length > 1) onFilesChange(files.slice(0, 1));
+  };
+  return <section className="outfit-upload-studio">
+    <nav className="outfit-mode-tabs" aria-label={zh ? "换装方式" : "Outfit mode"}>
+      <button type="button" className={mode === "description" ? "active" : ""} onClick={() => switchMode("description")}><MagicWand size={17} />{zh ? "描述服装" : "Describe outfit"}</button>
+      <button type="button" className={mode === "reference" ? "active" : ""} onClick={() => switchMode("reference")}><ImageSquare size={17} />{zh ? "参考图换装" : "Reference outfit"}<em>{zh ? "新功能" : "New"}</em></button>
+    </nav>
+    <div className={`outfit-upload-grid ${mode}`}>
+      <OutfitImageSlot file={files[0]} badge="1" title={zh ? "人物原图" : "Person photo"} required={zh ? "必选" : "Required"} hint={zh ? "上传需要换装的人物照片" : "Upload the person to dress"} onSelect={(selected) => setAt(0, selected)} onRemove={() => setAt(0, null)} />
+      {mode === "reference" && <><span className="outfit-transfer-arrow"><ArrowRight size={19} /></span><OutfitImageSlot file={files[1]} badge="2" title={zh ? "服装参考图" : "Outfit reference"} required={zh ? "必选" : "Required"} disabled={!files[0]} hint={!files[0] ? (zh ? "请先上传人物原图" : "Upload the person photo first") : (zh ? "上传包含目标服装的图片" : "Upload an image of the target outfit")} onSelect={(selected) => setAt(1, selected)} onRemove={() => setAt(1, null)} /></>}
+    </div>
+    <p className="outfit-upload-help"><ShieldCheck size={16} />{mode === "reference" ? (zh ? "系统只迁移第 2 张图中的服装，并尽量保留第 1 张图的人脸、发型、姿势、身材比例和背景。" : "Only the outfit from image 2 is transferred while preserving the person, pose, proportions, and background in image 1.") : (zh ? "上传后会立即显示预览；请使用正面或半身清晰人物照，换装效果更稳定。" : "A preview appears immediately. Clear front-facing or half-body portraits produce the most stable results.")}</p>
+  </section>;
+}
+
 function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
@@ -710,6 +750,7 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [outfitMode, setOutfitMode] = useState("description");
   const [recording, setRecording] = useState(false);
   const [copied, setCopied] = useState(false);
   const [modelConnectionId, setModelConnectionId] = useState("managed");
@@ -732,6 +773,7 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
   useEffect(() => () => recognitionRef.current?.stop?.(), []);
   useEffect(() => {
     setFiles([]); setFile(null); setResult(null); setError("");
+    setOutfitMode("description");
     setImageSettings({ ...imageToolInitial, preset: tool.slug === "id-photo-maker" ? "one-inch" : "xiaohongshu-cover" });
     setPdfSettings({ ...pdfToolInitial });
     setMediaSettings({ ...mediaToolInitial });
@@ -745,7 +787,7 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
   const run = async () => {
     if (!authenticated) return onAuth();
     const utilityHasInput = !isUtility || (utilityToolFields[tool.slug] || []).some((field) => !["select"].includes(field.type) && String(utilitySettings[field.id] || "").trim());
-    if ((isFile && fileMultiple && !files.length) || (isFile && !fileMultiple && !file) || (!isFile && !isImage && !isUtility && !text.trim()) || !utilityHasInput) return setError(t.inputRequired);
+    if ((isFile && fileMultiple && !files.length) || (isFile && !fileMultiple && !file) || (tool.slug === "ai-outfit-changer" && outfitMode === "reference" && files.length < 2) || (!isFile && !isImage && !isUtility && !text.trim()) || !utilityHasInput) return setError(tool.slug === "ai-outfit-changer" && outfitMode === "reference" ? (locale === "en" ? "Please upload both the person photo and the outfit reference." : "请同时上传人物原图和服装参考图。") : t.inputRequired);
     setBusy(true);
     setError("");
     setResult(null);
@@ -831,9 +873,9 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
     <div className="tool-workspace-grid">
       <section className="surface tool-input-panel">
         <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : isPdf ? (tool.slug === "images-to-pdf" ? (locale === "en" ? "Upload images" : "上传图片") : t.pdfInput) : isMedia ? (locale === "en" ? "Upload media" : "上传媒体文件") : isDataFile ? (locale === "en" ? "Upload data file" : "上传数据文件") : isUtility ? (locale === "en" ? "Tool input" : "工具输入") : isSpeech ? t.speechInput : t.textInput}</h2>
-        {isFile && <label className={`tool-dropzone ${(file || files.length) ? "selected" : ""}`}><input type="file" multiple={fileMultiple} accept={isMedia ? (tool.category === "video" ? "video/*,.mov,.mkv,.mp4" : "audio/*,video/mp4,.mp3,.wav,.flac,.m4a,.aac") : isDataFile ? dataFileAccept(tool.slug) : isImage || tool.slug === "images-to-pdf" ? "image/*,.heic,.heif" : "application/pdf"} onChange={(event) => { const selected = [...(event.target.files || [])]; setFiles(selected); setFile(selected[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{fileMultiple && files.length ? `${t.selectedFile}: ${files.length} ${locale === "en" ? "files" : "个文件"}` : file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{fileMultiple && files.length ? formatBytes(files.reduce((sum, item) => sum + item.size, 0)) : file ? formatBytes(file.size) : isMedia ? (locale === "en" ? "Audio / video · up to 50 MB" : "音频 / 视频 · 最大 50 MB") : isDataFile ? `${dataFileHint(tool.slug)} · 25 MB` : isImage || tool.slug === "images-to-pdf" ? "HEIC · PNG · JPG · WEBP · AVIF" : "PDF · 25 MB"}</span></label>}
-        {isImage && (imageToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{imageToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{imageSettings[field.id]}</strong>}</span>{field.type === "select" ? <select value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : field.type === "textarea" ? <textarea rows="4" value={imageSettings[field.id] || ""} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} /> : <input type={field.type} min={field.min} max={field.max} value={imageSettings[field.id] || ""} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} />}</label>)}</div>}
-        {tool.slug === "ai-outfit-changer" && <p className="tool-inline-note"><ImageSquare size={16} />{locale === "en" ? "Upload the portrait first and an optional clothing reference second (up to 2 images)." : "请先上传人物照片，可再上传一张服装参考图（最多 2 张）。"}</p>}
+        {tool.slug === "ai-outfit-changer" && <OutfitUploadStudio files={files} mode={outfitMode} locale={locale} onModeChange={setOutfitMode} onFilesChange={(selected) => { setFiles(selected); setFile(selected[0] || null); setResult(null); setError(""); }} />}
+        {isFile && tool.slug !== "ai-outfit-changer" && <label className={`tool-dropzone ${(file || files.length) ? "selected" : ""}`}><input type="file" multiple={fileMultiple} accept={isMedia ? (tool.category === "video" ? "video/*,.mov,.mkv,.mp4" : "audio/*,video/mp4,.mp3,.wav,.flac,.m4a,.aac") : isDataFile ? dataFileAccept(tool.slug) : isImage || tool.slug === "images-to-pdf" ? "image/*,.heic,.heif" : "application/pdf"} onChange={(event) => { const selected = [...(event.target.files || [])]; setFiles(selected); setFile(selected[0] || null); setResult(null); }} /><CloudArrowUp size={30} /><strong>{fileMultiple && files.length ? `${t.selectedFile}: ${files.length} ${locale === "en" ? "files" : "个文件"}` : file ? `${t.selectedFile}: ${file.name}` : t.chooseFile}</strong><span>{fileMultiple && files.length ? formatBytes(files.reduce((sum, item) => sum + item.size, 0)) : file ? formatBytes(file.size) : isMedia ? (locale === "en" ? "Audio / video · up to 50 MB" : "音频 / 视频 · 最大 50 MB") : isDataFile ? `${dataFileHint(tool.slug)} · 25 MB` : isImage || tool.slug === "images-to-pdf" ? "HEIC · PNG · JPG · WEBP · AVIF" : "PDF · 25 MB"}</span></label>}
+        {isImage && (imageToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{imageToolFields[tool.slug].filter((field) => !(tool.slug === "ai-outfit-changer" && outfitMode === "reference" && field.id === "outfit")).map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{imageSettings[field.id]}</strong>}</span>{field.type === "select" ? <select value={imageSettings[field.id]} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : field.type === "textarea" ? <textarea rows="4" value={imageSettings[field.id] || ""} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} /> : <input type={field.type} min={field.min} max={field.max} value={imageSettings[field.id] || ""} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} onChange={(event) => setImageSettings({ ...imageSettings, [field.id]: event.target.value })} />}</label>)}</div>}
         {aiImageToolSlugs.has(tool.slug) && <p className="tool-inline-note"><ShieldCheck size={16} />{locale === "en" ? "Only upload images you have permission to use. Results are stored in your private File Center." : "请仅上传你有权使用的图片；生成结果会保存到你的私有文件中心。"}</p>}
         {isPdf && (pdfToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options pdf-tool-options">{pdfToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}{field.type === "range" && <strong>{pdfSettings[field.id]}{field.id === "opacity" ? "%" : ""}</strong>}</span>{field.type === "select" ? <select value={pdfSettings[field.id]} onChange={(event) => setPdfSettings({ ...pdfSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} placeholder={locale === "en" ? field.placeholderEn : field.placeholderZh} value={pdfSettings[field.id]} onChange={(event) => setPdfSettings({ ...pdfSettings, [field.id]: event.target.value })} />}</label>)}</div>}
         {isMedia && (mediaToolFields[tool.slug] || []).length > 0 && <div className="image-tool-options">{mediaToolFields[tool.slug].map((field) => <label key={field.id}><span>{locale === "en" ? field.en : field.zh}</span>{field.type === "select" ? <select value={mediaSettings[field.id]} onChange={(event) => setMediaSettings({ ...mediaSettings, [field.id]: event.target.value })}>{field.options.map(([value, labelZh, labelEn]) => <option value={value} key={value}>{locale === "en" ? (labelEn || labelZh) : labelZh}</option>)}</select> : <input type={field.type} min={field.min} max={field.max} value={mediaSettings[field.id]} onChange={(event) => setMediaSettings({ ...mediaSettings, [field.id]: event.target.value })} />}</label>)}</div>}
