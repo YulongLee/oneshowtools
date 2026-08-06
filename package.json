@@ -14,6 +14,8 @@
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "db:check": "node scripts/check-migrations.mjs",
     "db:backup": "node scripts/backup-and-check.mjs",
+    "deploy:prod": "bash deploy/one-click.sh",
+    "deploy:rollback": "bash deploy/rollback.sh",
     "openspec:validate": "openspec validate add-global-auth-and-billing --strict"
   },
   "dependencies": {
