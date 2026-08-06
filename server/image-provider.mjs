@@ -95,7 +95,9 @@ function requestBody(config, prompt) {
 
 function responseFailure(payload, status) {
   const providerStatus = Number(payload?.base_resp?.status_code || 0);
-  const message = clean(payload?.base_resp?.status_msg || payload?.error?.message || "", 300).toLowerCase();
+  const providerCode = clean(payload?.code || payload?.error?.code || "", 160);
+  const message = clean(payload?.base_resp?.status_msg || payload?.message || payload?.error?.message || "", 300).toLowerCase();
+  if (/model.*(not found|not exist|unavailable|access|denied)|not.*authorized.*model|permission.*model|未开通|模型.*无权限/.test(`${providerCode} ${message}`.toLowerCase())) return imageError("IMAGE_PROVIDER_MODEL_UNAVAILABLE", 422);
   if ([401, 403].includes(status) || /api.?key|auth|token|unauthorized|鉴权|认证/.test(message)) return imageError("IMAGE_PROVIDER_AUTH_FAILED", 422);
   if (providerStatus) return imageError("IMAGE_PROVIDER_REJECTED", 422);
   if (status === 429) return imageError("IMAGE_PROVIDER_RATE_LIMITED", 429, true);

@@ -54,6 +54,17 @@ test("image editing can inherit the encrypted default workspace connection", asy
   assert.doesNotMatch(stored.key_ciphertext, /workspace-secret/);
 });
 
+test("a provider model permission denial is not misreported as an invalid API key", async () => {
+  await assert.rejects(
+    imageModule.testImageEditProviderConfiguration("image_editing", {
+      credentialSource: "workspace", modelId: "qwen-image-2.0", creditCost: 30, status: "active",
+    }, async () => new Response(JSON.stringify({ code: "Model.AccessDenied", message: "Model access denied." }), {
+      status: 403, headers: { "content-type": "application/json" },
+    })),
+    (error) => error?.code === "IMAGE_PROVIDER_MODEL_UNAVAILABLE",
+  );
+});
+
 test("image generation can inherit the workspace connection without duplicating its API key", async () => {
   const resultPng = await sharp({ create: { width: 256, height: 256, channels: 3, background: "#345cff" } }).png().toBuffer();
   const providerFetch = async (url, options) => {
