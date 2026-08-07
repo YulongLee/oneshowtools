@@ -1274,6 +1274,40 @@ export async function handleApi(request) {
     `).all(user.id), quota: userFileQuota(user.id) });
   }
   if (path === "/api/files" && request.method === "POST") return uploadFile(request, user);
+  if (path === "/api/files/bulk-delete" && request.method === "POST") {
+    const data = await body(request);
+    const ids = [...new Set(Array.isArray(data.ids) ? data.ids : [])];
+    if (!ids.length || ids.length > 100 || ids.some((id) => typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id))) {
+      return fail("INVALID_FILE_SELECTION", 400);
+    }
+    const placeholders = ids.map(() => "?").join(",");
+    const files = db.prepare(`SELECT f.*, COALESCE(s.provider, 'local') AS storage_provider, s.object_key
+      FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id
+      WHERE f.user_id = ? AND f.id IN (${placeholders})`).all(user.id, ...ids);
+    const deletedIds = [];
+    const failedIds = [];
+    for (const file of files) {
+      try {
+        await deleteStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name });
+        const result = db.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(file.id, user.id);
+        if (result.changes) deletedIds.push(file.id);
+      } catch {
+        failedIds.push(file.id);
+      }
+    }
+    audit(user.id, "file.bulk_delete", "user", user.id, {
+      requestedCount: ids.length,
+      deletedCount: deletedIds.length,
+      failedCount: failedIds.length,
+      skippedCount: ids.length - files.length,
+    });
+    return json({
+      ok: failedIds.length === 0,
+      deletedIds,
+      failedIds,
+      skippedCount: ids.length - files.length,
+    });
+  }
   if (path.match(/^\/api\/files\/[^/]+\/download$/) && request.method === "GET") {
     const id = path.split("/")[3];
     const file = db.prepare(`SELECT f.*, COALESCE(s.provider, 'local') AS storage_provider, s.object_key
