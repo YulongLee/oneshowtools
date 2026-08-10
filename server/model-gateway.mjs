@@ -120,7 +120,7 @@ function keyHint(apiKey) {
   return compact.length > 4 ? `••••${compact.slice(-4)}` : "••••";
 }
 
-const platformPurposes = new Set(["managed_runtime", "market_intelligence"]);
+const platformPurposes = new Set(["managed_runtime", "market_intelligence", "oneshow_home_chat"]);
 
 function normalizeWorkspaceId(value) {
   const workspaceId = String(value || "").trim();
@@ -147,18 +147,24 @@ function serializePlatformModel(row, purpose) {
   if (!row) return {
     purpose,
     source: "environment",
-    name: purpose === "managed_runtime" ? MANAGED_MODEL_ALIAS : "Market Intelligence",
+    name: purpose === "managed_runtime" ? MANAGED_MODEL_ALIAS : purpose === "oneshow_home_chat" ? "OneShow Home Buddy" : "Market Intelligence",
     providerTemplate: "openai",
     baseUrl: purpose === "managed_runtime"
       ? process.env.ONESHOW_MODEL_BASE_URL || "https://api.openai.com/v1"
+      : purpose === "oneshow_home_chat"
+      ? process.env.ONESHOW_HOME_CHAT_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1"
       : process.env.CODEX_BASE_URL || process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
     modelId: purpose === "managed_runtime"
       ? process.env.ONESHOW_MODEL_ID || process.env.OPENAI_MODEL || null
+      : purpose === "oneshow_home_chat"
+      ? process.env.ONESHOW_HOME_CHAT_MODEL || null
       : process.env.MARKET_INTELLIGENCE_MODEL || null,
     workspaceId: purpose === "market_intelligence" ? process.env.DASHSCOPE_WORKSPACE_ID || null : null,
     keyHint: null,
     configured: purpose === "managed_runtime"
       ? Boolean(process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY)
+      : purpose === "oneshow_home_chat"
+      ? Boolean(process.env.ONESHOW_HOME_CHAT_API_KEY)
       : Boolean(process.env.DASHSCOPE_API_KEY || process.env.OFFERSTEADY_DASHSCOPE_API_KEY),
     status: "environment",
     lastTestStatus: null,
@@ -185,7 +191,7 @@ function serializePlatformModel(row, purpose) {
 }
 
 export function listPlatformModelConfigurations() {
-  return ["managed_runtime", "market_intelligence"].map((purpose) => serializePlatformModel(platformModelRow(purpose), purpose));
+  return ["managed_runtime", "market_intelligence", "oneshow_home_chat"].map((purpose) => serializePlatformModel(platformModelRow(purpose), purpose));
 }
 
 export function platformModelConfiguration(purpose) {
@@ -440,7 +446,7 @@ function normalizePayload(payload, protocol) {
   };
 }
 
-function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId = null) {
+function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId = null, messages = null) {
   const root = safeBase.href.replace(/\/$/, "");
   if (protocol === "anthropic") {
     const suffix = safeBase.pathname.replace(/\/$/, "").endsWith("/v1") ? "messages" : "v1/messages";
@@ -455,7 +461,7 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, wo
         model: modelId,
         max_tokens: Math.min(Math.max(Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 4096), 64), 8192),
         system: instruction,
-        messages: [{ role: "user", content: text }],
+        messages: messages || [{ role: "user", content: text }],
       },
     };
   }
@@ -468,7 +474,7 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, wo
     },
     body: {
       model: modelId,
-      messages: [{ role: "system", content: instruction }, { role: "user", content: text }],
+      messages: [{ role: "system", content: instruction }, ...(messages || [{ role: "user", content: text }])],
     },
   };
 }
@@ -478,14 +484,14 @@ export function resolveModelRequestTimeout(timeoutMs = null, env = process.env) 
   return Math.min(180_000, Math.max(5_000, Number.isFinite(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT_MS));
 }
 
-async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, signal, timeoutMs = null }) {
+async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, messages = null, signal, timeoutMs = null }) {
   const controller = new AbortController();
   const requestTimeout = resolveModelRequestTimeout(timeoutMs);
   const timeout = setTimeout(() => controller.abort(), requestTimeout);
   signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     const safeBase = await assertSafeEndpoint(baseUrl);
-    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId);
+    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId, messages);
     const response = await fetch(request.endpoint, {
       method: "POST",
       redirect: "manual",
@@ -603,6 +609,40 @@ export function platformModelRoute(purpose) {
     modelId: row.model_id,
     workspaceId: row.workspace_id || null,
   };
+}
+
+export async function invokePlatformModel({ purpose, service = "unknown", instruction, messages, signal, timeoutMs = null }) {
+  const route = platformModelRoute(purpose);
+  if (!route) throw gatewayError("PLATFORM_MODEL_UNAVAILABLE", 503, true);
+  const normalizedMessages = Array.isArray(messages) ? messages.slice(-24).map((message) => ({
+    role: message?.role === "assistant" ? "assistant" : "user",
+    content: String(message?.content || "").trim().slice(0, 12_000),
+  })).filter((message) => message.content) : [];
+  if (!normalizedMessages.length) throw gatewayError("INVALID_MODEL_MESSAGES", 400);
+  const invocationId = randomUUID();
+  const startedAt = Date.now();
+  db.prepare(`INSERT INTO platform_model_invocations (id, purpose, service, status, model_id, started_at)
+    VALUES (?, ?, ?, 'running', ?, ?)`)
+    .run(invocationId, purpose, String(service).slice(0, 80), route.modelId, startedAt);
+  try {
+    const result = await requestModel({
+      ...route,
+      instruction: String(instruction || "").slice(0, 12_000),
+      text: normalizedMessages.at(-1).content,
+      messages: normalizedMessages,
+      signal,
+      timeoutMs,
+    });
+    db.prepare(`UPDATE platform_model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,
+      latency_ms = ?, completed_at = ? WHERE id = ?`)
+      .run(result.usage.inputTokens, result.usage.outputTokens, Date.now() - startedAt, Date.now(), invocationId);
+    return { ...result, modelId: route.modelId, invocationId };
+  } catch (error) {
+    db.prepare(`UPDATE platform_model_invocations SET status = 'failed', error_class = ?, latency_ms = ?,
+      completed_at = ? WHERE id = ?`)
+      .run(error.code || "MODEL_REQUEST_FAILED", Date.now() - startedAt, Date.now(), invocationId);
+    throw error;
+  }
 }
 
 function resolveRoute(userId, connectionId) {

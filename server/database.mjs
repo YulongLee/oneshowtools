@@ -276,6 +276,28 @@ export function initializeDatabase() {
   }
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0022_model_studio_workspace.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0023_customer_support.sql"), "utf8"));
+  const platformModelSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'platform_model_configs'").get()?.sql || "";
+  if (!platformModelSchema.includes("oneshow_home_chat")) {
+    db.exec(readFileSync(resolve(projectRoot, "db/migrations/0024_oneshow_home_model_gateway.sql"), "utf8"));
+  } else {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS platform_model_invocations (
+        id TEXT PRIMARY KEY,
+        purpose TEXT NOT NULL,
+        service TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+        model_id TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        latency_ms INTEGER,
+        error_class TEXT,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS platform_model_invocations_purpose_started_idx
+        ON platform_model_invocations(purpose, started_at DESC);
+    `);
+  }
   const imageProviderColumns = new Set(db.prepare("PRAGMA table_info(image_provider_configs)").all().map((item) => item.name));
   if (!imageProviderColumns.has("credential_source")) db.exec("ALTER TABLE image_provider_configs ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'direct' CHECK(credential_source IN ('direct','workspace'))");
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");

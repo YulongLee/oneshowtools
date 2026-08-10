@@ -14,6 +14,7 @@ const musicReferenceMigration = await readFile(new URL("../db/migrations/0019_mu
 const aiImageMigration = await readFile(new URL("../db/migrations/0021_ai_image_suite.sql", import.meta.url), "utf8");
 const modelStudioWorkspaceMigration = await readFile(new URL("../db/migrations/0022_model_studio_workspace.sql", import.meta.url), "utf8");
 const customerSupportMigration = await readFile(new URL("../db/migrations/0023_customer_support.sql", import.meta.url), "utf8");
+const oneShowHomeGatewayMigration = await readFile(new URL("../db/migrations/0024_oneshow_home_model_gateway.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -87,6 +88,12 @@ if (!modelStudioWorkspaceMigration.includes("CREATE TABLE IF NOT EXISTS model_st
 for (const table of ["support_conversations", "support_messages", "support_knowledge_articles"]) {
   if (!customerSupportMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
     throw new Error(`Customer support migration is missing table: ${table}`);
+  }
+}
+
+for (const invariant of ["oneshow_home_chat", "platform_model_invocations"]) {
+  if (!oneShowHomeGatewayMigration.includes(invariant)) {
+    throw new Error(`OneShow Home gateway migration is missing invariant: ${invariant}`);
   }
 }
 

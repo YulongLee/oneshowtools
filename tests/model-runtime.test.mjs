@@ -56,6 +56,7 @@ const {
   createModelConnection,
   decryptCredential,
   invokeModel,
+  invokePlatformModel,
   listModelConnections,
   listPlatformModelConfigurations,
   listToolModelPreferences,
@@ -338,6 +339,31 @@ test("admin platform model configuration is encrypted, redacted, tested, and use
   const result = await invokeModel({ userId, instruction: "Test", text: "Hello" });
   assert.equal(result.text, "ok:admin-managed-model");
   assert.equal(observedRequests.at(-1).workspaceId, "ws-test-runtime");
+});
+
+test("OneShow Home uses its own encrypted platform route and records the invocation", async () => {
+  const actorId = addUser("oneshow-home-model@example.com");
+  const saved = await savePlatformModelConfiguration("oneshow_home_chat", {
+    name: "OneShow Home Buddy",
+    providerTemplate: "openai",
+    baseUrl: `${providerBaseUrl}/v1`,
+    modelId: "buddy-chat-model",
+    apiKey: "buddy-secret-key-9876",
+  }, actorId);
+  assert.equal(saved.purpose, "oneshow_home_chat");
+  assert.equal(saved.keyHint, "••••9876");
+
+  const result = await invokePlatformModel({
+    purpose: "oneshow_home_chat",
+    service: "oneshow-home-api",
+    instruction: "You are Milo.",
+    messages: [{ role: "user", content: "Hello" }],
+  });
+  assert.equal(result.text, "ok:buddy-chat-model");
+  assert.equal(result.modelId, "buddy-chat-model");
+  const invocation = db.prepare("SELECT * FROM platform_model_invocations WHERE id = ?").get(result.invocationId);
+  assert.equal(invocation.status, "completed");
+  assert.equal(invocation.service, "oneshow-home-api");
 });
 
 test("each model-backed tool stores an owner-scoped model preference", () => {

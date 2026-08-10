@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { basename } from "node:path";
 import { audit, db } from "./database.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
@@ -45,6 +45,7 @@ import {
   toolModelSelection,
   updateModelConnection,
   validateModelConnection,
+  invokePlatformModel,
 } from "./model-gateway.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
@@ -52,6 +53,15 @@ const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(d
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
 });
 const fail = (code, status = 400) => json({ error: { code } }, status);
+
+function internalServiceAuthorized(request) {
+  const expected = String(process.env.ONESHOW_INTERNAL_SERVICE_TOKEN || "");
+  const supplied = String(request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  if (expected.length < 32 || supplied.length < 32) return false;
+  const expectedHash = createHash("sha256").update(expected).digest();
+  const suppliedHash = createHash("sha256").update(supplied).digest();
+  return timingSafeEqual(expectedHash, suppliedHash);
+}
 const cleanUser = (row) => row && ({
   id: row.id,
   name: row.name,
@@ -943,6 +953,28 @@ export async function handleApi(request) {
   const path = url.pathname;
   const config = getServerConfig(request.url);
   const configurationErrors = validateServerConfig(config);
+  if (path === "/api/internal/v1/platform-model/invoke" && request.method === "POST") {
+    if (!internalServiceAuthorized(request)) return fail("SERVICE_UNAUTHENTICATED", 401);
+    try {
+      const data = await body(request);
+      if (data.purpose !== "oneshow_home_chat") return fail("INVALID_PLATFORM_MODEL_PURPOSE", 400);
+      const result = await invokePlatformModel({
+        purpose: data.purpose,
+        service: "oneshow-home-api",
+        instruction: data.instruction,
+        messages: Array.isArray(data.messages) ? data.messages : [],
+      });
+      return json({
+        text: result.text,
+        modelId: result.modelId,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        invocationId: result.invocationId,
+      });
+    } catch (error) {
+      return fail(error.code || "PLATFORM_MODEL_INVOCATION_FAILED", error.status || 502);
+    }
+  }
   if (path === "/api/health" && request.method === "GET") return json({
     ok: true,
     database: "sqlite",

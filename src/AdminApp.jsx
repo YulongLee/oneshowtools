@@ -26,7 +26,7 @@ const copy = {
     seoLogin: "API 登录名", seoPassword: "API 密码（留空则保留现有密码）", seoConnectionTest: "测试账户连接",
     seoConnectionSave: "测试并保存", seoBalance: "账户余额", seoUnlocked: "可解锁能力", seoProviderHealthy: "认证成功，可以读取账户信息",
     seoIpHint: "如果在 DataForSEO 开启 IP 白名单，请加入 OneShowTools 服务器的固定出口 IP。未配置白名单时无需填写。",
-    managed_runtime: "OneShowModel", market_intelligence: "市场情报模型", modelName: "配置名称", modelProtocol: "接口协议",
+    managed_runtime: "OneShowModel", market_intelligence: "市场情报模型", oneshow_home_chat: "OneShow Home 对话", modelName: "配置名称", modelProtocol: "接口协议",
     modelBaseUrl: "API Base URL", modelId: "模型 ID", workspaceId: "阿里云 Workspace（可选）", replaceApiKey: "API Key（留空则保留现有密钥）",
     testModel: "测试连接", saveModel: "测试并保存", modelTestHealthy: "连接正常", modelRateLimited: "连接有效，但模型当前繁忙或限流",
     changeReason: "变更原因", storageBackend: "用户文件存储", storage_management: "对象存储", storagePrefix: "隔离前缀", storageBucket: "Bucket", storageRegion: "地域", storageEndpoint: "OSS Endpoint",
@@ -105,7 +105,7 @@ const copy = {
     seoLogin: "API login", seoPassword: "API password (leave blank to keep the stored password)", seoConnectionTest: "Test account connection",
     seoConnectionSave: "Test and save", seoBalance: "Account balance", seoUnlocked: "Capabilities unlocked", seoProviderHealthy: "Authentication succeeded and account data is available",
     seoIpHint: "If DataForSEO IP allowlisting is enabled, add the fixed OneShowTools outbound IP. No action is needed when allowlisting is disabled.",
-    managed_runtime: "OneShowModel", market_intelligence: "Market Intelligence", modelName: "Configuration name", modelProtocol: "API protocol",
+    managed_runtime: "OneShowModel", market_intelligence: "Market Intelligence", oneshow_home_chat: "OneShow Home Chat", modelName: "Configuration name", modelProtocol: "API protocol",
     modelBaseUrl: "API Base URL", modelId: "Model ID", workspaceId: "DashScope Workspace (optional)", replaceApiKey: "API Key (leave blank to keep current key)",
     testModel: "Test connection", saveModel: "Test and save", modelTestHealthy: "Connection healthy", modelRateLimited: "Credential accepted, but model is busy or rate limited",
     changeReason: "Change reason", storageBackend: "User file storage", storage_management: "Object Storage", storagePrefix: "Isolated prefix", storageBucket: "Bucket", storageRegion: "Region", storageEndpoint: "OSS Endpoint",
@@ -574,7 +574,7 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
     try { const result = await onSave(purpose, draft); if (result) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); }
     finally { setSaving(false); }
   };
-  const purposes = ["managed_runtime", "market_intelligence", "model_studio_workspace", "music_generation", "singing_cover", "image_generation", "image_editing", "image_upscaling", "storage_management"];
+  const purposes = ["managed_runtime", "market_intelligence", "oneshow_home_chat", "model_studio_workspace", "music_generation", "singing_cover", "image_generation", "image_editing", "image_upscaling", "storage_management"];
   return <div className="admin-page-stack platform-model-page">
     <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE AI ROUTING</small><h2>{t.platformModels}</h2></div><Gear size={23} /></header><p>{t.platformModelsHint}</p></section>
     <nav className="admin-v2-panel admin-section-tabs platform-model-purpose-tabs">{purposes.map((item) => <button key={item} className={purpose === item ? "active" : ""} onClick={() => setPurpose(item)}>{t[item]}</button>)}</nav>
