@@ -8,7 +8,10 @@ const safeName = (value, fallback = "image") => String(value || fallback).replac
 export const aiImageToolSlugs = new Set([
   "ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo",
   "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer",
+  "sliding-ancestor-generator",
 ]);
+
+const ancestorSlug = "sliding-ancestor-generator";
 
 async function imageInput(file) {
   if (!file?.size) throw toolError("IMAGE_REQUIRED", 400);
@@ -87,8 +90,110 @@ async function whiteToTransparent(buffer) {
   return sharp(data, { raw: info }).png().toBuffer();
 }
 
+function ancestorAnchorPrompt(direction, level, style) {
+  const styleMap = {
+    dynasty: "cinematic fictional dynasty founder portrait, ceremonial robes, dark bronze and aged gold, museum-quality lighting",
+    clan: "fictional ancestral hall portrait, layered traditional ceremonial clothing, ink and mineral pigment texture, restrained solemn lighting",
+    chaos: "surreal internet-meme ancestral portrait, deliberately abstract yet visually polished, unexpected ceremonial details, dramatic lighting",
+  };
+  const intensity = direction === "xu"
+    ? (level === 6
+      ? "noticeably ethereal and delicate: pale ink-wash atmosphere, fine mist, softer silhouette, floating fabric edges and a light spectral aura"
+      : "maximum ethereal abstraction: the figure feels almost dissolved into paper, mist and translucent ink, extremely light and elusive while the face remains identifiable")
+    : (level === 6
+      ? "noticeably grounded and formidable: broader ceremonial silhouette, heavier layered robes, bronze texture, confident square posture and hard directional light"
+      : "maximum monumental abstraction: an absurdly mighty fictional founding ancestor, colossal ceremonial crown and robes, stone-and-bronze presence, exaggerated power and scale while remaining coherent");
+  return `ONE-SHOW-TOOLS / SLIDING ANCESTOR VISUAL TRANSFORMATION
+
+Create one fictional, entertainment-only ancestral portrait from the uploaded person. This is a stylized meme image, not a claim about real ancestry, ethnicity, historical identity or social status.
+
+IDENTITY LOCK
+Keep the uploaded person's face, facial geometry, expression, skin tone, hairline and recognizability. Keep one person only. Preserve the original camera angle and crop unless a small extension is required for ceremonial clothing. Do not replace the person with a historical figure or public figure.
+
+ART DIRECTION
+${styleMap[style] || styleMap.dynasty}.
+Intensity direction: ${intensity}.
+Use a centered, premium vertical portrait composition with clean anatomy, coherent hands when visible, detailed fabric and a dark neutral background. Add tasteful surreal abstraction, but never obscure the entire face.
+
+OUTPUT RULES
+Return one seamless portrait only. No collage, split screen, captions, labels, borders, UI, watermark or readable text.`;
+}
+
+async function normalizeFrame(buffer, width, height) {
+  return sharp(buffer).rotate().resize(width, height, { fit: "cover", position: "attention" }).png().toBuffer();
+}
+
+async function blendFrame(fromBuffer, toBuffer, ratio, direction, level, width, height) {
+  const base = await normalizeFrame(fromBuffer, width, height);
+  const overlay = await normalizeFrame(toBuffer, width, height);
+  let pipeline = sharp(base).composite([{ input: overlay, blend: "over", opacity: Math.max(0, Math.min(1, ratio)) }]);
+  if (direction === "xu") {
+    pipeline = pipeline.modulate({ brightness: 1 + level * 0.007, saturation: Math.max(0.62, 1 - level * 0.025) });
+    if (level >= 5) pipeline = pipeline.blur(Math.min(0.9, 0.3 + level * 0.04));
+  } else {
+    pipeline = pipeline.modulate({ brightness: Math.max(0.9, 1 - level * 0.004), saturation: 1 + level * 0.018 });
+    if (level >= 3) pipeline = pipeline.sharpen({ sigma: Math.min(1.3, 0.55 + level * 0.045) });
+  }
+  return pipeline.png({ compressionLevel: 8 }).toBuffer();
+}
+
+async function processAncestorSeries(form, fetchImpl) {
+  const primaryFile = form.get("file")?.size ? form.get("file") : form.getAll("files").find((item) => item?.size);
+  const input = await imageInput(primaryFile);
+  const style = clean(form.get("style"), 40) || "dynasty";
+  if (!["dynasty", "clan", "chaos"].includes(style)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
+  const width = Math.min(1280, input.width);
+  const height = Math.max(512, Math.round(width * input.height / input.width));
+  const source = await normalizeFrame(input.buffer, width, height);
+  const anchorStartedAt = Date.now();
+  const anchors = {};
+  for (const [direction, level] of [["xu", 6], ["xu", 12], ["han", 6], ["han", 12]]) {
+    const generated = await editPlatformImage({
+      purpose: "image_editing",
+      images: [{ buffer: input.buffer, mimeType: input.mimeType }],
+      prompt: ancestorAnchorPrompt(direction, level, style),
+      fetchImpl,
+    });
+    anchors[`${direction}${level}`] = generated.buffer;
+  }
+  const outputs = [];
+  for (const direction of ["xu", "han"]) {
+    for (let level = 1; level <= 12; level += 1) {
+      const from = level <= 6 ? source : anchors[`${direction}6`];
+      const to = level <= 6 ? anchors[`${direction}6`] : anchors[`${direction}12`];
+      const ratio = level <= 6 ? level / 6 : (level - 6) / 6;
+      const buffer = await blendFrame(from, to, ratio, direction, level, width, height);
+      outputs.push({
+        buffer,
+        extension: ".png",
+        mimeType: "image/png",
+        name: `${safeName(input.name)}-${direction}-${String(level).padStart(2, "0")}.png`,
+        direction,
+        level,
+      });
+    }
+  }
+  return {
+    files: outputs,
+    output: {
+      mode: "ai-progressive-series",
+      providerPurpose: "image_editing",
+      style,
+      frameCount: outputs.length,
+      anchorCount: 4,
+      width,
+      height,
+      sourceWidth: input.width,
+      sourceHeight: input.height,
+      latencyMs: Date.now() - anchorStartedAt,
+      entertainmentOnly: true,
+    },
+  };
+}
+
 export async function processAiImageTool(slug, form, fetchImpl = fetch) {
   if (!aiImageToolSlugs.has(slug)) throw toolError("AI_IMAGE_TOOL_NOT_SUPPORTED", 404);
+  if (slug === ancestorSlug) return processAncestorSeries(form, fetchImpl);
   const files = form.getAll("files").filter((item) => item?.size);
   const primaryFile = form.get("file")?.size ? form.get("file") : files[0];
   const selected = primaryFile ? [primaryFile, ...files.filter((item) => item !== primaryFile)] : files;

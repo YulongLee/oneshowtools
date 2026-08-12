@@ -9,20 +9,21 @@ import {
   Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, MusicNotes, Robot,
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
-  Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives,
+  Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
 } from "@phosphor-icons/react";
 import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
 import { MusicStudio } from "./MusicStudio.jsx";
 import { LyricsGenerator } from "./LyricsGenerator.jsx";
 import { SupportWidget } from "./SupportWidget.jsx";
+import { SlidingAncestorStudio } from "./SlidingAncestorStudio.jsx";
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
-  Code, Megaphone, MusicNotes, Briefcase,
+  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal,
 };
-const aiImageToolSlugs = new Set(["ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo", "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer"]);
+const aiImageToolSlugs = new Set(["ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo", "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer", "sliding-ancestor-generator"]);
 const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker", "image-ocr", "qr-code-reader", ...aiImageToolSlugs]);
 const pdfToolSlugs = new Set(["pdf-merge", "pdf-split", "pdf-compress", "pdf-organizer", "images-to-pdf", "pdf-to-images", "pdf-watermark", "pdf-page-numbers", "pdf-ocr", "pdf-to-markdown", "pdf-table-to-excel", "pdf-summary"]);
 const multiFilePdfSlugs = new Set(["pdf-merge", "images-to-pdf"]);
@@ -758,6 +759,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 }
 
 function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;

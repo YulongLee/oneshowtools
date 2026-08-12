@@ -198,7 +198,7 @@ async function processText(slug, payload, locale, user) {
   throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
 }
 
-function storeCompletedTask({ user, tool, input, output, resultFile, writingRun = null, seoRun = null, rankSnapshots = [] }) {
+function storeCompletedTask({ user, tool, input, output, resultFile, resultFiles = [], writingRun = null, seoRun = null, rankSnapshots = [] }) {
   const taskId = randomUUID();
   const timestamp = Date.now();
   db.exec("BEGIN IMMEDIATE");
@@ -216,16 +216,17 @@ function storeCompletedTask({ user, tool, input, output, resultFile, writingRun 
         VALUES (?, ?, 'consumption', ?, ?, ?, 'task', ?, ?)
       `).run(randomUUID(), user.id, -tool.creditCost, `使用${tool.nameZh}`, `Used ${tool.nameEn}`, taskId, timestamp);
     }
-    if (resultFile) {
+    const filesToStore = resultFiles.length ? resultFiles : (resultFile ? [resultFile] : []);
+    for (const storedFile of filesToStore) {
       db.prepare(`
         INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(resultFile.id, user.id, resultFile.name, resultFile.storageName, resultFile.mimeType, resultFile.sizeBytes, timestamp);
+      `).run(storedFile.id, user.id, storedFile.name, storedFile.storageName, storedFile.mimeType, storedFile.sizeBytes, timestamp);
       db.prepare(`
         INSERT INTO file_storage_objects (file_id, provider, object_key, etag, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'available', ?, ?)
-      `).run(resultFile.id, resultFile.provider, resultFile.objectKey, resultFile.etag, timestamp, timestamp);
-      db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, resultFile.id);
+      `).run(storedFile.id, storedFile.provider, storedFile.objectKey, storedFile.etag, timestamp, timestamp);
+      db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, storedFile.id);
     }
     if (writingRun) {
       db.prepare(`
@@ -264,13 +265,8 @@ function storeCompletedTask({ user, tool, input, output, resultFile, writingRun 
   return {
     task: { id: taskId, status: "completed", creditCost: tool.creditCost, createdAt: timestamp },
     output,
-    file: resultFile ? {
-      id: resultFile.id,
-      name: resultFile.name,
-      mimeType: resultFile.mimeType,
-      sizeBytes: resultFile.sizeBytes,
-      downloadUrl: `/api/files/${resultFile.id}/download`,
-    } : null,
+    file: resultFile ? { id: resultFile.id, name: resultFile.name, mimeType: resultFile.mimeType, sizeBytes: resultFile.sizeBytes, downloadUrl: `/api/files/${resultFile.id}/download` } : null,
+    files: resultFiles.map((item) => ({ id: item.id, name: item.name, mimeType: item.mimeType, sizeBytes: item.sizeBytes, direction: item.direction, level: item.level, downloadUrl: `/api/files/${item.id}/download` })),
   };
 }
 
@@ -282,7 +278,7 @@ export async function runToolAction(request, user, tool) {
   const alwaysCreatesFile = tool.slug === "background-remover" || tool.slug === "image-compressor"
     || imageToolSlugs.has(tool.slug) || aiImageToolSlugs.has(tool.slug) || pdfToolSlugSet.has(tool.slug)
     || mediaToolSlugs.has(tool.slug) || dataFileToolSlugs.has(tool.slug);
-  if (alwaysCreatesFile) assertUserFileCapacity(user.id);
+  if (alwaysCreatesFile) assertUserFileCapacity(user.id, tool.slug === "sliding-ancestor-generator" ? 24 : 1);
 
   let processed;
   let input;
@@ -343,6 +339,7 @@ export async function runToolAction(request, user, tool) {
   }
 
   let resultFile = null;
+  const resultFiles = [];
   if (processed.buffer) {
     assertUserFileCapacity(user.id);
     const id = randomUUID();
@@ -355,11 +352,26 @@ export async function runToolAction(request, user, tool) {
       sizeBytes: processed.buffer.length,
     };
   }
-  const output = { ...processed.output, ...(resultFile ? { resultFileId: resultFile.id } : {}) };
+  if (processed.files?.length) {
+    assertUserFileCapacity(user.id, processed.files.length);
+    try {
+      for (const item of processed.files) {
+        const id = randomUUID();
+        const stored = await putStoredFile({ userId: user.id, fileId: id, fileName: item.name, mimeType: item.mimeType, buffer: item.buffer });
+        resultFiles.push({ id, ...stored, name: item.name, mimeType: item.mimeType, sizeBytes: item.buffer.length, direction: item.direction, level: item.level });
+      }
+    } catch (error) {
+      await Promise.all(resultFiles.map((item) => deleteStoredFile(item).catch(() => {})));
+      throw error;
+    }
+  }
+  const publicResultFiles = resultFiles.map((item) => ({ id: item.id, name: item.name, mimeType: item.mimeType, sizeBytes: item.sizeBytes, direction: item.direction, level: item.level, downloadUrl: `/api/files/${item.id}/download` }));
+  const output = { ...processed.output, ...(resultFile ? { resultFileId: resultFile.id } : {}), ...(resultFiles.length ? { resultFileIds: resultFiles.map((item) => item.id), resultFiles: publicResultFiles } : {}) };
   try {
-    return storeCompletedTask({ user, tool, input, output, resultFile, writingRun: processed.writingRun, seoRun: processed.seoRun, rankSnapshots: processed.rankSnapshots || [] });
+    return storeCompletedTask({ user, tool, input, output, resultFile, resultFiles, writingRun: processed.writingRun, seoRun: processed.seoRun, rankSnapshots: processed.rankSnapshots || [] });
   } catch (error) {
     if (resultFile) await deleteStoredFile(resultFile).catch(() => {});
+    await Promise.all(resultFiles.map((item) => deleteStoredFile(item).catch(() => {})));
     throw error;
   }
 }

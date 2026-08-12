@@ -47,12 +47,12 @@ test("image editing configuration is encrypted, redacted, and activates all comm
   assert.doesNotMatch(JSON.stringify(saved), /image-edit-secret/);
   const stored = db.prepare("SELECT * FROM image_provider_configs WHERE purpose = 'image_editing'").get();
   assert.notEqual(stored.key_ciphertext, "image-edit-secret-1234");
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM tools WHERE runtime_kind = 'platform-image-edit' AND runtime_status = 'ready'").get().count, 7);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM tools WHERE runtime_kind = 'platform-image-edit' AND runtime_status = 'ready'").get().count, 8);
   assert.equal(imageEditProviderConfiguration("image_upscaling").configured, false);
 });
 
-test("all eight AI image tools run through the real provider adapter and return valid PNG files", async () => {
-  for (const slug of aiImageToolSlugs) {
+test("all standard AI image tools run through the real provider adapter and return valid PNG files", async () => {
+  for (const slug of [...aiImageToolSlugs].filter((item) => item !== "sliding-ancestor-generator")) {
     const form = new FormData();
     form.append("file", new File([sourcePng], `${slug}.png`, { type: "image/png" }));
     form.append("outfit", "dark professional suit");
@@ -69,6 +69,23 @@ test("all eight AI image tools run through the real provider adapter and return 
   assert.ok(prompts.some((prompt) => /Preserve the product/.test(prompt)));
   assert.ok(prompts.some((prompt) => /transparent|#FFFFFF/.test(prompt)));
   assert.ok(prompts.some((prompt) => /Restore and enhance/.test(prompt)));
+});
+
+test("sliding ancestor generator creates a real 24-frame progressive series from four model anchors", async () => {
+  const form = new FormData();
+  form.append("file", new File([sourcePng], "portrait.png", { type: "image/png" }));
+  form.append("style", "dynasty");
+  const before = prompts.length;
+  const result = await processAiImageTool("sliding-ancestor-generator", form, providerFetch);
+  assert.equal(result.files.length, 24);
+  assert.equal(result.output.frameCount, 24);
+  assert.equal(result.output.anchorCount, 4);
+  assert.equal(prompts.length, before + 4);
+  assert.deepEqual(result.files.slice(0, 12).map((item) => item.direction), Array(12).fill("xu"));
+  assert.deepEqual(result.files.slice(12).map((item) => item.direction), Array(12).fill("han"));
+  for (const file of result.files) assert.equal((await sharp(file.buffer).metadata()).format, "png");
+  assert.match(prompts[before], /entertainment-only ancestral portrait/i);
+  assert.match(prompts[before + 3], /maximum monumental abstraction/i);
 });
 
 test("outfit changer accepts a second clothing reference image", async () => {
