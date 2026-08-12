@@ -1,7 +1,7 @@
 # Design QA — 滑动变祖器
 
-- Source visual truth: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-ea361e98-7d97-4189-aed3-eef3851ac904.png`
-- Implementation screenshot: `implementation-ancestor.png`
+- Source visual truth: existing OneShowTools workspace visual system (white cards, blue-violet brand gradient, compact commercial controls) plus the clarified same-person power-progression reference at `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-16832db3-bc4f-4329-9728-70219a5e44f5.png`.
+- Implementation screenshot: `implementation-ancestor-light.png`
 - Implementation route: `http://localhost:5173/tools/sliding-ancestor-generator`
 - Desktop viewport: 1280 × 900 CSS px, density 1; full-page screenshot 1280 × 1254 px.
 - Responsive viewport: 768 × 900 CSS px, density 1.
@@ -9,7 +9,7 @@
 
 ## Full-view comparison evidence
 
-The reference establishes a dark experimental image lab, large serif Chinese title, central portrait stage, intensity scale, sparse bronze/grey accents, and a theatrical ancestral portrait direction. The implementation retains those defining surfaces while fitting the existing OneShowTools header and commercial tool workflow. The left configuration rail is an intentional product addition needed for upload, style selection, consent, billing and generation.
+The revised page follows the OneShowTools product shell and correctly presents the gameplay as a same-person, 24-step power progression. The left side becomes increasingly fragile and low-presence, while the right side becomes increasingly strong, rugged and formidable. There is no ancestry, dynasty or historical-character framing. The left configuration rail supports upload, transformation style, consent, billing and generation.
 
 ## Focused region comparison evidence
 
@@ -17,11 +17,11 @@ Focused checks covered the header/title, portrait stage, slider/ticks, upload ca
 
 ## Required fidelity surfaces
 
-- Typography: serif display face for the experimental title and selected state; legible system sans for controls; hierarchy and wrapping pass.
+- Typography: platform system sans with a strong compact heading hierarchy; labels and copy wrap correctly.
 - Spacing/layout: desktop two-column composition and 768 px single-column breakpoint have no horizontal overflow. Persistent controls remain visible.
-- Colors/tokens: dark charcoal, aged bronze, paper-white and muted grey match the reference direction while retaining OneShowTools outer shell.
+- Colors/tokens: white, cool grey, blue and violet match the existing OneShowTools workspace; the playful concept remains in copy and generated imagery rather than an isolated dark theme.
 - Image quality/assets: source and generated portraits use real image elements with `object-fit`; no fake raster asset, CSS illustration or emoji is used.
-- Copy/content: explicitly describes 12 left + 12 right results, storage impact, wait time, credits, authorization and entertainment-only limitation.
+- Copy/content: explicitly defines “变祖” as becoming stronger, describes 12 fragile + 12 powerful results, and covers storage impact, wait time, credits, authorization and entertainment-only limitation.
 
 ## Interaction and runtime checks
 
@@ -29,7 +29,9 @@ Focused checks covered the header/title, portrait stage, slider/ticks, upload ca
 - Upload control, three style choices, authentication gate, generate action and intensity control are present and labelled.
 - Browser console errors: none.
 - Production build: passed.
-- Automated test suite: 123/123 passed.
+- Automated test suite: 124/124 passed.
+- Responsive checks: 1280 px, 768 px and 390 px; no horizontal overflow.
+- Prompt contract: same-person continuity is mandatory; ancestor, emperor, historical, lineage, crown and ceremonial transformations are explicitly forbidden.
 
 ## Findings
 
@@ -37,7 +39,7 @@ No actionable P0/P1/P2 visual or responsive findings remain.
 
 ## Comparison history
 
-Initial implementation passed the normalized full-view and focused checks. No P0/P1/P2 fix iteration was required.
+The initial dark implementation was visually inconsistent with the wider product, and the first prompt interpretation incorrectly treated “祖” as ancestry. The page was realigned to the platform design system; copy, presets, catalog metadata, tests and backend prompt contract were then corrected to a same-person weak-to-strong progression. No P0/P1/P2 findings remain.
 
 ## Follow-up polish
 

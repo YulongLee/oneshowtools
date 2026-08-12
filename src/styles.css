@@ -1368,6 +1368,76 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .ancestor-series > div > div { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
 
+/* OneShowTools visual alignment for the ancestor workspace */
+.ancestor-page { color: #17233b; }
+.ancestor-page > .tool-back { color: #65758d; }
+.ancestor-header { min-height: 136px; padding: 24px 28px; border: 1px solid #dce6f5; border-radius: 18px; background: radial-gradient(circle at 84% 10%,rgba(112,87,247,.16),transparent 27%),linear-gradient(135deg,#f3f7ff 0%,#f9f7ff 55%,#eef4ff 100%); box-shadow: 0 12px 34px rgba(64,86,137,.07); }
+.ancestor-title-lockup { display: flex; align-items: center; gap: 17px; }
+.ancestor-title-lockup > span { width: 58px; height: 58px; flex: 0 0 58px; border-radius: 16px; display: grid; place-items: center; color: #5b4ee8; background: linear-gradient(145deg,#ebe8ff,#e5f1ff); box-shadow: inset 0 0 0 1px rgba(93,95,230,.08); }
+.ancestor-header p,.ancestor-stage header p { margin: 0 0 7px; color: #5e6fe8; font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.ancestor-header h1 { margin: 0; color: #13213a; font-family: inherit; font-size: clamp(27px,3vw,38px); font-weight: 800; letter-spacing: -.035em; }
+.ancestor-header .ancestor-title-lockup small { display: block; max-width: 720px; margin-top: 8px; color: #718097; font-size: 11px; line-height: 1.65; }
+.ancestor-header aside { min-width: 136px; padding: 14px 17px; border: 1px solid #d9e2f3; border-radius: 12px; color: #4d67de; background: rgba(255,255,255,.82); box-shadow: 0 8px 22px rgba(58,78,132,.06); }
+.ancestor-header aside strong { color: #20355f; font-size: 24px; }
+.ancestor-header aside small { color: #8895a8; }
+.ancestor-layout { margin-top: 16px; border: 0; border-radius: 16px; gap: 16px; overflow: visible; background: transparent; }
+.ancestor-control,.ancestor-stage { border: 1px solid #dfe6f1; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px rgba(45,67,105,.05); }
+.ancestor-control { padding: 22px; border-right: 1px solid #dfe6f1; }
+.ancestor-section-title > span { border: 0; color: #376fe8; background: #edf3ff; font-weight: 800; }
+.ancestor-section-title strong { color: #263650; }
+.ancestor-section-title small { color: #8794a7; }
+.ancestor-uploader { height: 220px; border: 1px dashed #b9c9e4; color: #416fda; background: #f8faff; }
+.ancestor-uploader:hover { border-color: #5f8deb; background: #f3f7ff; }
+.ancestor-uploader > span { color: #8c99ab; }
+.ancestor-uploader.has-image { background: #f4f7fc; }
+.ancestor-uploader.has-image > span { color: #fff; background: rgba(20,34,57,.72); }
+.ancestor-uploader.has-image button { background: rgba(20,34,57,.72); }
+.ancestor-style-list button { min-height: 62px; border: 1px solid #e0e7f1; color: #56667e; background: #fbfcff; }
+.ancestor-style-list button:hover { border-color: #b9caeb; background: #f7f9ff; }
+.ancestor-style-list button.active { border-color: #7798ef; background: linear-gradient(90deg,#edf3ff,#f5f3ff); box-shadow: inset 3px 0 #3975ed,0 6px 16px rgba(61,105,212,.07); }
+.ancestor-style-list button > span { color: #5276e8; background: #edf2ff; }
+.ancestor-style-list strong { color: #34445d; }
+.ancestor-style-list small { color: #8793a5; }
+.ancestor-safety { color: #78879c; }
+.ancestor-safety svg { color: #3a77e9; }
+.ancestor-run { min-height: 46px; color: #fff; background: linear-gradient(135deg,#2269eb,#5d54ec); box-shadow: 0 9px 20px rgba(46,91,218,.2); }
+.ancestor-run:hover:not(:disabled) { box-shadow: 0 12px 25px rgba(46,91,218,.28); transform: translateY(-1px); }
+.ancestor-quota-note { color: #929db0; }
+.ancestor-control .tool-auth-notice { border-color: #dbe5f4; color: #62738a; background: #f4f7ff; }
+.ancestor-stage { padding: 24px 26px 28px; background: linear-gradient(180deg,#fff,#fbfcff); }
+.ancestor-stage h2 { color: #22324b; font-family: inherit; font-size: 22px; font-weight: 800; }
+.ancestor-stage > header > span { padding: 6px 9px; border-radius: 8px; color: #5970d9; background: #eef2ff; font-family: inherit; font-size: 9px; font-weight: 750; }
+.ancestor-portrait { width: min(420px,68%); border: 1px solid #d9e2ef; border-radius: 14px; padding: 7px; overflow: hidden; background: #f6f8fc; box-shadow: 0 18px 45px rgba(47,67,105,.12); }
+.ancestor-portrait img { border-radius: 9px; }
+.ancestor-portrait.empty { color: #9aa7b8; background: linear-gradient(145deg,#f8faff,#f3f6fd); }
+.ancestor-portrait.empty strong { color: #718198; }
+.ancestor-frame-corners::before,.ancestor-frame-corners::after { display: none; }
+.ancestor-scale-copy { color: #7c8aa0; }
+.ancestor-scale-copy strong { padding: 5px 10px; border-radius: 12px; color: #4e5fdd; background: #f0efff; }
+.ancestor-slider { accent-color: #536dec; }
+.ancestor-ticks i { background: #d5ddea; }
+.ancestor-ticks i.origin { background: #8798b1; }
+.ancestor-ticks i.active { background: #536dec; box-shadow: 0 0 9px rgba(83,109,236,.4); }
+.ancestor-series > div { border: 1px solid #e0e7f1; background: #fafbfe; }
+.ancestor-series > div:first-child { background: linear-gradient(145deg,#f8fbff,#f4f8ff); }
+.ancestor-series > div:last-child { background: linear-gradient(145deg,#faf8ff,#f6f4ff); }
+.ancestor-series header strong { color: #41516a; }
+.ancestor-series header span { color: #919caf; }
+.ancestor-series button { border-color: #e2e8f2; background: #edf1f7; }
+.ancestor-series button.active { border-color: #5876ef; box-shadow: 0 0 0 2px rgba(88,118,239,.14); }
+.ancestor-empty-series { border-color: #d9e2ef; color: #8a97a9; background: #fafbfe; }
+.ancestor-download { border-color: #cdd9ed; color: #2c67df; background: #f7f9ff; }
+.ancestor-download:hover { border-color: #7ea0ea; background: #edf3ff; }
+
+@media (max-width: 760px) {
+  .ancestor-control { border-right: 1px solid #dfe6f1; border-bottom: 1px solid #dfe6f1; }
+}
+@media (max-width: 520px) {
+  .ancestor-title-lockup { align-items: flex-start; }
+  .ancestor-title-lockup > span { width: 46px; height: 46px; flex-basis: 46px; border-radius: 13px; }
+  .ancestor-header aside { width: 100%; }
+}
+
 /* Customer support workspace */
 .admin-support-page { display: grid; gap: 16px; }
 .support-metrics { max-width: 760px; }

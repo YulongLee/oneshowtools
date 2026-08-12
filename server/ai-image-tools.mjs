@@ -92,31 +92,37 @@ async function whiteToTransparent(buffer) {
 
 function ancestorAnchorPrompt(direction, level, style) {
   const styleMap = {
-    dynasty: "cinematic fictional dynasty founder portrait, ceremonial robes, dark bronze and aged gold, museum-quality lighting",
-    clan: "fictional ancestral hall portrait, layered traditional ceremonial clothing, ink and mineral pigment texture, restrained solemn lighting",
-    chaos: "surreal internet-meme ancestral portrait, deliberately abstract yet visually polished, unexpected ceremonial details, dramatic lighting",
+    realistic: "realistic contemporary portrait evolution, restrained commercial photography, natural textures and a believable gradual physical change",
+    cinematic: "rugged cinematic character evolution, harder directional lighting, realistic skin texture and an increasingly powerful screen presence",
+    chaos: "surreal internet-meme power evolution, deliberately exaggerated but visually polished, strange high-energy details without changing identity",
   };
   const intensity = direction === "xu"
     ? (level === 6
-      ? "noticeably ethereal and delicate: pale ink-wash atmosphere, fine mist, softer silhouette, floating fabric edges and a light spectral aura"
-      : "maximum ethereal abstraction: the figure feels almost dissolved into paper, mist and translucent ink, extremely light and elusive while the face remains identifiable")
+      ? "noticeably weaker and less imposing: slightly slimmer build, narrower shoulders, softer posture, gentler facial tension, lower visual contrast and reduced presence"
+      : "maximum exaggerated fragile form: very slight frame, slouched and timid posture, hollow-cheeked stylization, subdued lighting and almost no intimidating presence, while still looking like the same healthy fictional character")
     : (level === 6
-      ? "noticeably grounded and formidable: broader ceremonial silhouette, heavier layered robes, bronze texture, confident square posture and hard directional light"
-      : "maximum monumental abstraction: an absurdly mighty fictional founding ancestor, colossal ceremonial crown and robes, stone-and-bronze presence, exaggerated power and scale while remaining coherent");
-  return `ONE-SHOW-TOOLS / SLIDING ANCESTOR VISUAL TRANSFORMATION
+      ? "noticeably stronger and more formidable: broader shoulders, denser athletic build, firmer jawline, confident upright posture, harder light and stronger presence"
+      : "maximum exaggerated powerful form: massively muscular but coherent build, extremely broad shoulders, rugged facial definition, commanding posture, intense dramatic light and absurd boss-level presence while remaining recognizably the same person");
+  return `ONE-SHOW-TOOLS / SLIDING SAME-PERSON POWER PROGRESSION
 
-Create one fictional, entertainment-only ancestral portrait from the uploaded person. This is a stylized meme image, not a claim about real ancestry, ethnicity, historical identity or social status.
+Create one frame in a fictional entertainment-only progression of the uploaded person's physical form and presence. The Chinese meme word "变祖" means "becoming stronger / more formidable" in this product. It does NOT mean becoming an ancestor.
+
+NON-ANCESTRY RULE
+The output must not depict ancestry, an old ancestor, an emperor, a clan founder, a historical person, a deity, a king, a ceremonial portrait, a family lineage, ethnicity or bloodline. Do not add crowns, imperial robes, ancestral halls, tablets, genealogy motifs or historical regalia unless such items already exist in the uploaded photo.
 
 IDENTITY LOCK
-Keep the uploaded person's face, facial geometry, expression, skin tone, hairline and recognizability. Keep one person only. Preserve the original camera angle and crop unless a small extension is required for ceremonial clothing. Do not replace the person with a historical figure or public figure.
+This is the SAME PERSON at a different fictional power level. Preserve facial identity, recognizability, approximate age, hairstyle, skin tone, gaze, camera angle, crop, background, clothing category and overall composition. Keep exactly one person. Do not face-swap, age into an elderly person, change gender, change ethnicity, replace the subject, or turn the result into a different character. Clothing should remain recognizably continuous and may only adapt minimally to the changed physique.
+
+CONTINUITY
+The frame must look like a plausible neighboring stage in one continuous 24-frame slider. Change strength, physique, posture, facial hardness, lighting contrast and visual presence gradually. Do not make an unrelated scene or redesign the entire outfit/background.
 
 ART DIRECTION
-${styleMap[style] || styleMap.dynasty}.
+${styleMap[style] || styleMap.realistic}.
 Intensity direction: ${intensity}.
-Use a centered, premium vertical portrait composition with clean anatomy, coherent hands when visible, detailed fabric and a dark neutral background. Add tasteful surreal abstraction, but never obscure the entire face.
+Use the uploaded image's portrait composition. Keep anatomy coherent and the face clearly visible. At stronger levels, emphasize broader physique, harder expression, sharper contrast and commanding presence. At weaker levels, emphasize a slighter physique, softer posture, lower contrast and reduced presence. Never imply that physical strength determines real human value.
 
 OUTPUT RULES
-Return one seamless portrait only. No collage, split screen, captions, labels, borders, UI, watermark or readable text.`;
+Return one seamless portrait only. No collage, split screen, before/after panel, captions, labels, borders, UI, watermark or readable text.`;
 }
 
 async function normalizeFrame(buffer, width, height) {
@@ -140,8 +146,9 @@ async function blendFrame(fromBuffer, toBuffer, ratio, direction, level, width, 
 async function processAncestorSeries(form, fetchImpl) {
   const primaryFile = form.get("file")?.size ? form.get("file") : form.getAll("files").find((item) => item?.size);
   const input = await imageInput(primaryFile);
-  const style = clean(form.get("style"), 40) || "dynasty";
-  if (!["dynasty", "clan", "chaos"].includes(style)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
+  const requestedStyle = clean(form.get("style"), 40) || "realistic";
+  const style = requestedStyle === "dynasty" ? "realistic" : requestedStyle === "clan" ? "cinematic" : requestedStyle;
+  if (!["realistic", "cinematic", "chaos"].includes(style)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
   const width = Math.min(1280, input.width);
   const height = Math.max(512, Math.round(width * input.height / input.width));
   const source = await normalizeFrame(input.buffer, width, height);

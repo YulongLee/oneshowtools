@@ -71,10 +71,10 @@ test("all standard AI image tools run through the real provider adapter and retu
   assert.ok(prompts.some((prompt) => /Restore and enhance/.test(prompt)));
 });
 
-test("sliding ancestor generator creates a real 24-frame progressive series from four model anchors", async () => {
+test("sliding power-up generator creates a real 24-frame progressive series from four model anchors", async () => {
   const form = new FormData();
   form.append("file", new File([sourcePng], "portrait.png", { type: "image/png" }));
-  form.append("style", "dynasty");
+  form.append("style", "realistic");
   const before = prompts.length;
   const result = await processAiImageTool("sliding-ancestor-generator", form, providerFetch);
   assert.equal(result.files.length, 24);
@@ -84,8 +84,9 @@ test("sliding ancestor generator creates a real 24-frame progressive series from
   assert.deepEqual(result.files.slice(0, 12).map((item) => item.direction), Array(12).fill("xu"));
   assert.deepEqual(result.files.slice(12).map((item) => item.direction), Array(12).fill("han"));
   for (const file of result.files) assert.equal((await sharp(file.buffer).metadata()).format, "png");
-  assert.match(prompts[before], /entertainment-only ancestral portrait/i);
-  assert.match(prompts[before + 3], /maximum monumental abstraction/i);
+  assert.match(prompts[before], /same-person power progression/i);
+  assert.match(prompts[before], /must not depict ancestry/i);
+  assert.match(prompts[before + 3], /maximum exaggerated powerful form/i);
 });
 
 test("outfit changer accepts a second clothing reference image", async () => {

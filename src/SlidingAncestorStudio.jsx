@@ -21,10 +21,12 @@ const messages = {
 };
 
 const styles = [
-  ["dynasty", "帝王祖系", "庄重金铜、电影感礼服"],
-  ["clan", "宗祠古画", "矿物颜料、纸本与水墨"],
-  ["chaos", "混沌抽象", "更夸张、更适合做梗图"],
+  ["realistic", "写实进化", "从普通状态逐级强化，人物变化自然"],
+  ["cinematic", "硬汉电影", "更硬朗、更有力量感和电影光影"],
+  ["chaos", "抽象爆改", "后段变化更夸张，更适合整活分享"],
 ];
+
+const normalizeStyle = (value) => value === "dynasty" ? "realistic" : value === "clan" ? "cinematic" : value;
 
 function sourceFromTask(task) {
   const files = task?.output?.resultFiles || [];
@@ -35,7 +37,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const zh = locale !== "en";
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
-  const [style, setStyle] = useState("dynasty");
+  const [style, setStyle] = useState("realistic");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
@@ -52,7 +54,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     const match = task ? sourceFromTask(task) : (historyTasks || []).map(sourceFromTask).find(Boolean);
     if (match) {
       setResult(match);
-      setStyle(match.output?.style || "dynasty");
+      setStyle(normalizeStyle(match.output?.style) || "realistic");
       setIntensity(1);
     }
   }, [task, historyTasks]);
@@ -100,7 +102,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   return <div className="ancestor-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
     <header className="ancestor-header">
-      <div><p>LIANG INTENSITY CALIBRATOR · AI IMAGE LAB</p><h1>{zh ? "滑动变祖器" : "Sliding Ancestor Generator"}</h1><span>{zh ? "一张人像，左右各 12 级；越往左越虚，越往右越夯。" : "One portrait, 12 ethereal stages and 12 mighty stages."}</span></div>
+      <div className="ancestor-title-lockup"><span><Sparkle size={28} weight="duotone" /></span><div><p>ONESHOWTOOLS · AI 形态进化玩法</p><h1>{zh ? "滑动变祖器" : "Sliding Power-Up Generator"}</h1><small>{zh ? "“变祖”就是变强：同一个人向左逐级变虚，向右逐级变夯，一次生成 24 种连续形态。" : "Power up the same person across 24 continuous stages—from increasingly fragile to increasingly formidable."}</small></div></div>
       <aside><Coins size={18} /><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></aside>
     </header>
 
@@ -112,18 +114,18 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
           {preview ? <><img src={preview} alt={zh ? "上传预览" : "Upload preview"} /><button type="button" onClick={(event) => { event.preventDefault(); setFile(null); setResult(null); }}><X size={16} /></button><span>{zh ? "点击更换图片" : "Click to replace"}</span></> : <><CloudArrowUp size={30} /><strong>{zh ? "上传一张人物照片" : "Upload a portrait"}</strong><span>JPG · PNG · WEBP · 25 MB</span></>}
         </label>
 
-        <div className="ancestor-section-title"><span>02</span><div><strong>{zh ? "选择祖系画风" : "Choose a visual style"}</strong><small>{zh ? "不推断真实身份，仅生成娱乐性视觉效果" : "Entertainment-only; no real identity inference"}</small></div></div>
-        <div className="ancestor-style-list">{styles.map(([value, name, description]) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}><span>{style === value ? <CheckCircle weight="fill" /> : <Sparkle />}</span><div><strong>{zh ? name : value}</strong><small>{zh ? description : value === "dynasty" ? "Cinematic bronze and ceremonial robes" : value === "clan" ? "Ancestral ink and mineral pigments" : "Surreal and meme-ready"}</small></div></button>)}</div>
+        <div className="ancestor-section-title"><span>02</span><div><strong>{zh ? "选择变化风格" : "Choose transformation style"}</strong><small>{zh ? "身份和构图保持连续，只改变人物强弱形态" : "Keep identity and framing continuous while changing power level"}</small></div></div>
+        <div className="ancestor-style-list">{styles.map(([value, name, description]) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}><span>{style === value ? <CheckCircle weight="fill" /> : <Sparkle />}</span><div><strong>{zh ? name : value}</strong><small>{zh ? description : value === "realistic" ? "Natural realistic power progression" : value === "cinematic" ? "Rugged cinematic transformation" : "Exaggerated meme-ready evolution"}</small></div></button>)}</div>
 
-        <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果为虚构娱乐创作，不代表真实血缘、民族或历史身份。" : "Only upload images you may use. Results are fictional and do not represent real ancestry or identity."}</p>
+        <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果属于虚构娱乐性的形态变化，不评价人物真实能力或身份。" : "Only upload images you may use. Results are fictional transformations and do not judge real ability or identity."}</p>
         {error && <p className="form-error"><Warning size={17} />{error}</p>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{zh ? "登录后可生成并保存结果" : "Sign in to generate and save"}</span><button onClick={onAuth}>{zh ? "登录" : "Sign in"}</button></div>}
-        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? "正在炼制 24 张图，预计 2–8 分钟…" : "Creating 24 frames, about 2–8 minutes…"}</> : <><Play weight="fill" />{zh ? "生成 24 级祖系图" : "Generate 24 stages"}</>}</button>
+        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? "正在生成 24 种形态，预计 2–8 分钟…" : "Creating 24 stages, about 2–8 minutes…"}</> : <><Play weight="fill" />{zh ? "生成 24 级形态变化" : "Generate 24 power stages"}</>}</button>
         <small className="ancestor-quota-note">{zh ? "本次会保存 24 个文件；每位用户最多保存 100 个文件。" : "This saves 24 files; each account can store up to 100 files."}</small>
       </section>
 
       <section className="ancestor-stage">
-        <header><div><p>VISUAL OUTPUT</p><h2>{intensityLabel}</h2></div><span>{frames.length ? `${frames.length} / 24` : "00 / 24"}</span></header>
+        <header><div><p>{zh ? "生成结果" : "RESULT PREVIEW"}</p><h2>{intensityLabel}</h2></div><span>{frames.length ? `${frames.length} / 24` : "00 / 24"}</span></header>
         <div className={`ancestor-portrait ${!displayImage ? "empty" : ""}`}>
           {displayImage ? <img src={displayImage} alt={intensityLabel} /> : <><ImageSquare size={42} /><strong>{zh ? "等待人物图像" : "Waiting for portrait"}</strong><span>{zh ? "上传后会在这里显示原图预览" : "Your source preview will appear here"}</span></>}
           {displayImage && <div className="ancestor-frame-corners" />}
@@ -132,8 +134,8 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
         <input className="ancestor-slider" type="range" min="-12" max="12" step="1" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} disabled={!frames.length} />
         <div className="ancestor-ticks">{Array.from({ length: 25 }, (_, index) => <i key={index} className={index === intensity + 12 ? "active" : index === 12 ? "origin" : ""} />)}</div>
         {frames.length ? <div className="ancestor-series">
-          <div><header><strong>{zh ? "虚系 12 级" : "Ethereal · 12"}</strong><span>{zh ? "轻、淡、雾化" : "light · pale · spectral"}</span></header><div>{leftFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(-item.level)}><img src={item.downloadUrl} alt={`虚 ${item.level}`} loading="lazy" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
-          <div><header><strong>{zh ? "夯系 12 级" : "Mighty · 12"}</strong><span>{zh ? "重、硬、压迫感" : "solid · hard · monumental"}</span></header><div>{rightFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`夯 ${item.level}`} loading="lazy" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
+          <div><header><strong>{zh ? "虚弱形态 · 12 级" : "Fragile · 12"}</strong><span>{zh ? "更单薄、更柔和、更没气场" : "slighter · softer · less imposing"}</span></header><div>{leftFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(-item.level)}><img src={item.downloadUrl} alt={`虚 ${item.level}`} loading="lazy" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
+          <div><header><strong>{zh ? "强者形态 · 12 级" : "Powerful · 12"}</strong><span>{zh ? "更强壮、更硬朗、更有压迫感" : "stronger · rugged · formidable"}</span></header><div>{rightFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`夯 ${item.level}`} loading="lazy" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
         </div> : <div className="ancestor-empty-series"><span>{zh ? "生成后，左侧 12 张和右侧 12 张会完整显示在这里。" : "The 12 left and 12 right frames will appear here."}</span></div>}
         {selected && <a className="ancestor-download" href={selected.downloadUrl} download><DownloadSimple size={18} />{zh ? "下载当前图片" : "Download selected image"}</a>}
       </section>
