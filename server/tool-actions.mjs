@@ -278,7 +278,7 @@ export async function runToolAction(request, user, tool) {
   const alwaysCreatesFile = tool.slug === "background-remover" || tool.slug === "image-compressor"
     || imageToolSlugs.has(tool.slug) || aiImageToolSlugs.has(tool.slug) || pdfToolSlugSet.has(tool.slug)
     || mediaToolSlugs.has(tool.slug) || dataFileToolSlugs.has(tool.slug);
-  if (alwaysCreatesFile) assertUserFileCapacity(user.id, tool.slug === "sliding-ancestor-generator" ? 24 : 1);
+  if (alwaysCreatesFile) assertUserFileCapacity(user.id, tool.slug === "sliding-ancestor-generator" ? 10 : 1);
 
   let processed;
   let input;

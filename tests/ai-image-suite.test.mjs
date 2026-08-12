@@ -71,22 +71,34 @@ test("all standard AI image tools run through the real provider adapter and retu
   assert.ok(prompts.some((prompt) => /Restore and enhance/.test(prompt)));
 });
 
-test("sliding power-up generator creates a real 24-frame progressive series from four model anchors", async () => {
+test("sliding power-up generator creates ten individually generated ordered stages", async () => {
   const form = new FormData();
   form.append("file", new File([sourcePng], "portrait.png", { type: "image/png" }));
   form.append("style", "realistic");
   const before = prompts.length;
   const result = await processAiImageTool("sliding-ancestor-generator", form, providerFetch);
-  assert.equal(result.files.length, 24);
-  assert.equal(result.output.frameCount, 24);
-  assert.equal(result.output.anchorCount, 4);
-  assert.equal(prompts.length, before + 4);
-  assert.deepEqual(result.files.slice(0, 12).map((item) => item.direction), Array(12).fill("xu"));
-  assert.deepEqual(result.files.slice(12).map((item) => item.direction), Array(12).fill("han"));
+  assert.equal(result.files.length, 10);
+  assert.equal(result.output.frameCount, 10);
+  assert.equal(result.output.generatedFrameCount, 10);
+  assert.equal(prompts.length, before + 10);
+  assert.deepEqual(result.files.map((item) => item.level), [1,2,3,4,5,6,7,8,9,10]);
+  assert.deepEqual(result.files.slice(0, 5).map((item) => item.direction), Array(5).fill("xu"));
+  assert.deepEqual(result.files.slice(5).map((item) => item.direction), Array(5).fill("han"));
   for (const file of result.files) assert.equal((await sharp(file.buffer).metadata()).format, "png");
+  const stagePrompts = prompts.slice(before, before + 10);
+  assert.equal(new Set(stagePrompts).size, 10);
+  stagePrompts.forEach((prompt, index) => {
+    assert.match(prompt, new RegExp(`stage ${index + 1} of 10`, "i"));
+    assert.match(prompt, /strictly ordered series from weakest to strongest/i);
+    assert.match(prompt, /preserve the original head position, framing, background geometry, clothing identity/i);
+    assert.match(prompt, /final self-check/i);
+  });
   assert.match(prompts[before], /same-person power progression/i);
   assert.match(prompts[before], /must not depict ancestry/i);
-  assert.match(prompts[before + 3], /maximum exaggerated powerful form/i);
+  assert.match(prompts[before + 4], /stage 5 of 10/i);
+  assert.match(prompts[before + 5], /stage 6 of 10/i);
+  assert.match(prompts[before + 9], /stage 10 of 10/i);
+  assert.match(prompts[before + 9], /maximum exaggerated powerful form/i);
 });
 
 test("outfit changer accepts a second clothing reference image", async () => {

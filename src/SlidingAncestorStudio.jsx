@@ -30,7 +30,7 @@ const normalizeStyle = (value) => value === "dynasty" ? "realistic" : value === 
 
 function sourceFromTask(task) {
   const files = task?.output?.resultFiles || [];
-  return files.length === 24 ? { task: { id: task.id }, output: task.output, files } : null;
+  return files.length === 10 ? { task: { id: task.id }, output: task.output, files } : null;
 }
 
 export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authenticated, onBack, onAuth, onCompleted }) {
@@ -41,7 +41,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
-  const [intensity, setIntensity] = useState(0);
+  const [intensity, setIntensity] = useState(5);
 
   useEffect(() => {
     if (!file) return setPreview("");
@@ -55,21 +55,27 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     if (match) {
       setResult(match);
       setStyle(normalizeStyle(match.output?.style) || "realistic");
-      setIntensity(1);
+      setIntensity(5);
     }
   }, [task, historyTasks]);
 
-  const frames = result?.files || result?.output?.resultFiles || [];
-  const leftFrames = useMemo(() => frames.filter((item) => item.direction === "xu").sort((a, b) => a.level - b.level), [frames]);
-  const rightFrames = useMemo(() => frames.filter((item) => item.direction === "han").sort((a, b) => a.level - b.level), [frames]);
-  const selected = intensity < 0 ? leftFrames[Math.abs(intensity) - 1] : intensity > 0 ? rightFrames[intensity - 1] : null;
-  const displayImage = selected?.downloadUrl || preview;
+  const frames = useMemo(() => [...(result?.files || result?.output?.resultFiles || [])].sort((a, b) => a.level - b.level), [result]);
+  const leftFrames = useMemo(() => frames.slice(0, 5), [frames]);
+  const rightFrames = useMemo(() => frames.slice(5, 10), [frames]);
+  const selected = frames[intensity - 1] || null;
+
+  useEffect(() => {
+    for (const frame of frames) {
+      const image = new Image();
+      image.src = frame.downloadUrl;
+    }
+  }, [frames]);
 
   const chooseFile = (selectedFile) => {
     if (!selectedFile) return;
     setFile(selectedFile);
     setResult(null);
-    setIntensity(0);
+    setIntensity(5);
     setError("");
   };
 
@@ -84,7 +90,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     try {
       const data = await request(`/api/tool-actions/${tool.slug}`, { method: "POST", body: form });
       setResult(data);
-      setIntensity(1);
+      setIntensity(5);
       onCompleted?.(data);
     } catch (runError) {
       setError(zh ? (messages[runError.code] || "生成失败，请检查图片模型配置后重试。") : (runError.code || "Generation failed. Please try again."));
@@ -93,16 +99,12 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     }
   };
 
-  const intensityLabel = intensity === 0
-    ? (zh ? "原始状态" : "Original")
-    : intensity < 0
-      ? `${zh ? "虚" : "Ethereal"} ${String(Math.abs(intensity)).padStart(2, "0")}`
-      : `${zh ? "夯" : "Mighty"} ${String(intensity).padStart(2, "0")}`;
+  const intensityLabel = `${zh ? (intensity <= 5 ? "虚" : "夯") : (intensity <= 5 ? "Fragile" : "Powerful")} ${String(intensity).padStart(2, "0")}`;
 
   return <div className="ancestor-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
     <header className="ancestor-header">
-      <div className="ancestor-title-lockup"><span><Sparkle size={28} weight="duotone" /></span><div><p>ONESHOWTOOLS · AI 形态进化玩法</p><h1>{zh ? "滑动变祖器" : "Sliding Power-Up Generator"}</h1><small>{zh ? "“变祖”就是变强：同一个人向左逐级变虚，向右逐级变夯，一次生成 24 种连续形态。" : "Power up the same person across 24 continuous stages—from increasingly fragile to increasingly formidable."}</small></div></div>
+      <div className="ancestor-title-lockup"><span><Sparkle size={28} weight="duotone" /></span><div><p>ONESHOWTOOLS · AI 形态进化玩法</p><h1>{zh ? "滑动变祖器" : "Sliding Power-Up Generator"}</h1><small>{zh ? "“变祖”就是变强：同一个人从虚到夯，一次生成 10 种强度明确、顺序一致的连续形态。" : "Power up the same person through ten clearly ordered stages, from fragile to formidable."}</small></div></div>
       <aside><Coins size={18} /><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></aside>
     </header>
 
@@ -120,23 +122,23 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
         <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果属于虚构娱乐性的形态变化，不评价人物真实能力或身份。" : "Only upload images you may use. Results are fictional transformations and do not judge real ability or identity."}</p>
         {error && <p className="form-error"><Warning size={17} />{error}</p>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{zh ? "登录后可生成并保存结果" : "Sign in to generate and save"}</span><button onClick={onAuth}>{zh ? "登录" : "Sign in"}</button></div>}
-        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? "正在生成 24 种形态，预计 2–8 分钟…" : "Creating 24 stages, about 2–8 minutes…"}</> : <><Play weight="fill" />{zh ? "生成 24 级形态变化" : "Generate 24 power stages"}</>}</button>
-        <small className="ancestor-quota-note">{zh ? "本次会保存 24 个文件；每位用户最多保存 100 个文件。" : "This saves 24 files; each account can store up to 100 files."}</small>
+        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? "正在逐级生成 10 种形态，预计 3–12 分钟…" : "Creating ten ordered stages, about 3–12 minutes…"}</> : <><Play weight="fill" />{zh ? "生成 10 级形态变化" : "Generate 10 power stages"}</>}</button>
+        <small className="ancestor-quota-note">{zh ? "10 张均由模型独立生成并保存；每位用户最多保存 100 个文件。" : "All ten frames are model-generated and saved; each account can store up to 100 files."}</small>
       </section>
 
       <section className="ancestor-stage">
-        <header><div><p>{zh ? "生成结果" : "RESULT PREVIEW"}</p><h2>{intensityLabel}</h2></div><span>{frames.length ? `${frames.length} / 24` : "00 / 24"}</span></header>
-        <div className={`ancestor-portrait ${!displayImage ? "empty" : ""}`}>
-          {displayImage ? <img src={displayImage} alt={intensityLabel} /> : <><ImageSquare size={42} /><strong>{zh ? "等待人物图像" : "Waiting for portrait"}</strong><span>{zh ? "上传后会在这里显示原图预览" : "Your source preview will appear here"}</span></>}
-          {displayImage && <div className="ancestor-frame-corners" />}
+        <header><div><p>{zh ? "生成结果" : "RESULT PREVIEW"}</p><h2>{frames.length ? intensityLabel : (zh ? "等待生成" : "Waiting")}</h2></div><span>{frames.length ? `${frames.length} / 10` : "00 / 10"}</span></header>
+        <div className={`ancestor-portrait ${!preview && !frames.length ? "empty" : ""}`}>
+          {frames.length ? <div className="ancestor-frame-stack">{frames.map((frame) => <img key={frame.id} className={frame.id === selected?.id ? "active" : ""} src={frame.downloadUrl} alt={`${zh ? "形态" : "Stage"} ${frame.level}`} />)}</div> : preview ? <img src={preview} alt={zh ? "上传预览" : "Upload preview"} /> : <><ImageSquare size={42} /><strong>{zh ? "等待人物图像" : "Waiting for portrait"}</strong><span>{zh ? "上传后会在这里显示原图预览" : "Your source preview will appear here"}</span></>}
+          {(preview || frames.length) && <div className="ancestor-frame-corners" />}
         </div>
-        <div className="ancestor-scale-copy"><span>{zh ? "越来越虚" : "More ethereal"}</span><strong>{intensityLabel}</strong><span>{zh ? "越来越夯" : "More mighty"}</span></div>
-        <input className="ancestor-slider" type="range" min="-12" max="12" step="1" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} disabled={!frames.length} />
-        <div className="ancestor-ticks">{Array.from({ length: 25 }, (_, index) => <i key={index} className={index === intensity + 12 ? "active" : index === 12 ? "origin" : ""} />)}</div>
+        <div className="ancestor-scale-copy"><span>{zh ? "最虚 · 01" : "Weakest · 01"}</span><strong>{frames.length ? intensityLabel : (zh ? "从虚到夯" : "Weak to strong")}</strong><span>{zh ? "最夯 · 10" : "Strongest · 10"}</span></div>
+        <input className="ancestor-slider" type="range" min="1" max="10" step="1" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} disabled={!frames.length} />
+        <div className="ancestor-ticks ancestor-ticks-ten">{Array.from({ length: 10 }, (_, index) => <i key={index} className={index === intensity - 1 ? "active" : index === 4 || index === 5 ? "origin" : ""} />)}</div>
         {frames.length ? <div className="ancestor-series">
-          <div><header><strong>{zh ? "虚弱形态 · 12 级" : "Fragile · 12"}</strong><span>{zh ? "更单薄、更柔和、更没气场" : "slighter · softer · less imposing"}</span></header><div>{leftFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(-item.level)}><img src={item.downloadUrl} alt={`虚 ${item.level}`} loading="lazy" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
-          <div><header><strong>{zh ? "强者形态 · 12 级" : "Powerful · 12"}</strong><span>{zh ? "更强壮、更硬朗、更有压迫感" : "stronger · rugged · formidable"}</span></header><div>{rightFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`夯 ${item.level}`} loading="lazy" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
-        </div> : <div className="ancestor-empty-series"><span>{zh ? "生成后，左侧 12 张和右侧 12 张会完整显示在这里。" : "The 12 left and 12 right frames will appear here."}</span></div>}
+          <div><header><strong>{zh ? "偏虚形态 · 01–05" : "Fragile · 01–05"}</strong><span>{zh ? "逐级接近原始状态" : "gradually approaches neutral"}</span></header><div>{leftFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`虚 ${item.level}`} loading="eager" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
+          <div><header><strong>{zh ? "偏夯形态 · 06–10" : "Powerful · 06–10"}</strong><span>{zh ? "逐级增强体格和气场" : "steadily gains power"}</span></header><div>{rightFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`夯 ${item.level}`} loading="eager" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
+        </div> : <div className="ancestor-empty-series"><span>{zh ? "生成后，10 张从虚到夯的真实模型结果会按顺序显示在这里。" : "Ten real model outputs will appear here in weak-to-strong order."}</span></div>}
         {selected && <a className="ancestor-download" href={selected.downloadUrl} download><DownloadSimple size={18} />{zh ? "下载当前图片" : "Download selected image"}</a>}
       </section>
     </div>

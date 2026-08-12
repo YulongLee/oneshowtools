@@ -1318,6 +1318,9 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-stage > header > span { color: #928678; font-family: ui-monospace,monospace; font-size: 12px; }
 .ancestor-portrait { width: min(440px,70%); aspect-ratio: 4 / 5; margin: 0 auto; border: 1px solid #675849; padding: 8px; position: relative; background: #0f0f10; box-shadow: 0 30px 80px rgba(0,0,0,.36); }
 .ancestor-portrait img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.ancestor-frame-stack { position: absolute; inset: 8px; overflow: hidden; }
+.ancestor-frame-stack img { position: absolute; inset: 0; opacity: 0; transform: scale(1.006); transition: opacity .16s linear,transform .22s ease; will-change: opacity,transform; }
+.ancestor-frame-stack img.active { opacity: 1; transform: scale(1); }
 .ancestor-portrait.empty { border-style: dashed; display: grid; place-items: center; align-content: center; gap: 8px; color: #635f5b; }
 .ancestor-portrait.empty strong { color: #928b83; }
 .ancestor-portrait.empty span { font-size: 10px; }
@@ -1327,8 +1330,10 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-scale-copy { margin: 27px 0 10px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; color: #887c70; font-size: 10px; }
 .ancestor-scale-copy strong { color: #d4ad7d; font-size: 12px; }
 .ancestor-scale-copy span:last-child { text-align: right; }
-.ancestor-slider { width: 100%; accent-color: #bd8452; }
+.ancestor-slider { width: 100%; accent-color: #bd8452; cursor: grab; touch-action: pan-y; }
+.ancestor-slider:active { cursor: grabbing; }
 .ancestor-ticks { height: 13px; display: grid; grid-template-columns: repeat(25,1fr); align-items: end; }
+.ancestor-ticks-ten { grid-template-columns: repeat(10,1fr); }
 .ancestor-ticks i { width: 1px; height: 6px; margin: auto; background: #55483e; }
 .ancestor-ticks i.origin { height: 11px; background: #8f8174; }
 .ancestor-ticks i.active { height: 12px; background: #e3b276; box-shadow: 0 0 9px #b27643; }
@@ -1337,7 +1342,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-series header { margin-bottom: 10px; display: flex; justify-content: space-between; gap: 8px; }
 .ancestor-series header strong { color: #d7cec4; font-size: 11px; }
 .ancestor-series header span { color: #6d6965; font-size: 8px; }
-.ancestor-series > div > div { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 6px; }
+.ancestor-series > div > div { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 6px; }
 .ancestor-series button { aspect-ratio: 4 / 5; padding: 0; border: 1px solid transparent; border-radius: 6px; position: relative; overflow: hidden; background: #0f0f10; cursor: pointer; }
 .ancestor-series button.active { border-color: #d9a368; box-shadow: 0 0 0 2px rgba(217,163,104,.18); }
 .ancestor-series button img { width: 100%; height: 100%; display: block; object-fit: cover; }
@@ -1365,7 +1370,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .ancestor-header aside { width: 100%; }
   .ancestor-stage { padding: 21px 13px 28px; }
   .ancestor-portrait { width: 100%; }
-  .ancestor-series > div > div { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .ancestor-series > div > div { grid-template-columns: repeat(5,minmax(0,1fr)); }
 }
 
 /* OneShowTools visual alignment for the ancestor workspace */
@@ -1409,6 +1414,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-stage > header > span { padding: 6px 9px; border-radius: 8px; color: #5970d9; background: #eef2ff; font-family: inherit; font-size: 9px; font-weight: 750; }
 .ancestor-portrait { width: min(420px,68%); border: 1px solid #d9e2ef; border-radius: 14px; padding: 7px; overflow: hidden; background: #f6f8fc; box-shadow: 0 18px 45px rgba(47,67,105,.12); }
 .ancestor-portrait img { border-radius: 9px; }
+.ancestor-frame-stack { inset: 7px; border-radius: 9px; }
 .ancestor-portrait.empty { color: #9aa7b8; background: linear-gradient(145deg,#f8faff,#f3f6fd); }
 .ancestor-portrait.empty strong { color: #718198; }
 .ancestor-frame-corners::before,.ancestor-frame-corners::after { display: none; }
@@ -1429,13 +1435,16 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-download { border-color: #cdd9ed; color: #2c67df; background: #f7f9ff; }
 .ancestor-download:hover { border-color: #7ea0ea; background: #edf3ff; }
 
-@media (max-width: 760px) {
+@media (max-width: 900px) {
+  .ancestor-layout { grid-template-columns: 1fr; }
   .ancestor-control { border-right: 1px solid #dfe6f1; border-bottom: 1px solid #dfe6f1; }
+  .ancestor-portrait { width: min(420px,92%); }
 }
 @media (max-width: 520px) {
   .ancestor-title-lockup { align-items: flex-start; }
   .ancestor-title-lockup > span { width: 46px; height: 46px; flex-basis: 46px; border-radius: 13px; }
   .ancestor-header aside { width: 100%; }
+  .ancestor-portrait { width: 100%; }
 }
 
 /* Customer support workspace */
