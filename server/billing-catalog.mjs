@@ -1,12 +1,12 @@
 export const billingPlanSeeds = [
-  ["plan_free", "free", "免费版", "Free", 0, "CNY", "month", 300],
-  ["plan_pro", "pro-monthly", "专业版", "Pro", 3990, "CNY", "month", 8000],
-  ["plan_max", "max-monthly", "旗舰版", "Max", 9900, "CNY", "month", 25000],
-  ["pack_starter", "starter-topup", "Starter", "Starter", 1990, "CNY", "one_time", 2000],
-  ["pack_basic", "basic-topup", "Basic", "Basic", 4990, "CNY", "one_time", 5500],
-  ["pack_pro", "pro-topup", "Pro", "Pro", 9900, "CNY", "one_time", 12000],
-  ["pack_studio", "studio-topup", "Studio", "Studio", 19900, "CNY", "one_time", 26000],
-  ["pack_business", "business-topup", "Business", "Business", 49900, "CNY", "one_time", 70000],
+  ["plan_free", "free", "免费版", "Free", 0, "CNY", "month", 300, 100],
+  ["plan_pro", "pro-monthly", "专业版", "Pro", 3990, "CNY", "month", 8000, 500],
+  ["plan_max", "max-monthly", "旗舰版", "Max", 9900, "CNY", "month", 25000, 2000],
+  ["pack_starter", "starter-topup", "Starter", "Starter", 1990, "CNY", "one_time", 2000, 100],
+  ["pack_basic", "basic-topup", "Basic", "Basic", 4990, "CNY", "one_time", 5500, 100],
+  ["pack_pro", "pro-topup", "Pro", "Pro", 9900, "CNY", "one_time", 12000, 100],
+  ["pack_studio", "studio-topup", "Studio", "Studio", 19900, "CNY", "one_time", 26000, 100],
+  ["pack_business", "business-topup", "Business", "Business", 49900, "CNY", "one_time", 70000, 100],
 ];
 
 const details = {
@@ -41,6 +41,7 @@ export function billingPlanPayload(row) {
     currency: row.currency,
     interval: row.interval,
     recurringCredits: row.recurring_credits,
+    fileLimit: Number(row.file_limit || 100),
     totalCredits: row.recurring_credits + detail.bonusCredits,
     ...detail,
   };

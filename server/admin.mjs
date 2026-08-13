@@ -2,6 +2,7 @@ import {
   createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual,
 } from "node:crypto";
 import { audit, db } from "./database.mjs";
+import { effectiveMembership, membershipPlans } from "./membership.mjs";
 import { createSessionToken, hashIdentifier, hashToken, requestClient } from "./security.mjs";
 import { collectSystemMetrics } from "./observability.mjs";
 import {
@@ -448,7 +449,11 @@ function listUsers(request) {
       (SELECT COUNT(*) FROM tasks WHERE user_id = u.id) AS tasks,
       (SELECT COUNT(*) FROM files WHERE user_id = u.id) AS files,
       (SELECT MAX(last_seen_at) FROM sessions WHERE user_id = u.id) AS lastSeenAt,
-      (SELECT COUNT(*) FROM subscriptions WHERE user_id = u.id AND status IN ('active','trialing')) AS activeSubscriptions
+      COALESCE((SELECT p.code FROM user_membership_overrides o JOIN plans p ON p.id = o.plan_id
+        WHERE o.user_id = u.id AND o.status = 'active' AND (o.expires_at IS NULL OR o.expires_at > ${Date.now()})),
+        (SELECT p.code FROM subscriptions s JOIN plans p ON p.id = s.plan_id WHERE s.user_id = u.id
+          AND s.status IN ('active','trialing') AND (s.current_period_end IS NULL OR s.current_period_end > ${Date.now()})
+          ORDER BY s.created_at DESC LIMIT 1), 'free') AS membershipCode
     FROM users u ${where} ORDER BY u.created_at DESC LIMIT ? OFFSET ?
   `).all(...params, pageSize, offset).map((row) => ({ ...row, emailVerified: Boolean(row.emailVerified) }));
   return { users, page, pageSize, total, pages: Math.ceil(total / pageSize) };
@@ -460,6 +465,7 @@ function customerDetail(userId) {
       created_at AS createdAt, updated_at AS updatedAt FROM users WHERE id = ?
   `).get(userId);
   if (!user) return null;
+  const membership = effectiveMembership(userId);
   return {
     user: { ...user, emailVerified: Boolean(user.emailVerified) },
     balance: Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id = ?").get(userId).balance),
@@ -485,6 +491,12 @@ function customerDetail(userId) {
       SELECT id, name, mime_type AS mimeType, size_bytes AS sizeBytes, created_at AS createdAt
       FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 30
     `).all(userId),
+    membership,
+    membershipPlans: membershipPlans(),
+    fileQuota: {
+      used: Number(db.prepare("SELECT COUNT(*) AS count FROM files WHERE user_id = ?").get(userId).count),
+      limit: Number(membership.fileLimit || 100),
+    },
     subscriptions: db.prepare(`
       SELECT s.id, s.provider, s.status, s.current_period_end AS currentPeriodEnd,
         p.name_zh AS nameZh, p.name_en AS nameEn
@@ -526,6 +538,30 @@ function saveIdempotent(key, actorId, action, response) {
 }
 
 async function customerCommands(request, path, context, dependencies) {
+  let membershipMatch = path.match(/^\/api\/admin\/v1\/users\/([^/]+)\/membership$/);
+  if (membershipMatch && request.method === "POST") {
+    const denied = requirePermission(context, "billing.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const target = db.prepare("SELECT id, email FROM users WHERE id = ?").get(membershipMatch[1]);
+    const plan = db.prepare("SELECT id, code, name_zh, name_en, file_limit FROM plans WHERE id = ? AND active = 1 AND interval = 'month'").get(String(data.planId || ""));
+    const reason = String(data.reason || "").trim().slice(0, 240);
+    const expiresAt = data.expiresAt == null || data.expiresAt === "" ? null : Number(data.expiresAt);
+    if (!target) return fail("USER_NOT_FOUND", 404);
+    if (!plan || !reason || (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= now()))) return fail("INVALID_MEMBERSHIP_ASSIGNMENT", 400);
+    const before = effectiveMembership(target.id);
+    const timestamp = now();
+    db.prepare(`
+      INSERT INTO user_membership_overrides
+        (user_id, plan_id, status, expires_at, assigned_by, reason, created_at, updated_at)
+      VALUES (?, ?, 'active', ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET plan_id = excluded.plan_id, status = 'active',
+        expires_at = excluded.expires_at, assigned_by = excluded.assigned_by,
+        reason = excluded.reason, updated_at = excluded.updated_at
+    `).run(target.id, plan.id, expiresAt, context.user.id, reason, timestamp, timestamp);
+    const after = effectiveMembership(target.id);
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "billing.manage", action: "admin.membership.assign", targetType: "user", targetId: target.id, reason, before, after });
+    return json({ ok: true, membership: after });
+  }
   let match = path.match(/^\/api\/admin\/v1\/users\/([^/]+)\/status$/);
   if (match && request.method === "POST") {
     const denied = requirePermission(context, "users.manage"); if (denied) return denied;

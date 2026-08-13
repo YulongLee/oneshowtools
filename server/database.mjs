@@ -298,6 +298,39 @@ export function initializeDatabase() {
         ON platform_model_invocations(purpose, started_at DESC);
     `);
   }
+  const planColumns = new Set(db.prepare("PRAGMA table_info(plans)").all().map((item) => item.name));
+  if (!planColumns.has("file_limit")) db.exec("ALTER TABLE plans ADD COLUMN file_limit INTEGER NOT NULL DEFAULT 100");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_membership_overrides (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      plan_id TEXT NOT NULL REFERENCES plans(id),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','cancelled')),
+      expires_at INTEGER,
+      assigned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS user_membership_overrides_status_expiry_idx
+      ON user_membership_overrides(status, expires_at);
+    DROP TRIGGER IF EXISTS files_user_limit_before_insert;
+    CREATE TRIGGER files_user_limit_before_insert
+    BEFORE INSERT ON files
+    WHEN (SELECT COUNT(*) FROM files WHERE user_id = NEW.user_id) >= COALESCE(
+      (SELECT p.file_limit FROM user_membership_overrides o JOIN plans p ON p.id = o.plan_id
+        WHERE o.user_id = NEW.user_id AND o.status = 'active'
+          AND (o.expires_at IS NULL OR o.expires_at > CAST(strftime('%s','now') AS INTEGER) * 1000)),
+      (SELECT p.file_limit FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+        WHERE s.user_id = NEW.user_id AND s.status IN ('active','trialing')
+          AND (s.current_period_end IS NULL OR s.current_period_end > CAST(strftime('%s','now') AS INTEGER) * 1000)
+        ORDER BY s.created_at DESC LIMIT 1),
+      (SELECT file_limit FROM plans WHERE code = 'free' LIMIT 1),
+      100
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'USER_FILE_LIMIT_REACHED');
+    END;
+  `);
   const imageProviderColumns = new Set(db.prepare("PRAGMA table_info(image_provider_configs)").all().map((item) => item.name));
   if (!imageProviderColumns.has("credential_source")) db.exec("ALTER TABLE image_provider_configs ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'direct' CHECK(credential_source IN ('direct','workspace'))");
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
@@ -475,11 +508,12 @@ export function initializeDatabase() {
 
   const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`
-    INSERT INTO plans (id, code, name_zh, name_en, amount_minor, currency, interval, recurring_credits, active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+    INSERT INTO plans (id, code, name_zh, name_en, amount_minor, currency, interval, recurring_credits, file_limit, active)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     ON CONFLICT(id) DO UPDATE SET name_zh = excluded.name_zh, name_en = excluded.name_en,
       amount_minor = excluded.amount_minor, currency = excluded.currency,
-      interval = excluded.interval, recurring_credits = excluded.recurring_credits
+      interval = excluded.interval, recurring_credits = excluded.recurring_credits,
+      file_limit = excluded.file_limit
   `);
   for (const plan of plans) insertPlan.run(...plan);
 

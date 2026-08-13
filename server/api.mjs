@@ -30,6 +30,8 @@ import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import { billingPlanPayload } from "./billing-catalog.mjs";
+import { effectiveMembership } from "./membership.mjs";
+import { createAncestorTask } from "./ancestor-jobs.mjs";
 import {
   askCustomerSupport, getUserSupportConversation, listUserSupportConversations, submitSupportTicket,
 } from "./customer-support.mjs";
@@ -456,11 +458,7 @@ function dashboard(userId) {
     FROM tasks WHERE user_id = ?
   `).get(userId);
   const fileCount = Number(db.prepare("SELECT COUNT(*) AS count FROM files WHERE user_id = ?").get(userId).count);
-  const subscription = db.prepare(`
-    SELECT s.status, s.current_period_end AS currentPeriodEnd, p.name_zh AS nameZh, p.name_en AS nameEn
-    FROM subscriptions s JOIN plans p ON p.id = s.plan_id
-    WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 1
-  `).get(userId) || null;
+  const subscription = effectiveMembership(userId);
   const recentTasks = db.prepare(`
     SELECT t.id, t.status, t.credit_cost AS creditCost, t.created_at AS createdAt, t.updated_at AS updatedAt,
       x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon
@@ -1232,10 +1230,20 @@ export async function handleApi(request) {
     const tool = db.prepare(`${toolSelect()} WHERE slug = ? AND active = 1`).get(slug);
     if (!tool) return fail("TOOL_NOT_FOUND", 404);
     try {
+      if (slug === "sliding-ancestor-generator") {
+        const result = await createAncestorTask(request, user, tool);
+        runNextJob().catch(() => {});
+        return json(result, 202);
+      }
       return json(await runToolAction(request, user, tool), 201);
     } catch (error) {
       return fail(error.code || error.message || "TOOL_ACTION_FAILED", error.status || 500);
     }
+  }
+  const taskDetailMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
+  if (taskDetailMatch && request.method === "GET") {
+    const task = listTasks(user.id).find((item) => item.id === taskDetailMatch[1]);
+    return task ? json({ task }) : fail("TASK_NOT_FOUND", 404);
   }
   const toolModelMatch = path.match(/^\/api\/tools\/([^/]+)\/model$/);
   if (toolModelMatch && request.method === "PATCH") {
@@ -1339,12 +1347,8 @@ export async function handleApi(request) {
     return json({ balance: balance(user.id), ledger });
   }
   if (path === "/api/billing/status" && request.method === "GET") {
-    const subscription = db.prepare(`
-      SELECT s.status, s.current_period_end AS currentPeriodEnd, p.id AS planId, p.code,
-        p.name_zh AS nameZh, p.name_en AS nameEn
-      FROM subscriptions s JOIN plans p ON p.id = s.plan_id
-      WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 1
-    `).get(user.id) || null;
+    const membership = effectiveMembership(user.id);
+    const subscription = membership.code === "free" ? null : membership;
     const invoices = db.prepare(`
       SELECT id, status, amount_paid AS amountPaid, currency, hosted_url AS hostedUrl, created_at AS createdAt
       FROM invoices WHERE user_id = ? ORDER BY created_at DESC LIMIT 20

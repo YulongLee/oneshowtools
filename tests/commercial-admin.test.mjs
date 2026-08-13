@@ -223,10 +223,22 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   process.env.ADMIN_MFA_ENFORCED = "false";
   assert.equal((await handleApi(authenticated("/api/admin/v1/finance", support.cookie))).status, 403);
   assert.equal((await handleApi(authenticated("/api/admin/v1/infrastructure/overview", finance.cookie))).status, 403);
-  process.env.ADMIN_MFA_ENFORCED = "true";
+  process.env.ADMIN_MFA_ENFORCED = "false";
+
+  const assignMembership = await handleApi(authenticatedJson(`/api/admin/v1/users/${customer.id}/membership`, owner.cookie, {
+    planId: "plan_pro", expiresAt: Date.now() + 30 * 86400000, reason: "Commercial account upgrade",
+  }));
+  assert.equal(assignMembership.status, 200);
+  assert.equal((await assignMembership.json()).membership.code, "pro-monthly");
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/users/${customer.id}/membership`, support.cookie, {
+    planId: "plan_max", reason: "Unauthorized membership change",
+  }))).status, 403);
 
   const customerDetail = await handleApi(authenticated(`/api/admin/v1/users/${customer.id}`, owner.cookie));
-  const serialized = JSON.stringify(await customerDetail.json());
+  const customerDetailBody = await customerDetail.json();
+  assert.equal(customerDetailBody.membership.code, "pro-monthly");
+  assert.equal(customerDetailBody.fileQuota.limit, 500);
+  const serialized = JSON.stringify(customerDetailBody);
   assert.equal(/password_hash|secret_encrypted|token_hash/i.test(serialized), false);
   const auditResponse = await handleApi(authenticated("/api/admin/v1/audit", owner.cookie));
   assert.equal(auditResponse.status, 200);

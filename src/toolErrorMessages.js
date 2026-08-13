@@ -8,7 +8,7 @@ export function apiErrorCode(payload) {
 const zhMessages = {
   IMAGE_REQUIRED: "请先上传一张清晰的人物照片。",
   IMAGE_TOO_LARGE: "图片超过 25 MB，请压缩后重新上传。",
-  USER_FILE_LIMIT_REACHED: "存储空间不足：本次需要保存 10 张结果，但会超过每位用户最多 100 个文件的上限。请先到文件中心删除旧文件，确保至少留出 10 个空位后重试。",
+  USER_FILE_LIMIT_REACHED: "存储空间不足：本次需要保存 10 张结果，但会超过当前会员的文件额度。请先到文件中心删除旧文件，确保至少留出 10 个空位后重试，或升级会员获得更多存储额度。",
   INSUFFICIENT_CREDITS: "积分不足：本次生成需要扣除对应积分，请先充值积分或开通会员后重试。",
   IMAGE_PROVIDER_NOT_CONFIGURED: "图片编辑模型尚未配置或未启用，请管理员在后台完成图片编辑模型配置。",
   IMAGE_PROVIDER_AUTH_FAILED: "图片模型认证失败：API Key 无效、已失效或与当前工作空间不匹配，请管理员重新测试并保存配置。",
@@ -26,7 +26,7 @@ const zhMessages = {
 const enMessages = {
   IMAGE_REQUIRED: "Upload a clear portrait first.",
   IMAGE_TOO_LARGE: "The image exceeds 25 MB. Compress it and upload again.",
-  USER_FILE_LIMIT_REACHED: "Not enough storage: this run saves 10 results and would exceed the 100-file account limit. Delete old files in File Center and leave at least 10 free slots before retrying.",
+  USER_FILE_LIMIT_REACHED: "Not enough storage: this run saves 10 results and would exceed your membership file allowance. Delete old files and leave at least 10 free slots, or upgrade for more storage.",
   INSUFFICIENT_CREDITS: "Insufficient credits for this generation. Top up or subscribe, then try again.",
   IMAGE_PROVIDER_NOT_CONFIGURED: "The image editing model is not configured or enabled. An administrator must configure it first.",
   IMAGE_PROVIDER_AUTH_FAILED: "Model authentication failed. The API key may be invalid, expired, or assigned to another workspace.",

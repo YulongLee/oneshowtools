@@ -1,10 +1,13 @@
 import { db } from "./database.mjs";
+import { effectiveMembership } from "./membership.mjs";
 
 export const USER_FILE_LIMIT = 100;
 
 export function userFileQuota(userId) {
   const used = Number(db.prepare("SELECT COUNT(*) AS count FROM files WHERE user_id = ?").get(userId)?.count || 0);
-  return { used, limit: USER_FILE_LIMIT, remaining: Math.max(0, USER_FILE_LIMIT - used) };
+  const membership = effectiveMembership(userId);
+  const limit = Math.max(USER_FILE_LIMIT, Number(membership.fileLimit || USER_FILE_LIMIT));
+  return { used, limit, remaining: Math.max(0, limit - used) };
 }
 
 export function assertUserFileCapacity(userId, incoming = 1) {

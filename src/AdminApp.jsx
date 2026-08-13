@@ -52,6 +52,8 @@ const copy = {
     resendVerify: "重发验证邮件", sendReset: "发送密码重置", amount: "积分增减",
     reasonCode: "原因类型", note: "备注", adjust: "提交调整", supportNote: "添加客服记录",
     addNote: "保存记录", balance: "当前余额", sessions: "有效会话", subscription: "订阅",
+    membershipPlan: "会员方案", membershipExpiry: "会员到期时间", membershipReason: "会员调整原因",
+    assignMembership: "保存会员配置", fileAllowance: "文件额度", permanentMembership: "长期有效",
     invoice: "账单", noData: "暂无数据", provider: "支付渠道", status: "状态",
     paymentVolume: "支付金额", openAlerts: "未处理告警", queuedJobs: "待处理作业",
     creditLiability: "平台积分余额", newUsers: "新增用户", activeUsers: "活跃用户",
@@ -131,6 +133,8 @@ const copy = {
     resendVerify: "Resend verification", sendReset: "Send password reset", amount: "Credit amount",
     reasonCode: "Reason code", note: "Note", adjust: "Submit adjustment", supportNote: "Add support note",
     addNote: "Save note", balance: "Balance", sessions: "Sessions", subscription: "Subscription",
+    membershipPlan: "Membership plan", membershipExpiry: "Membership expiry", membershipReason: "Membership change reason",
+    assignMembership: "Save membership", fileAllowance: "File allowance", permanentMembership: "No expiry",
     invoice: "Invoice", noData: "No data", provider: "Provider", status: "Status",
     paymentVolume: "Payment volume", openAlerts: "Open alerts", queuedJobs: "Queued jobs",
     creditLiability: "Credit liability", newUsers: "New users", activeUsers: "Active users",
@@ -821,12 +825,13 @@ function UsersView({ data, locale, query, setQuery, status, setStatus, onSearch,
     <div className="admin-v2-toolbar"><div className="admin-search"><MagnifyingGlass size={18} /><input placeholder={t.searchUser} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && onSearch()} /></div>
       <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{t.all}</option><option value="active">{t.active}</option><option value="suspended">{t.suspended}</option></select>
       <button className="admin-primary" onClick={onSearch}>{t.search}</button></div>
-    <div className="admin-v2-table-wrap"><table><thead><tr><th>{t.account}</th><th>{t.status}</th><th>{t.credits}</th><th>{t.tasks}/{t.files}</th><th>{t.lastSeen}</th><th /></tr></thead>
+    <div className="admin-v2-table-wrap"><table><thead><tr><th>{t.account}</th><th>{t.status}</th><th>{t.membershipPlan}</th><th>{t.credits}</th><th>{t.tasks}/{t.files}</th><th>{t.lastSeen}</th><th /></tr></thead>
       <tbody>{data?.users?.map((user) => <tr key={user.id}><td><div className="admin-user-cell"><span>{user.name.slice(0, 1).toUpperCase()}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div></td>
         <td><div className="admin-status-stack"><span className={`admin-badge ${user.status}`}>{user.status === "active" ? t.active : t.suspended}</span><small>{user.emailVerified ? t.verified : t.unverified}</small></div></td>
+        <td><span className={`admin-badge ${user.membershipCode === "free" ? "pending" : "active"}`}>{user.membershipCode}</span></td>
         <td><strong>{number(user.credits, locale)}</strong></td><td>{user.tasks} / {user.files}</td><td>{date(user.lastSeenAt, locale)}</td>
         <td><button className="admin-link" onClick={() => onSelect(user.id)}>{t.details}</button></td></tr>)}
-      {!data?.users?.length && <tr><td colSpan="6" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>
+      {!data?.users?.length && <tr><td colSpan="7" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>
     <Pager data={data} onPage={onPage} locale={locale} />
   </section>;
 }
@@ -834,7 +839,7 @@ function UsersView({ data, locale, query, setQuery, status, setStatus, onSearch,
 function CustomerDrawer({ detail, locale, onClose, onMutate }) {
   const t = copy[locale];
   const [tab, setTab] = useState("account");
-  const [form, setForm] = useState({ reason: "", amount: "", reasonCode: "customer_support", note: "", supportNote: "" });
+  const [form, setForm] = useState({ reason: "", amount: "", reasonCode: "customer_support", note: "", supportNote: "", membershipPlanId: detail.membership?.planId || "plan_free", membershipExpiry: detail.membership?.currentPeriodEnd ? new Date(detail.membership.currentPeriodEnd).toISOString().slice(0, 10) : "", membershipReason: "" });
   const user = detail.user;
   const mutate = async (action, payload) => {
     if (!form.reason.trim() && ["status", "sessions", "message"].includes(action)) return onMutate(null, t.reasonRequired);
@@ -855,7 +860,7 @@ function CustomerDrawer({ detail, locale, onClose, onMutate }) {
           <div className="admin-adjust-card"><h3>{t.adjust}</h3><div className="admin-form-grid"><label>{t.amount}<input type="number" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></label><label>{t.reasonCode}<select value={form.reasonCode} onChange={(event) => setForm({ ...form, reasonCode: event.target.value })}><option value="customer_support">customer_support</option><option value="service_compensation">service_compensation</option><option value="fraud_reversal">fraud_reversal</option><option value="manual_correction">manual_correction</option></select></label><label className="wide">{t.note}<input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} /></label></div>
             <button className="admin-primary" onClick={() => onMutate("credits", { amount: Number(form.amount), reasonCode: form.reasonCode, note: form.note })}>{t.adjust}</button></div></div>}
         {tab === "security" && <div className="admin-list">{detail.sessions.map((item) => <ListRow key={item.id} title={item.userAgent || "Unknown device"} meta={`${date(item.lastSeenAt, locale)} · ${item.id.slice(0, 8)}`} />)}{detail.securityEvents.map((item, index) => <ListRow key={`${item.correlationId}-${index}`} title={item.action} meta={`${item.result} · ${date(item.createdAt, locale)}`} />)}</div>}
-        {tab === "billing" && <div className="admin-list"><ListRow title={t.balance} value={number(detail.balance, locale)} />{detail.subscriptions.map((item) => <ListRow key={item.id} title={locale === "en" ? item.nameEn : item.nameZh} meta={`${item.provider} · ${item.status}`} />)}{detail.invoices.map((item) => <ListRow key={item.id} title={`${item.amountPaid / 100} ${item.currency}`} meta={`${item.provider} · ${item.status}`} />)}{detail.credits.map((item) => <ListRow key={item.id} title={locale === "en" ? item.descriptionEn : item.descriptionZh} meta={`${item.type} · ${date(item.createdAt, locale)}`} value={`${item.amount > 0 ? "+" : ""}${item.amount}`} />)}</div>}
+        {tab === "billing" && <div className="admin-detail-stack"><section className="admin-adjust-card admin-membership-card"><h3>{t.membershipPlan}</h3><div className="admin-membership-current"><div><small>{t.membershipPlan}</small><strong>{locale === "en" ? detail.membership.nameEn : detail.membership.nameZh}</strong></div><div><small>{t.fileAllowance}</small><strong>{detail.fileQuota.used} / {detail.fileQuota.limit}</strong></div><div><small>{t.membershipExpiry}</small><strong>{detail.membership.currentPeriodEnd ? date(detail.membership.currentPeriodEnd, locale) : t.permanentMembership}</strong></div></div><div className="admin-form-grid"><label>{t.membershipPlan}<select value={form.membershipPlanId} onChange={(event) => setForm({ ...form, membershipPlanId: event.target.value })}>{detail.membershipPlans.map((plan) => <option key={plan.planId} value={plan.planId}>{locale === "en" ? plan.nameEn : plan.nameZh} · {plan.fileLimit} {t.files}</option>)}</select></label><label>{t.membershipExpiry}<input type="date" value={form.membershipExpiry} onChange={(event) => setForm({ ...form, membershipExpiry: event.target.value })} /></label><label className="wide">{t.membershipReason}<input value={form.membershipReason} onChange={(event) => setForm({ ...form, membershipReason: event.target.value })} /></label></div><button className="admin-primary" disabled={!form.membershipReason.trim()} onClick={() => onMutate("membership", { planId: form.membershipPlanId, expiresAt: form.membershipExpiry ? new Date(`${form.membershipExpiry}T23:59:59`).getTime() : null, reason: form.membershipReason })}>{t.assignMembership}</button></section><div className="admin-list"><ListRow title={t.balance} value={number(detail.balance, locale)} />{detail.subscriptions.map((item) => <ListRow key={item.id} title={locale === "en" ? item.nameEn : item.nameZh} meta={`${item.provider} · ${item.status}`} />)}{detail.invoices.map((item) => <ListRow key={item.id} title={`${item.amountPaid / 100} ${item.currency}`} meta={`${item.provider} · ${item.status}`} />)}{detail.credits.map((item) => <ListRow key={item.id} title={locale === "en" ? item.descriptionEn : item.descriptionZh} meta={`${item.type} · ${date(item.createdAt, locale)}`} value={`${item.amount > 0 ? "+" : ""}${item.amount}`} />)}</div></div>}
         {tab === "activity" && <div className="admin-list">{detail.tasks.map((item) => <ListRow key={item.id} title={locale === "en" ? item.toolNameEn : item.toolNameZh} meta={`${item.status} · ${date(item.createdAt, locale)}`} value={`-${item.creditCost}`} />)}{detail.files.map((item) => <ListRow key={item.id} title={item.name} meta={`${item.mimeType} · ${date(item.createdAt, locale)}`} value={bytes(item.sizeBytes, locale)} />)}</div>}
         {tab === "support" && <div className="admin-detail-stack"><label className="admin-field">{t.supportNote}<textarea rows="4" value={form.supportNote} onChange={(event) => setForm({ ...form, supportNote: event.target.value })} /></label><button className="admin-primary" onClick={() => onMutate("note", { category: "general", body: form.supportNote })}>{t.addNote}</button><div className="admin-list">{detail.notes.map((item) => <ListRow key={item.id} title={item.category} meta={`${item.authorEmail || "system"} · ${date(item.createdAt, locale)}`} body={item.body} />)}</div></div>}
       </div>
@@ -1076,6 +1081,7 @@ export function AdminApp() {
       message: [`/api/admin/v1/users/${id}/message`, "POST"],
       credits: [`/api/admin/v1/users/${id}/credits`, "POST"],
       note: [`/api/admin/v1/users/${id}/notes`, "POST"],
+      membership: [`/api/admin/v1/users/${id}/membership`, "POST"],
     };
     try {
       const headers = action === "credits" ? { "idempotency-key": crypto.randomUUID() } : {};

@@ -11,7 +11,7 @@ test("API error parsing supports the server's nested commercial error envelope",
 test("sliding generator errors explain both cause and recovery action", () => {
   const fileLimit = slidingAncestorErrorMessage("USER_FILE_LIMIT_REACHED", "zh-CN");
   assert.match(fileLimit, /10 张/);
-  assert.match(fileLimit, /100 个文件/);
+  assert.match(fileLimit, /会员的文件额度/);
   assert.match(fileLimit, /文件中心/);
   assert.match(slidingAncestorErrorMessage("IMAGE_PROVIDER_RATE_LIMITED", "zh-CN"), /等待 1–2 分钟/);
   assert.match(slidingAncestorErrorMessage("IMAGE_PROVIDER_MODEL_UNAVAILABLE", "zh-CN"), /模型授权/);

@@ -25,7 +25,7 @@ const normalizeStyle = (value) => value === "dynasty" ? "realistic" : value === 
 
 function sourceFromTask(task) {
   const files = task?.output?.resultFiles || [];
-  return files.length === 10 ? { task: { id: task.id }, output: task.output, files } : null;
+  return files.length ? { task: { id: task.id, status: task.status }, output: task.output, files } : null;
 }
 
 export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authenticated, onBack, onAuth, onCompleted }) {
@@ -36,6 +36,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [activeTask, setActiveTask] = useState(null);
   const [intensity, setIntensity] = useState(5);
 
   useEffect(() => {
@@ -46,13 +47,50 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   }, [file]);
 
   useEffect(() => {
-    const match = task ? sourceFromTask(task) : (historyTasks || []).map(sourceFromTask).find(Boolean);
+    const pending = [task, ...(historyTasks || [])].find((item) => item && ["queued", "running"].includes(item.status));
+    if (pending) {
+      setActiveTask(pending);
+      setBusy(true);
+    }
+    const match = pending ? sourceFromTask(pending) : (task ? sourceFromTask(task) : (historyTasks || []).map(sourceFromTask).find(Boolean));
+    if (pending && !match) setResult(null);
     if (match) {
       setResult(match);
       setStyle(normalizeStyle(match.output?.style) || "realistic");
       setIntensity(5);
     }
   }, [task, historyTasks]);
+
+  useEffect(() => {
+    if (!activeTask?.id || !["queued", "running"].includes(activeTask.status)) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const data = await request(`/api/tasks/${activeTask.id}`);
+        if (cancelled) return;
+        const next = data.task;
+        setActiveTask(next);
+        const partial = sourceFromTask(next);
+        if (partial) {
+          setResult(partial);
+          setIntensity(Math.max(1, Math.min(10, partial.files.length)));
+        }
+        if (next.status === "completed") {
+          setBusy(false);
+          setError("");
+          onCompleted?.(next);
+        } else if (next.status === "failed" || next.status === "cancelled") {
+          setBusy(false);
+          setError(slidingAncestorErrorMessage(next.errorCode || "TASK_EXECUTION_FAILED", locale));
+        }
+      } catch (pollError) {
+        if (!cancelled) setError(slidingAncestorErrorMessage(pollError.code, locale));
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 2500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [activeTask?.id, activeTask?.status, locale, onCompleted]);
 
   const frames = useMemo(() => [...(result?.files || result?.output?.resultFiles || [])].sort((a, b) => a.level - b.level), [result]);
   const leftFrames = useMemo(() => frames.slice(0, 5), [frames]);
@@ -84,13 +122,12 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     setError("");
     try {
       const data = await request(`/api/tool-actions/${tool.slug}`, { method: "POST", body: form });
-      setResult(data);
-      setIntensity(5);
-      onCompleted?.(data);
+      setActiveTask(data.task);
+      setResult(sourceFromTask(data.task));
+      setIntensity(1);
     } catch (runError) {
-      setError(slidingAncestorErrorMessage(runError.code, locale));
-    } finally {
       setBusy(false);
+      setError(slidingAncestorErrorMessage(runError.code, locale));
     }
   };
 
@@ -117,7 +154,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
         <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果属于虚构娱乐性的形态变化，不评价人物真实能力或身份。" : "Only upload images you may use. Results are fictional transformations and do not judge real ability or identity."}</p>
         {error && <div className="form-error ancestor-error"><Warning size={17} /><span>{error}</span>{error.includes("100") && <a href="/?view=files">{zh ? "前往文件中心" : "Open File Center"}</a>}</div>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{zh ? "登录后可生成并保存结果" : "Sign in to generate and save"}</span><button onClick={onAuth}>{zh ? "登录" : "Sign in"}</button></div>}
-        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? "正在逐级生成 10 种形态，预计 3–12 分钟…" : "Creating ten ordered stages, about 3–12 minutes…"}</> : <><Play weight="fill" />{zh ? "生成 10 级形态变化" : "Generate 10 power stages"}</>}</button>
+        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? `后台生成中 ${result?.files?.length || activeTask?.output?.progress?.completed || 0}/10，可离开页面` : `Generating in background ${result?.files?.length || activeTask?.output?.progress?.completed || 0}/10 · safe to leave`}</> : <><Play weight="fill" />{zh ? "生成 10 级形态变化" : "Generate 10 power stages"}</>}</button>
         <small className="ancestor-quota-note">{zh ? "10 张均由模型独立生成并保存；每位用户最多保存 100 个文件。" : "All ten frames are model-generated and saved; each account can store up to 100 files."}</small>
       </section>
 

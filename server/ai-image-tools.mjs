@@ -103,7 +103,7 @@ const powerStages = [
   "maximum exaggerated powerful form: massive boss-level physique, extremely broad shoulders, powerful neck and upper body, rugged facial definition, dominant posture and intense dramatic light while remaining the same recognizable person",
 ];
 
-function ancestorStagePrompt(stage, style) {
+export function ancestorStagePrompt(stage, style) {
   const styleMap = {
     realistic: "realistic contemporary portrait evolution, restrained commercial photography, natural textures and a believable gradual physical change",
     cinematic: "rugged cinematic character evolution, harder directional lighting, realistic skin texture and an increasingly powerful screen presence",
@@ -144,6 +144,34 @@ async function normalizeFrame(buffer, width, height) {
   return sharp(buffer).rotate().resize(width, height, { fit: "cover", position: "attention" }).png().toBuffer();
 }
 
+export async function processAncestorStage({ buffer, mimeType = "image/png", name = "portrait.png", stage, style = "realistic" }, fetchImpl = fetch) {
+  const input = await imageInput(new File([buffer], name, { type: mimeType }));
+  const normalizedStyle = style === "dynasty" ? "realistic" : style === "clan" ? "cinematic" : style;
+  if (!Number.isInteger(stage) || stage < 1 || stage > 10) throw toolError("ANCESTOR_STAGE_INVALID", 400);
+  if (!["realistic", "cinematic", "chaos"].includes(normalizedStyle)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
+  const width = Math.min(1280, input.width);
+  const height = Math.max(512, Math.round(width * input.height / input.width));
+  const generated = await editPlatformImage({
+    purpose: "image_editing",
+    images: [{ buffer: input.buffer, mimeType: input.mimeType }],
+    prompt: ancestorStagePrompt(stage, normalizedStyle),
+    fetchImpl,
+  });
+  return {
+    buffer: await normalizeFrame(generated.buffer, width, height),
+    extension: ".png",
+    mimeType: "image/png",
+    name: `${safeName(input.name)}-power-${String(stage).padStart(2, "0")}.png`,
+    direction: stage <= 5 ? "xu" : "han",
+    level: stage,
+    width,
+    height,
+    sourceWidth: input.width,
+    sourceHeight: input.height,
+    latencyMs: generated.latencyMs,
+  };
+}
+
 async function processAncestorSeries(form, fetchImpl) {
   const primaryFile = form.get("file")?.size ? form.get("file") : form.getAll("files").find((item) => item?.size);
   const input = await imageInput(primaryFile);
@@ -155,20 +183,10 @@ async function processAncestorSeries(form, fetchImpl) {
   const generationStartedAt = Date.now();
   const outputs = [];
   for (let stage = 1; stage <= 10; stage += 1) {
-    const generated = await editPlatformImage({
-      purpose: "image_editing",
-      images: [{ buffer: input.buffer, mimeType: input.mimeType }],
-      prompt: ancestorStagePrompt(stage, style),
-      fetchImpl,
-    });
-    const buffer = await normalizeFrame(generated.buffer, width, height);
+    const generated = await processAncestorStage({ buffer: input.buffer, mimeType: input.mimeType, name: input.name, stage, style }, fetchImpl);
     outputs.push({
-      buffer,
-      extension: ".png",
-      mimeType: "image/png",
-      name: `${safeName(input.name)}-power-${String(stage).padStart(2, "0")}.png`,
-      direction: stage <= 5 ? "xu" : "han",
-      level: stage,
+      buffer: generated.buffer, extension: generated.extension, mimeType: generated.mimeType,
+      name: generated.name, direction: generated.direction, level: generated.level,
     });
   }
   return {

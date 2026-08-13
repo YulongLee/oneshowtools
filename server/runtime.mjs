@@ -2,6 +2,7 @@ import { db } from "./database.mjs";
 import { randomUUID } from "node:crypto";
 import { gatewayFlags, invokeModel } from "./model-gateway.mjs";
 import { executeMusicTask } from "./music-studio.mjs";
+import { cleanupAncestorTaskInput, executeAncestorTask } from "./ancestor-jobs.mjs";
 
 const prompts = {
   "copy-polish": {
@@ -85,6 +86,7 @@ export function failTaskExecution(taskId, errorCode = "TASK_EXECUTION_FAILED") {
     UPDATE tasks SET status = 'failed', error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
   `).run(errorCode, Date.now(), Date.now(), taskId);
   refundTask(task);
+  if (task.tool_id === "tool_sliding_ancestor") cleanupAncestorTaskInput(taskId).catch(() => {});
 }
 
 export async function executeTask(taskId) {
@@ -95,7 +97,9 @@ export async function executeTask(taskId) {
   db.prepare("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ?").run(Date.now(), taskId);
   let result;
   try {
-    result = tool.runtime_kind === "builtin-music"
+    result = tool.slug === "sliding-ancestor-generator"
+      ? await executeAncestorTask(task, input)
+      : tool.runtime_kind === "builtin-music"
       ? await executeMusicTask(task, input)
       : ["copy-polish", "pdf-summary"].includes(tool.slug) || tool.runtime_kind === "openai"
         ? await runModelTask(task, tool, input)
@@ -106,7 +110,7 @@ export async function executeTask(taskId) {
   }
   const completedAt = result.status === "completed" || result.status === "failed" ? Date.now() : null;
   db.prepare(`
-    UPDATE tasks SET status = ?, output_json = ?, error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
+    UPDATE tasks SET status = ?, output_json = COALESCE(?, output_json), error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
   `).run(result.status, result.output ? JSON.stringify(result.output) : null, result.errorCode || null, Date.now(), completedAt, taskId);
 
   if (result.status !== "completed") refundTask(task);

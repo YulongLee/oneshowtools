@@ -1937,6 +1937,11 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .admin-user-cell.large > span { width: 43px; height: 43px; border-radius: 12px; }
 .admin-user-cell.large h2 { margin: 1px 0; font-size: 18px; }
 .admin-user-cell.large p { margin: 0; color: #78869a; font-size: 9px; }
+.admin-membership-card { display: grid; gap: 14px; }
+.admin-membership-current { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+.admin-membership-current > div { min-width: 0; padding: 11px; border: 1px solid #e4ebf5; border-radius: 10px; display: grid; gap: 4px; background: #f8faff; }
+.admin-membership-current small { color: #7d8a9e; font-size: 8px; }
+.admin-membership-current strong { overflow: hidden; color: #1c3154; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .admin-status-stack { display: grid; justify-items: start; gap: 4px; }
 .admin-status-stack small { color: #8995a6; font-size: 8px; }
 .admin-badge { display: inline-flex; padding: 4px 7px; border-radius: 999px; color: #40516a; background: #edf1f6; font-size: 8px; font-style: normal; }

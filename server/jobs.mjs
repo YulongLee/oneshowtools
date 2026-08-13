@@ -21,11 +21,17 @@ export function enqueueTask(taskId, timestamp = Date.now()) {
 }
 
 function recoverExpiredLeases(timestamp) {
+  const expired = db.prepare(`
+    SELECT task_id FROM execution_jobs
+    WHERE status = 'running' AND lease_until IS NOT NULL AND lease_until < ?
+  `).all(timestamp);
   db.prepare(`
     UPDATE execution_jobs SET status = 'retrying', lease_token = NULL, lease_until = NULL,
       next_attempt_at = ?, updated_at = ?, last_error_class = 'WORKER_LEASE_EXPIRED'
     WHERE status = 'running' AND lease_until IS NOT NULL AND lease_until < ?
   `).run(timestamp, timestamp, timestamp);
+  const resetTask = db.prepare("UPDATE tasks SET status = 'queued', updated_at = ? WHERE id = ? AND status = 'running'");
+  for (const item of expired) resetTask.run(timestamp, item.task_id);
 }
 
 function claimNextJob() {
@@ -65,6 +71,12 @@ export async function runNextJob() {
   const job = claimNextJob();
   if (!job) return false;
   working = true;
+  const heartbeat = setInterval(() => {
+    const timestamp = Date.now();
+    db.prepare(`UPDATE execution_jobs SET lease_until = ?, heartbeat_at = ?, updated_at = ? WHERE id = ? AND lease_token = ? AND status = 'running'`)
+      .run(timestamp + 60_000, timestamp, timestamp, job.id, job.lease_token);
+  }, 20_000);
+  heartbeat.unref?.();
   try {
     await executeTask(job.task_id);
     finishAttempt(job, "completed");
@@ -96,6 +108,7 @@ export async function runNextJob() {
       failTaskExecution(job.task_id, errorClass);
     }
   } finally {
+    clearInterval(heartbeat);
     working = false;
   }
   return true;
