@@ -1312,6 +1312,10 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-run:disabled { opacity: .65; cursor: wait; }
 .ancestor-quota-note { margin-top: 9px; display: block; color: #736f6b; font-size: 9px; text-align: center; }
 .ancestor-control .tool-auth-notice { margin: 12px 0; border-color: #4c433b; color: #b9ada1; background: #292522; }
+.ancestor-error { margin: 12px 0; padding: 11px 12px; border: 1px solid #f0c8cc; border-radius: 10px; align-items: flex-start; line-height: 1.6; background: #fff6f7; }
+.ancestor-error svg { flex: 0 0 auto; margin-top: 1px; }
+.ancestor-error span { flex: 1; }
+.ancestor-error a { flex: 0 0 auto; padding: 3px 8px; border-radius: 7px; color: #2464db; background: #edf3ff; text-decoration: none; font-weight: 750; white-space: nowrap; }
 .ancestor-stage { min-width: 0; padding: 28px 30px 34px; position: relative; background: radial-gradient(circle at 50% 30%,rgba(122,81,46,.14),transparent 38%),#171718; }
 .ancestor-stage > header { margin-bottom: 18px; display: flex; align-items: flex-start; justify-content: space-between; }
 .ancestor-stage h2 { margin: 0; color: #f5eee4; font-family: Georgia,"Songti SC",serif; font-size: 23px; }

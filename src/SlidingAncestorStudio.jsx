@@ -3,22 +3,17 @@ import {
   ArrowLeft, CheckCircle, CloudArrowUp, Coins, DownloadSimple, ImageSquare,
   LockKey, Play, ShieldCheck, Sparkle, SpinnerGap, Warning, X,
 } from "@phosphor-icons/react";
+import { apiErrorCode, slidingAncestorErrorMessage } from "./toolErrorMessages.js";
 
 async function request(path, options = {}) {
   const response = await fetch(path, { credentials: "include", ...options });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(payload.error || "REQUEST_FAILED"), { code: payload.error, status: response.status });
+  if (!response.ok) {
+    const code = apiErrorCode(payload);
+    throw Object.assign(new Error(code), { code, status: response.status });
+  }
   return payload;
 }
-
-const messages = {
-  IMAGE_REQUIRED: "请先上传一张清晰的人物照片。",
-  IMAGE_TOO_LARGE: "图片不能超过 25 MB。",
-  IMAGE_PROVIDER_RATE_LIMITED: "图片模型当前繁忙，请稍后再试。",
-  IMAGE_PROVIDER_AUTH_FAILED: "图片模型认证失败，请联系管理员检查图片编辑模型。",
-  USER_FILE_LIMIT_REACHED: "文件中心已达到 100 个文件，请先删除部分旧文件。",
-  INSUFFICIENT_CREDITS: "积分不足，请先充值积分。",
-};
 
 const styles = [
   ["realistic", "写实进化", "从普通状态逐级强化，人物变化自然"],
@@ -81,7 +76,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
 
   const run = async () => {
     if (!authenticated) return onAuth?.();
-    if (!file) return setError(zh ? messages.IMAGE_REQUIRED : "Upload a clear portrait first.");
+    if (!file) return setError(slidingAncestorErrorMessage("IMAGE_REQUIRED", locale));
     const form = new FormData();
     form.append("file", file);
     form.append("style", style);
@@ -93,7 +88,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
       setIntensity(5);
       onCompleted?.(data);
     } catch (runError) {
-      setError(zh ? (messages[runError.code] || "生成失败，请检查图片模型配置后重试。") : (runError.code || "Generation failed. Please try again."));
+      setError(slidingAncestorErrorMessage(runError.code, locale));
     } finally {
       setBusy(false);
     }
@@ -120,7 +115,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
         <div className="ancestor-style-list">{styles.map(([value, name, description]) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}><span>{style === value ? <CheckCircle weight="fill" /> : <Sparkle />}</span><div><strong>{zh ? name : value}</strong><small>{zh ? description : value === "realistic" ? "Natural realistic power progression" : value === "cinematic" ? "Rugged cinematic transformation" : "Exaggerated meme-ready evolution"}</small></div></button>)}</div>
 
         <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果属于虚构娱乐性的形态变化，不评价人物真实能力或身份。" : "Only upload images you may use. Results are fictional transformations and do not judge real ability or identity."}</p>
-        {error && <p className="form-error"><Warning size={17} />{error}</p>}
+        {error && <div className="form-error ancestor-error"><Warning size={17} /><span>{error}</span>{error.includes("100") && <a href="/?view=files">{zh ? "前往文件中心" : "Open File Center"}</a>}</div>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{zh ? "登录后可生成并保存结果" : "Sign in to generate and save"}</span><button onClick={onAuth}>{zh ? "登录" : "Sign in"}</button></div>}
         <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? "正在逐级生成 10 种形态，预计 3–12 分钟…" : "Creating ten ordered stages, about 3–12 minutes…"}</> : <><Play weight="fill" />{zh ? "生成 10 级形态变化" : "Generate 10 power stages"}</>}</button>
         <small className="ancestor-quota-note">{zh ? "10 张均由模型独立生成并保存；每位用户最多保存 100 个文件。" : "All ten frames are model-generated and saved; each account can store up to 100 files."}</small>
