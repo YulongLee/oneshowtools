@@ -90,26 +90,60 @@ async function whiteToTransparent(buffer) {
   return sharp(data, { raw: info }).png().toBuffer();
 }
 
-const powerStages = [
-  "extremely fragile: clearly narrower shoulders and slimmer upper body, timid slightly collapsed posture, very soft facial tension, low contrast and almost no intimidating presence",
-  "very fragile: narrow shoulders, slight build, reserved posture, gentle expression, soft light and visibly weak presence",
-  "fragile: modestly slimmer than the source, slightly rounded shoulders, softer jaw definition and subdued presence",
-  "slightly fragile: a small reduction in shoulder width and physique, relaxed posture, soft features and restrained contrast",
-  "near neutral but subtly weak: almost the original physique, only slightly slimmer and less assertive, calm posture and natural soft light",
-  "near neutral but subtly strong: almost the original physique, slightly broader shoulders, firmer posture, a more focused expression and mildly stronger contrast",
-  "athletic: visibly broader shoulders, denser athletic build, upright confident posture, firmer jaw definition and stronger screen presence",
-  "strong: muscular upper body, broad shoulders, rugged facial definition, confident posture, harder cinematic light and clear physical power",
-  "very formidable: heavily muscular but anatomically coherent build, very broad shoulders, intense expression, commanding posture and dramatic contrast",
-  "maximum exaggerated powerful form: massive boss-level physique, extremely broad shoulders, powerful neck and upper body, rugged facial definition, dominant posture and intense dramatic light while remaining the same recognizable person",
-];
+const styleProfiles = {
+  realistic: {
+    direction: "Natural realistic body progression. Use contemporary commercial portrait photography, neutral color science, soft believable light, realistic skin and anatomically plausible changes. Never add fantasy effects, costume redesigns or cinematic scene changes.",
+    negative: "No fantasy aura, sparks, smoke, glowing eyes, meme distortion, film-poster grading, battle damage, supernatural props or surreal anatomy.",
+    stages: [
+      "extremely fragile but realistic: clearly narrower shoulders and slimmer upper body, timid slightly collapsed posture, very soft facial tension, low contrast and almost no intimidating presence",
+      "very fragile but believable: narrow shoulders, slight build, reserved posture, gentle expression, soft even light and visibly weak presence",
+      "fragile: modestly slimmer than the source, slightly rounded shoulders, softer jaw definition and subdued presence",
+      "slightly fragile: a small realistic reduction in shoulder width and physique, relaxed posture, soft features and restrained contrast",
+      "near neutral but subtly weak: almost the original physique, only slightly slimmer and less assertive, calm posture and natural soft light",
+      "near neutral but subtly strong: almost the original physique, slightly broader shoulders, firmer posture, focused expression and mildly stronger contrast",
+      "naturally athletic: visibly broader shoulders, denser athletic build, upright confident posture, firmer jaw definition and healthy screen presence",
+      "strong and realistic: muscular upper body, broad shoulders, confident posture, defined but plausible anatomy and clear physical power",
+      "very formidable yet believable: heavily trained athletic build, very broad shoulders, intense expression and commanding posture without superhero proportions",
+      "maximum natural power: elite bodybuilder-level but anatomically coherent physique, extremely broad shoulders, powerful neck and upper body, dominant posture while remaining a believable photograph",
+    ],
+  },
+  cinematic: {
+    direction: "Rugged hard-boiled cinema progression. Preserve the original scene geometry while progressively applying harder directional key light, deeper shadows, restrained teal-amber film color, realistic pores and a commanding action-film screen presence.",
+    negative: "No cartoon, anime, internet meme deformation, magical aura, glowing fantasy energy, imperial costume, unrelated movie set, text or poster typography.",
+    stages: [
+      "an underdog before the story begins: narrow silhouette, guarded posture, soft flat light, uncertain gaze and muted low-saturation cinematic grade",
+      "a vulnerable rookie: slight build, reserved shoulders, gentle shadow shaping, quiet expression and minimal screen authority",
+      "a struggling protagonist: modestly slim physique, slightly lowered posture, early directional light and restrained dramatic tension",
+      "a determined novice: only slightly weaker than neutral, steadier gaze, subtle rim light and the first hint of cinematic resolve",
+      "the calm moment before transformation: nearly original physique, controlled posture, balanced film lighting and contained intensity",
+      "newly confident protagonist: slightly broader shoulders, focused eyes, firmer posture, stronger key-to-fill contrast and subtle rim light",
+      "trained action lead: athletic density, broad shoulders, rugged facial definition, decisive posture and clear cinematic separation from the background",
+      "battle-ready hard man: muscular upper body, hard jaw, intense gaze, dramatic side light, deeper shadows and powerful action-film presence",
+      "formidable final-act hero: heavily muscular coherent build, weathered realism, commanding posture, bold rim light and high dramatic contrast",
+      "ultimate blockbuster powerhouse: massive boss-level coherent physique, dominant gaze, iconic hard light, deep cinematic shadows and overwhelming screen presence without fantasy effects",
+    ],
+  },
+  chaos: {
+    direction: "Polished surreal internet-meme escalation. Keep the same identifiable person and aligned portrait, but make each step visibly stranger and more exaggerated through graphic energy, impossible-yet-clean power details, humorous intensity and shareable high-impact styling.",
+    negative: "No ancestry, emperor, old person, face replacement, extra person, illegible anatomy, gore, offensive stereotype, random collage, text, caption or UI.",
+    stages: [
+      "comically fragile starter form: unusually tiny presence, narrow shoulders, shy compressed posture, pale soft contrast and one subtle absurd visual accent",
+      "awkward weak form: slight build, hesitant gaze, mildly warped low-energy atmosphere and two restrained meme-like details",
+      "noticeably underpowered form: slim silhouette, drooping energy, soft distortion around the edges and playful visual awkwardness",
+      "pre-upgrade form: almost neutral body, alert expression, a few strange high-energy details beginning to emerge while the scene stays aligned",
+      "neutral loading form: close to the source physique, centered posture, contained surreal energy and a polished sense that a transformation is imminent",
+      "first absurd upgrade: broader shoulders, sharper expression, visible stylized energy accents and confident meme-hero presence",
+      "high-energy evolved form: athletic build, powerful pose, bolder surreal glow shapes, exaggerated contrast and unmistakable shareable impact",
+      "overclocked powerhouse: muscular coherent body, fierce expression, strange but polished energy distortions and dramatic viral-thumbnail intensity",
+      "near-final meme boss: huge coherent physique, overwhelming aura-like graphic effects, bizarre high-energy details and commanding absurdity",
+      "maximum abstract power form: colossal but readable boss-level physique, explosive polished surreal energy, outrageous meme-ready intensity and the strongest unmistakable final evolution while preserving the same face",
+    ],
+  },
+};
 
 export function ancestorStagePrompt(stage, style) {
-  const styleMap = {
-    realistic: "realistic contemporary portrait evolution, restrained commercial photography, natural textures and a believable gradual physical change",
-    cinematic: "rugged cinematic character evolution, harder directional lighting, realistic skin texture and an increasingly powerful screen presence",
-    chaos: "surreal internet-meme power evolution, deliberately exaggerated but visually polished, strange high-energy details without changing identity",
-  };
-  const stageDescription = powerStages[stage - 1];
+  const profile = styleProfiles[style] || styleProfiles.realistic;
+  const stageDescription = profile.stages[stage - 1];
   return `ONE-SHOW-TOOLS / SLIDING SAME-PERSON POWER PROGRESSION
 
 Create STAGE ${stage} OF 10 in a fictional entertainment-only progression of the uploaded person's physical form and presence. The Chinese meme word "变祖" means "becoming stronger / more formidable" in this product. It does NOT mean becoming an ancestor.
@@ -130,7 +164,9 @@ CONTINUITY
 The frame must look like one ordered stage in a continuous 10-frame slider. The only progressive dimensions are shoulder width, upper-body density, muscular definition, posture confidence, facial hardness, lighting contrast and perceived presence. Preserve the original head position, framing, background geometry, clothing identity, colors and camera perspective so the ten frames align when crossfaded. Do not make an unrelated scene or redesign the outfit/background.
 
 ART DIRECTION
-${styleMap[style] || styleMap.realistic}.
+STYLE FAMILY: ${String(style || "realistic").toUpperCase()}.
+${profile.direction}
+STYLE-SPECIFIC EXCLUSIONS: ${profile.negative}
 Use the uploaded image's portrait composition. Keep anatomy coherent and the face clearly visible. At stronger levels, emphasize broader physique, harder expression, sharper contrast and commanding presence. At weaker levels, emphasize a slighter physique, softer posture, lower contrast and reduced presence. Never imply that physical strength determines real human value.
 
 FINAL SELF-CHECK

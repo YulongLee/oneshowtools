@@ -1438,17 +1438,45 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-empty-series { border-color: #d9e2ef; color: #8a97a9; background: #fafbfe; }
 .ancestor-download { border-color: #cdd9ed; color: #2c67df; background: #f7f9ff; }
 .ancestor-download:hover { border-color: #7ea0ea; background: #edf3ff; }
+.ancestor-history { margin-top: 16px; padding: 22px; border: 1px solid #dfe6f1; border-radius: 16px; background: #fff; box-shadow: 0 10px 30px rgba(45,67,105,.05); }
+.ancestor-history > header { margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ancestor-history > header > div { display: flex; align-items: center; gap: 11px; }
+.ancestor-history > header > div > span { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; color: #4d70e8; background: #edf3ff; }
+.ancestor-history h2,.ancestor-history p { margin: 0; }
+.ancestor-history h2 { color: #24344e; font-size: 16px; }
+.ancestor-history p { margin-top: 4px; color: #8693a5; font-size: 10px; }
+.ancestor-history > header > strong { padding: 6px 10px; border-radius: 9px; color: #5670dc; background: #f0f3ff; font-size: 10px; }
+.ancestor-history-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 11px; }
+.ancestor-history-grid article { min-width: 0; padding: 7px; border: 1px solid #e2e8f2; border-radius: 12px; position: relative; background: #fafbfe; transition: border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.ancestor-history-grid article:hover,.ancestor-history-grid article.active { border-color: #7798ef; box-shadow: 0 8px 22px rgba(65,93,165,.1); transform: translateY(-1px); }
+.ancestor-history-open { width: 100%; padding: 0; border: 0; display: grid; grid-template-columns: 64px minmax(0,1fr); align-items: center; gap: 10px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.ancestor-history-cover { height: 78px; border-radius: 8px; position: relative; overflow: hidden; background: #edf1f7; }
+.ancestor-history-cover img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.ancestor-history-cover i { padding: 2px 5px; border-radius: 5px; position: absolute; right: 4px; bottom: 4px; color: #fff; background: rgba(21,31,50,.75); font-size: 8px; font-style: normal; }
+.ancestor-history-copy { min-width: 0; display: grid; gap: 5px; }
+.ancestor-history-copy strong { overflow: hidden; color: #33435d; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.ancestor-history-copy small { color: #919daf; font-size: 9px; }
+.ancestor-history-copy em { width: max-content; padding: 3px 6px; border-radius: 6px; color: #4d6ee1; background: #edf2ff; font-size: 8px; font-style: normal; }
+.ancestor-history-grid article > a { width: 27px; height: 27px; border: 1px solid #dce4f1; border-radius: 8px; position: absolute; right: 7px; bottom: 7px; display: grid; place-items: center; color: #647695; background: #fff; }
+.ancestor-history-grid article > a:hover { color: #2e69df; border-color: #a9bee8; }
+.ancestor-history-empty { min-height: 116px; border: 1px dashed #d8e1ef; border-radius: 12px; display: grid; place-items: center; align-content: center; gap: 5px; color: #9aa7b8; background: #fafbfe; }
+.ancestor-history-empty strong { color: #63738b; font-size: 12px; }
+.ancestor-history-empty span { font-size: 9px; }
 
 @media (max-width: 900px) {
   .ancestor-layout { grid-template-columns: 1fr; }
   .ancestor-control { border-right: 1px solid #dfe6f1; border-bottom: 1px solid #dfe6f1; }
   .ancestor-portrait { width: min(420px,92%); }
+  .ancestor-history-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 @media (max-width: 520px) {
   .ancestor-title-lockup { align-items: flex-start; }
   .ancestor-title-lockup > span { width: 46px; height: 46px; flex-basis: 46px; border-radius: 13px; }
   .ancestor-header aside { width: 100%; }
   .ancestor-portrait { width: 100%; }
+  .ancestor-history { padding: 15px; }
+  .ancestor-history > header { align-items: flex-start; }
+  .ancestor-history-grid { grid-template-columns: 1fr; }
 }
 
 /* Customer support workspace */

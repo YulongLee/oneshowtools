@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, CheckCircle, CloudArrowUp, Coins, DownloadSimple, ImageSquare,
-  LockKey, Play, ShieldCheck, Sparkle, SpinnerGap, Warning, X,
+  LockKey, Play, ShieldCheck, Sparkle, SpinnerGap, Warning, X, ClockCounterClockwise,
 } from "@phosphor-icons/react";
 import { apiErrorCode, slidingAncestorErrorMessage } from "./toolErrorMessages.js";
 
@@ -28,6 +28,16 @@ function sourceFromTask(task) {
   return files.length ? { task: { id: task.id, status: task.status }, output: task.output, files } : null;
 }
 
+const styleName = (value, zh) => ({
+  realistic: zh ? "写实进化" : "Realistic",
+  cinematic: zh ? "硬汉电影" : "Cinematic",
+  chaos: zh ? "抽象爆改" : "Chaos",
+})[normalizeStyle(value)] || (zh ? "写实进化" : "Realistic");
+
+const taskTime = (task, locale) => new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
+  month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+}).format(new Date(task?.completedAt || task?.updatedAt || task?.createdAt || Date.now()));
+
 export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authenticated, onBack, onAuth, onCompleted }) {
   const zh = locale !== "en";
   const [file, setFile] = useState(null);
@@ -38,6 +48,12 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const [result, setResult] = useState(null);
   const [activeTask, setActiveTask] = useState(null);
   const [intensity, setIntensity] = useState(5);
+  const [selectedHistoryId, setSelectedHistoryId] = useState("");
+
+  const history = useMemo(() => (historyTasks || [])
+    .map((item) => ({ task: item, source: sourceFromTask(item) }))
+    .filter((item) => item.source)
+    .sort((a, b) => Number(b.task.completedAt || b.task.updatedAt || b.task.createdAt || 0) - Number(a.task.completedAt || a.task.updatedAt || a.task.createdAt || 0)), [historyTasks]);
 
   useEffect(() => {
     if (!file) return setPreview("");
@@ -52,14 +68,17 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
       setActiveTask(pending);
       setBusy(true);
     }
-    const match = pending ? sourceFromTask(pending) : (task ? sourceFromTask(task) : (historyTasks || []).map(sourceFromTask).find(Boolean));
+    if (!pending && selectedHistoryId === "draft") return;
+    const selectedHistory = selectedHistoryId && selectedHistoryId !== "draft" ? history.find((item) => item.task.id === selectedHistoryId)?.source : null;
+    const match = pending ? sourceFromTask(pending) : (selectedHistory || (task ? sourceFromTask(task) : history[0]?.source));
     if (pending && !match) setResult(null);
     if (match) {
       setResult(match);
+      setSelectedHistoryId(match.task.id);
       setStyle(normalizeStyle(match.output?.style) || "realistic");
       setIntensity(5);
     }
-  }, [task, historyTasks]);
+  }, [task, history, selectedHistoryId]);
 
   useEffect(() => {
     if (!activeTask?.id || !["queued", "running"].includes(activeTask.status)) return undefined;
@@ -108,6 +127,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     if (!selectedFile) return;
     setFile(selectedFile);
     setResult(null);
+    setSelectedHistoryId("draft");
     setIntensity(5);
     setError("");
   };
@@ -124,6 +144,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
       const data = await request(`/api/tool-actions/${tool.slug}`, { method: "POST", body: form });
       setActiveTask(data.task);
       setResult(sourceFromTask(data.task));
+      setSelectedHistoryId(data.task.id);
       setIntensity(1);
     } catch (runError) {
       setBusy(false);
@@ -132,6 +153,14 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   };
 
   const intensityLabel = `${zh ? (intensity <= 5 ? "虚" : "夯") : (intensity <= 5 ? "Fragile" : "Powerful")} ${String(intensity).padStart(2, "0")}`;
+  const openHistory = (entry) => {
+    setSelectedHistoryId(entry.task.id);
+    setActiveTask(["queued", "running"].includes(entry.task.status) ? entry.task : null);
+    setResult(entry.source);
+    setStyle(normalizeStyle(entry.source.output?.style) || "realistic");
+    setIntensity(Math.min(10, Math.max(1, entry.source.files.length >= 10 ? 5 : entry.source.files.length)));
+    setError("");
+  };
 
   return <div className="ancestor-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
@@ -174,5 +203,19 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
         {selected && <a className="ancestor-download" href={selected.downloadUrl} download><DownloadSimple size={18} />{zh ? "下载当前图片" : "Download selected image"}</a>}
       </section>
     </div>
+    <section className="ancestor-history">
+      <header><div><span><ClockCounterClockwise size={20} /></span><div><h2>{zh ? "生成历史" : "Generation history"}</h2><p>{zh ? "每次生成均按任务保存，可随时回来继续查看和下载。" : "Every generation is saved as a task so you can reopen and download it later."}</p></div></div><strong>{history.length} {zh ? "组" : "sets"}</strong></header>
+      {history.length ? <div className="ancestor-history-grid">{history.map((entry) => {
+        const cover = [...entry.source.files].sort((a, b) => a.level - b.level)[4] || entry.source.files[0];
+        const active = result?.task?.id === entry.task.id;
+        return <article key={entry.task.id} className={active ? "active" : ""}>
+          <button type="button" className="ancestor-history-open" onClick={() => openHistory(entry)}>
+            <span className="ancestor-history-cover"><img src={cover.downloadUrl} alt={styleName(entry.source.output?.style, zh)} loading="lazy" /><i>{entry.source.files.length}/10</i></span>
+            <span className="ancestor-history-copy"><strong>{styleName(entry.source.output?.style, zh)}</strong><small>{taskTime(entry.task, locale)}</small><em>{active ? (zh ? "正在查看" : "Viewing") : (zh ? "打开结果" : "Open result")}</em></span>
+          </button>
+          <a href={cover.downloadUrl} download title={zh ? "下载封面图" : "Download cover"}><DownloadSimple size={17} /></a>
+        </article>;
+      })}</div> : <div className="ancestor-history-empty"><ImageSquare size={28} /><strong>{zh ? "还没有生成记录" : "No generations yet"}</strong><span>{zh ? "完成第一组生成后，历史结果会显示在这里。" : "Your completed sets will appear here."}</span></div>}
+    </section>
   </div>;
 }

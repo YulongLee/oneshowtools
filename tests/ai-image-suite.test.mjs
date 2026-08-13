@@ -14,7 +14,7 @@ process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64")
 const {
   imageEditProviderConfiguration, saveImageEditProviderConfiguration, testImageEditProviderConfiguration,
 } = await import(`../server/image-edit-provider.mjs?test=${Date.now()}`);
-const { aiImageToolSlugs, processAiImageTool } = await import(`../server/ai-image-tools.mjs?test=${Date.now()}`);
+const { aiImageToolSlugs, ancestorStagePrompt, processAiImageTool } = await import(`../server/ai-image-tools.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 const { runToolAction } = await import(`../server/tool-actions.mjs?test=${Date.now()}`);
 
@@ -98,7 +98,25 @@ test("sliding power-up generator creates ten individually generated ordered stag
   assert.match(prompts[before + 4], /stage 5 of 10/i);
   assert.match(prompts[before + 5], /stage 6 of 10/i);
   assert.match(prompts[before + 9], /stage 10 of 10/i);
-  assert.match(prompts[before + 9], /maximum exaggerated powerful form/i);
+  assert.match(prompts[before + 9], /maximum natural power/i);
+});
+
+test("sliding generator styles use three complete and visibly distinct ten-stage prompt systems", () => {
+  const profiles = ["realistic", "cinematic", "chaos"].map((style) =>
+    Array.from({ length: 10 }, (_, index) => ancestorStagePrompt(index + 1, style)));
+  for (const promptsForStyle of profiles) {
+    assert.equal(promptsForStyle.length, 10);
+    assert.equal(new Set(promptsForStyle).size, 10);
+    promptsForStyle.forEach((prompt, index) => assert.match(prompt, new RegExp(`stage ${index + 1} of 10`, "i")));
+  }
+  assert.match(profiles[0][9], /elite bodybuilder-level/i);
+  assert.match(profiles[0][9], /No fantasy aura/i);
+  assert.match(profiles[1][9], /ultimate blockbuster powerhouse/i);
+  assert.match(profiles[1][9], /teal-amber film color/i);
+  assert.match(profiles[2][9], /maximum abstract power form/i);
+  assert.match(profiles[2][9], /surreal internet-meme escalation/i);
+  assert.notEqual(profiles[0][5], profiles[1][5]);
+  assert.notEqual(profiles[1][5], profiles[2][5]);
 });
 
 test("outfit changer accepts a second clothing reference image", async () => {
