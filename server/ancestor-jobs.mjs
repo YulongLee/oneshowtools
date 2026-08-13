@@ -32,7 +32,14 @@ export async function createAncestorTask(request, user, tool) {
   if (!file?.size) throw error("IMAGE_REQUIRED", 400);
   if (file.size > 25 * 1024 * 1024) throw error("IMAGE_TOO_LARGE", 413);
   const style = String(form.get("style") || "realistic");
-  if (!["realistic", "cinematic", "chaos"].includes(style)) throw error("ANCESTOR_STYLE_INVALID", 400);
+  if (!["realistic", "cinematic", "chaos", "custom"].includes(style)) throw error("ANCESTOR_STYLE_INVALID", 400);
+  let customPrompts = [];
+  if (style === "custom") {
+    try { customPrompts = JSON.parse(String(form.get("customPrompts") || "[]")); } catch { throw error("ANCESTOR_CUSTOM_PROMPTS_INVALID", 400); }
+    if (!Array.isArray(customPrompts) || customPrompts.length !== 10) throw error("ANCESTOR_CUSTOM_PROMPTS_INVALID", 400);
+    customPrompts = customPrompts.map((value) => String(value || "").replace(/\0/g, "").trim().slice(0, 1200));
+    if (customPrompts.some((value) => !value)) throw error("ANCESTOR_CUSTOM_PROMPT_REQUIRED", 400);
+  }
 
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount), 0) AS balance FROM credit_ledger WHERE user_id = ?").get(user.id).balance);
   if (available < tool.creditCost) throw error("INSUFFICIENT_CREDITS", 402);
@@ -43,9 +50,30 @@ export async function createAncestorTask(request, user, tool) {
   const inputName = `${id}.source`;
   const inputPath = resolve(inputDirectory, inputName);
   await writeFile(inputPath, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
+  const referenceFiles = [];
+  if (style === "custom") {
+    try {
+      let totalReferenceBytes = 0;
+      for (let stage = 1; stage <= 10; stage += 1) {
+        const reference = form.get(`reference${stage}`);
+        if (!reference?.size) { referenceFiles.push(null); continue; }
+        totalReferenceBytes += reference.size;
+        if (reference.size > 10 * 1024 * 1024 || totalReferenceBytes > 80 * 1024 * 1024 || !String(reference.type || "").startsWith("image/")) {
+          throw error(reference.size > 10 * 1024 * 1024 || totalReferenceBytes > 80 * 1024 * 1024 ? "ANCESTOR_REFERENCE_TOO_LARGE" : "IMAGE_INVALID", reference.size > 10 * 1024 * 1024 || totalReferenceBytes > 80 * 1024 * 1024 ? 413 : 422);
+        }
+        const referenceName = `${id}.reference-${stage}`;
+        await writeFile(resolve(inputDirectory, referenceName), Buffer.from(await reference.arrayBuffer()), { flag: "wx" });
+        referenceFiles.push({ jobInputName: referenceName, mimeType: reference.type || "image/jpeg", fileName: String(reference.name || `reference-${stage}.png`).slice(0, 180) });
+      }
+    } catch (caught) {
+      await rm(inputPath, { force: true });
+      await Promise.all(referenceFiles.filter(Boolean).map((item) => rm(resolve(inputDirectory, item.jobInputName), { force: true })));
+      throw caught;
+    }
+  }
   const timestamp = Date.now();
-  const input = { fileName: String(file.name || "portrait.png").slice(0, 180), mimeType: file.type || "image/jpeg", fileSize: file.size, style, jobInputName: inputName };
-  const output = { mode: "ai-ordered-power-series", style, progress: { completed: 0, total: 10, currentStage: 1 }, resultFiles: [] };
+  const input = { fileName: String(file.name || "portrait.png").slice(0, 180), mimeType: file.type || "image/jpeg", fileSize: file.size, style, jobInputName: inputName, ...(style === "custom" ? { customPrompts, referenceFiles } : {}) };
+  const output = { mode: style === "custom" ? "ai-custom-ten-frame-series" : "ai-ordered-power-series", style, ...(style === "custom" ? { customPrompts, referenceCount: referenceFiles.filter(Boolean).length } : {}), progress: { completed: 0, total: 10, currentStage: 1 }, resultFiles: [] };
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare(`INSERT INTO tasks (id,user_id,tool_id,status,input_json,output_json,credit_cost,created_at,updated_at) VALUES (?,?,?,'queued',?,?,?,?,?)`)
@@ -65,6 +93,7 @@ export async function createAncestorTask(request, user, tool) {
   } catch (caught) {
     db.exec("ROLLBACK");
     await rm(inputPath, { force: true });
+    await Promise.all(referenceFiles.filter(Boolean).map((item) => rm(resolve(inputDirectory, item.jobInputName), { force: true })));
     throw caught;
   }
   audit(user.id, "task.create", "task", id, { toolId: tool.id, async: true });
@@ -86,7 +115,9 @@ export async function executeAncestorTask(task, input, fetchImpl = fetch) {
       if (completedLevels.has(stage)) continue;
       const latest = db.prepare("SELECT status FROM tasks WHERE id = ?").get(task.id);
       if (latest?.status === "cancelled") return { status: "cancelled", output: prior };
-      const generated = await processAncestorStage({ buffer: source, mimeType: input.mimeType, name: input.fileName, stage, style: input.style }, fetchImpl);
+      const referenceMeta = input.referenceFiles?.[stage - 1];
+      const referenceBuffer = referenceMeta?.jobInputName ? await readFile(resolve(inputDirectory, referenceMeta.jobInputName)).catch(() => null) : null;
+      const generated = await processAncestorStage({ buffer: source, mimeType: input.mimeType, name: input.fileName, stage, style: input.style, customPrompt: input.customPrompts?.[stage - 1] || "", referenceBuffer, referenceMimeType: referenceMeta?.mimeType || "image/png" }, fetchImpl);
       assertUserFileCapacity(task.user_id, 1);
       const fileId = randomUUID();
       const stored = await putStoredFile({ userId: task.user_id, fileId, fileName: generated.name, mimeType: generated.mimeType, buffer: generated.buffer });
@@ -111,6 +142,7 @@ export async function executeAncestorTask(task, input, fetchImpl = fetch) {
       }
     }
     await rm(inputPath, { force: true }).catch(() => {});
+    await Promise.all((input.referenceFiles || []).filter(Boolean).map((item) => rm(resolve(inputDirectory, item.jobInputName), { force: true }).catch(() => {})));
     return { status: "completed", output: { ...prior, ...dimensions, resultFiles, resultFileIds: resultFiles.map((item) => item.id), frameCount: 10, generatedFrameCount: 10, progress: { completed: 10, total: 10, currentStage: 10 }, latencyMs: Date.now() - startedAt, entertainmentOnly: true } };
   } catch (caught) {
     throw caught;
@@ -123,4 +155,8 @@ export async function cleanupAncestorTaskInput(taskId) {
   if (!input.jobInputName) return;
   const path = resolve(inputDirectory, String(input.jobInputName));
   if (path.startsWith(`${inputDirectory}/`)) await rm(path, { force: true }).catch(() => {});
+  await Promise.all((input.referenceFiles || []).filter(Boolean).map((item) => {
+    const referencePath = resolve(inputDirectory, String(item.jobInputName || ""));
+    return referencePath.startsWith(`${inputDirectory}/`) ? rm(referencePath, { force: true }).catch(() => {}) : Promise.resolve();
+  }));
 }

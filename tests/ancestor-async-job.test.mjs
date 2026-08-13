@@ -68,4 +68,33 @@ test("sliding generator queues immediately, rejects duplicate work, reports prog
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM files WHERE user_id = ?").get(userId).count, 10);
 });
 
+test("custom sliding jobs persist prompts and optional stage references through the background queue", async () => {
+  generations = 0;
+  const userId = randomUUID();
+  const timestamp = Date.now();
+  db.prepare("INSERT INTO users (id,name,email,password_hash,email_verified,created_at,updated_at) VALUES (?,'Custom tester',?,'unused',1,?,?)")
+    .run(userId, `custom-${userId}@example.com`, timestamp, timestamp);
+  db.prepare("INSERT INTO credit_ledger (id,user_id,type,amount,description_zh,description_en,reference_type,reference_id,created_at) VALUES (?,?,'grant',500,'测试','Test','test',?,?)")
+    .run(randomUUID(), userId, userId, timestamp);
+  const row = db.prepare("SELECT * FROM tools WHERE slug = 'sliding-ancestor-generator'").get();
+  const tool = { id: row.id, slug: row.slug, nameZh: row.name_zh, nameEn: row.name_en, creditCost: row.credit_cost };
+  const customPrompts = Array.from({ length: 10 }, (_, index) => `后台自定义第${index + 1}级，保持同一人物。`);
+  const form = new FormData();
+  form.append("file", new File([sourcePng], "portrait.png", { type: "image/png" }));
+  form.append("style", "custom");
+  form.append("customPrompts", JSON.stringify(customPrompts));
+  form.append("reference2", new File([sourcePng], "reference.png", { type: "image/png" }));
+  const created = await createAncestorTask(new Request("http://localhost/api/tool-actions/sliding-ancestor-generator", { method: "POST", body: form }), { id: userId }, tool);
+  const storedTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(created.task.id);
+  const storedInput = JSON.parse(storedTask.input_json);
+  assert.equal(storedInput.style, "custom");
+  assert.deepEqual(storedInput.customPrompts, customPrompts);
+  assert.equal(storedInput.referenceFiles[1].mimeType, "image/png");
+  const completed = await executeAncestorTask(storedTask, storedInput, providerFetch);
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.output.resultFiles.length, 10);
+  assert.deepEqual(completed.output.customPrompts, customPrompts);
+  assert.equal(completed.output.referenceCount, 1);
+});
+
 test.after(() => rm(dataDirectory, { recursive: true, force: true }));

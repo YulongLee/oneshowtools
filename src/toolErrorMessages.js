@@ -8,6 +8,9 @@ export function apiErrorCode(payload) {
 const zhMessages = {
   IMAGE_REQUIRED: "请先上传一张清晰的人物照片。",
   IMAGE_TOO_LARGE: "图片超过 25 MB，请压缩后重新上传。",
+  ANCESTOR_REFERENCE_TOO_LARGE: "单张参考图不能超过 10 MB，全部参考图合计不能超过 80 MB。请压缩后重试。",
+  ANCESTOR_CUSTOM_PROMPTS_INVALID: "自定义序列必须包含 10 条提示词，请检查后重试。",
+  ANCESTOR_CUSTOM_PROMPT_REQUIRED: "第 1～10 级的提示词均不能为空，请补充完整后生成。",
   USER_FILE_LIMIT_REACHED: "存储空间不足：本次需要保存 10 张结果，但会超过当前会员的文件额度。请先到文件中心删除旧文件，确保至少留出 10 个空位后重试，或升级会员获得更多存储额度。",
   INSUFFICIENT_CREDITS: "积分不足：本次生成需要扣除对应积分，请先充值积分或开通会员后重试。",
   IMAGE_PROVIDER_NOT_CONFIGURED: "图片编辑模型尚未配置或未启用，请管理员在后台完成图片编辑模型配置。",
@@ -26,6 +29,9 @@ const zhMessages = {
 const enMessages = {
   IMAGE_REQUIRED: "Upload a clear portrait first.",
   IMAGE_TOO_LARGE: "The image exceeds 25 MB. Compress it and upload again.",
+  ANCESTOR_REFERENCE_TOO_LARGE: "Each reference must be under 10 MB and all references together under 80 MB.",
+  ANCESTOR_CUSTOM_PROMPTS_INVALID: "A custom sequence requires exactly ten prompts.",
+  ANCESTOR_CUSTOM_PROMPT_REQUIRED: "Every custom frame from 1 to 10 requires a prompt.",
   USER_FILE_LIMIT_REACHED: "Not enough storage: this run saves 10 results and would exceed your membership file allowance. Delete old files and leave at least 10 free slots, or upgrade for more storage.",
   INSUFFICIENT_CREDITS: "Insufficient credits for this generation. Top up or subscribe, then try again.",
   IMAGE_PROVIDER_NOT_CONFIGURED: "The image editing model is not configured or enabled. An administrator must configure it first.",

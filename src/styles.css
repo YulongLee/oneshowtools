@@ -1407,6 +1407,25 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .ancestor-style-list button > span { color: #5276e8; background: #edf2ff; }
 .ancestor-style-list strong { color: #34445d; }
 .ancestor-style-list small { color: #8793a5; }
+.ancestor-custom-editor { margin-top: 14px; padding: 14px; border: 1px solid #dbe4f2; border-radius: 13px; background: linear-gradient(145deg,#f8faff,#f5f3ff); }
+.ancestor-custom-editor > header { margin-bottom: 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ancestor-custom-editor > header strong,.ancestor-custom-editor > header small { display: block; }
+.ancestor-custom-editor > header strong { color: #30415e; font-size: 12px; }
+.ancestor-custom-editor > header small { margin-top: 4px; color: #7d8ba1; font-size: 9px; line-height: 1.55; }
+.ancestor-custom-editor > header > span { padding: 4px 7px; border-radius: 7px; color: #5570df; background: #e9efff; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.ancestor-custom-grid { display: grid; gap: 9px; }
+.ancestor-custom-grid article { min-width: 0; padding: 9px; border: 1px solid #e0e7f2; border-radius: 10px; position: relative; display: grid; grid-template-columns: 43px minmax(0,1fr) 86px; align-items: stretch; gap: 8px; background: #fff; }
+.ancestor-custom-number { display: grid; place-items: center; align-content: center; border-radius: 8px; color: #4869dc; background: #eef3ff; }
+.ancestor-custom-number strong { font-size: 13px; }
+.ancestor-custom-number span { margin-top: 3px; color: #8693ab; font-size: 7px; }
+.ancestor-custom-grid textarea { min-width: 0; min-height: 70px; padding: 8px 9px; border: 1px solid #dce4ef; border-radius: 8px; resize: vertical; color: #34445c; background: #fbfcff; font: inherit; font-size: 9px; line-height: 1.55; outline: none; }
+.ancestor-custom-grid textarea:focus { border-color: #7e9bec; box-shadow: 0 0 0 3px rgba(78,111,226,.08); }
+.ancestor-reference-input { min-height: 70px; border: 1px dashed #c8d5e9; border-radius: 8px; position: relative; overflow: hidden; display: grid; place-items: center; align-content: center; gap: 4px; color: #6680c8; background: #f6f9ff; text-align: center; cursor: pointer; }
+.ancestor-reference-input input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.ancestor-reference-input span { padding: 0 4px; font-size: 7px; line-height: 1.35; }
+.ancestor-reference-input.has-reference img { width: 100%; height: 100%; position: absolute; inset: 0; object-fit: cover; }
+.ancestor-reference-input.has-reference span { padding: 3px 5px; border-radius: 5px; position: relative; color: #fff; background: rgba(21,33,56,.72); }
+.ancestor-reference-clear { padding: 2px 4px; border: 0; position: absolute; right: 11px; bottom: 11px; display: flex; align-items: center; gap: 2px; color: #fff; background: rgba(28,39,60,.78); font-size: 7px; cursor: pointer; z-index: 2; }
 .ancestor-safety { color: #78879c; }
 .ancestor-safety svg { color: #3a77e9; }
 .ancestor-run { min-height: 46px; color: #fff; background: linear-gradient(135deg,#2269eb,#5d54ec); box-shadow: 0 9px 20px rgba(46,91,218,.2); }
@@ -1477,6 +1496,8 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
   .ancestor-history { padding: 15px; }
   .ancestor-history > header { align-items: flex-start; }
   .ancestor-history-grid { grid-template-columns: 1fr; }
+  .ancestor-custom-grid article { grid-template-columns: 38px minmax(0,1fr); }
+  .ancestor-reference-input { grid-column: 2; min-height: 86px; }
 }
 
 /* Customer support workspace */

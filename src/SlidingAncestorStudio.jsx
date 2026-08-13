@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, CheckCircle, CloudArrowUp, Coins, DownloadSimple, ImageSquare,
   LockKey, Play, ShieldCheck, Sparkle, SpinnerGap, Warning, X, ClockCounterClockwise,
@@ -19,6 +19,20 @@ const styles = [
   ["realistic", "写实进化", "从普通状态逐级强化，人物变化自然"],
   ["cinematic", "硬汉电影", "更硬朗、更有力量感和电影光影"],
   ["chaos", "抽象爆改", "后段变化更夸张，更适合整活分享"],
+  ["custom", "自定义序列", "分别定义 10 张图片的提示词和参考图"],
+];
+
+const defaultCustomPromptsZh = [
+  "最虚弱的初始形态：身形单薄、姿态拘谨、气场很弱，保持同一个人的脸和构图。",
+  "比第1级稍强：身形仍偏瘦弱，但姿态稍微舒展，变化清晰且连续。",
+  "弱势成长形态：肩背略有改善，眼神开始坚定，整体仍低于普通状态。",
+  "接近普通状态：体态逐渐自然，轻微增强力量感，保持服装和背景连续。",
+  "普通偏弱形态：接近原图，只保留轻微虚弱感，作为前半段的收束。",
+  "普通偏强形态：在原图基础上略微变强，肩部更宽，姿态更加自信。",
+  "明显强化形态：体格健壮、眼神坚定、气场增强，与第6级形成连续变化。",
+  "强力进化形态：身形更有力量，光影更硬朗，呈现清晰的高阶状态。",
+  "接近最终形态：体格和气场非常强大，视觉冲击明显但人物身份不变。",
+  "最夯最终形态：达到整组最强状态，极具力量感和压迫感，适合最终展示。",
 ];
 
 const normalizeStyle = (value) => value === "dynasty" ? "realistic" : value === "clan" ? "cinematic" : value;
@@ -32,6 +46,7 @@ const styleName = (value, zh) => ({
   realistic: zh ? "写实进化" : "Realistic",
   cinematic: zh ? "硬汉电影" : "Cinematic",
   chaos: zh ? "抽象爆改" : "Chaos",
+  custom: zh ? "自定义序列" : "Custom sequence",
 })[normalizeStyle(value)] || (zh ? "写实进化" : "Realistic");
 
 const taskTime = (task, locale) => new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
@@ -49,6 +64,11 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const [activeTask, setActiveTask] = useState(null);
   const [intensity, setIntensity] = useState(5);
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
+  const [customPrompts, setCustomPrompts] = useState(defaultCustomPromptsZh);
+  const [references, setReferences] = useState(() => Array(10).fill(null));
+  const referenceUrls = useRef(new Set());
+
+  useEffect(() => () => { for (const url of referenceUrls.current) URL.revokeObjectURL(url); }, []);
 
   const history = useMemo(() => (historyTasks || [])
     .map((item) => ({ task: item, source: sourceFromTask(item) }))
@@ -76,6 +96,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
       setResult(match);
       setSelectedHistoryId(match.task.id);
       setStyle(normalizeStyle(match.output?.style) || "realistic");
+      if (Array.isArray(match.output?.customPrompts) && match.output.customPrompts.length === 10) setCustomPrompts(match.output.customPrompts);
       setIntensity(5);
     }
   }, [task, history, selectedHistoryId]);
@@ -135,9 +156,14 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const run = async () => {
     if (!authenticated) return onAuth?.();
     if (!file) return setError(slidingAncestorErrorMessage("IMAGE_REQUIRED", locale));
+    if (style === "custom" && customPrompts.some((item) => !item.trim())) return setError(slidingAncestorErrorMessage("ANCESTOR_CUSTOM_PROMPT_REQUIRED", locale));
     const form = new FormData();
     form.append("file", file);
     form.append("style", style);
+    if (style === "custom") {
+      form.append("customPrompts", JSON.stringify(customPrompts));
+      references.forEach((item, index) => { if (item?.file) form.append(`reference${index + 1}`, item.file); });
+    }
     setBusy(true);
     setError("");
     try {
@@ -158,9 +184,27 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     setActiveTask(["queued", "running"].includes(entry.task.status) ? entry.task : null);
     setResult(entry.source);
     setStyle(normalizeStyle(entry.source.output?.style) || "realistic");
+    if (Array.isArray(entry.source.output?.customPrompts) && entry.source.output.customPrompts.length === 10) setCustomPrompts(entry.source.output.customPrompts);
     setIntensity(Math.min(10, Math.max(1, entry.source.files.length >= 10 ? 5 : entry.source.files.length)));
     setError("");
   };
+  const updateCustomPrompt = (index, value) => setCustomPrompts((current) => current.map((item, itemIndex) => itemIndex === index ? value.slice(0, 1200) : item));
+  const updateReference = (index, selectedFile) => {
+    if (!selectedFile) return;
+    const previewUrl = URL.createObjectURL(selectedFile);
+    referenceUrls.current.add(previewUrl);
+    setReferences((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      if (item?.previewUrl) { URL.revokeObjectURL(item.previewUrl); referenceUrls.current.delete(item.previewUrl); }
+      return { file: selectedFile, previewUrl };
+    }));
+    setError("");
+  };
+  const clearReference = (index) => setReferences((current) => current.map((item, itemIndex) => {
+    if (itemIndex !== index) return item;
+    if (item?.previewUrl) { URL.revokeObjectURL(item.previewUrl); referenceUrls.current.delete(item.previewUrl); }
+    return null;
+  }));
 
   return <div className="ancestor-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
@@ -178,7 +222,20 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
         </label>
 
         <div className="ancestor-section-title"><span>02</span><div><strong>{zh ? "选择变化风格" : "Choose transformation style"}</strong><small>{zh ? "身份和构图保持连续，只改变人物强弱形态" : "Keep identity and framing continuous while changing power level"}</small></div></div>
-        <div className="ancestor-style-list">{styles.map(([value, name, description]) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}><span>{style === value ? <CheckCircle weight="fill" /> : <Sparkle />}</span><div><strong>{zh ? name : value}</strong><small>{zh ? description : value === "realistic" ? "Natural realistic power progression" : value === "cinematic" ? "Rugged cinematic transformation" : "Exaggerated meme-ready evolution"}</small></div></button>)}</div>
+        <div className="ancestor-style-list">{styles.map(([value, name, description]) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}><span>{style === value ? <CheckCircle weight="fill" /> : <Sparkle />}</span><div><strong>{zh ? name : value === "custom" ? "Custom sequence" : value}</strong><small>{zh ? description : value === "realistic" ? "Natural realistic power progression" : value === "cinematic" ? "Rugged cinematic transformation" : value === "custom" ? "Write ten prompts and add optional references" : "Exaggerated meme-ready evolution"}</small></div></button>)}</div>
+
+        {style === "custom" && <section className="ancestor-custom-editor">
+          <header><div><strong>{zh ? "自定义 10 张图片" : "Customize ten frames"}</strong><small>{zh ? "提示词必填；每一级可选一张参考图，仅用于该级的造型、光影或姿态参考。" : "A prompt is required for every frame. Each optional reference applies only to its frame."}</small></div><span>{customPrompts.filter((item) => item.trim()).length}/10</span></header>
+          <div className="ancestor-custom-grid">{customPrompts.map((prompt, index) => <article key={index}>
+            <div className="ancestor-custom-number"><strong>{String(index + 1).padStart(2, "0")}</strong><span>{zh ? (index < 5 ? "偏虚" : "偏夯") : (index < 5 ? "Fragile" : "Powerful")}</span></div>
+            <textarea value={prompt} onChange={(event) => updateCustomPrompt(index, event.target.value)} placeholder={zh ? `填写第 ${index + 1} 张图片的生成要求` : `Describe frame ${index + 1}`} />
+            <label className={`ancestor-reference-input ${references[index] ? "has-reference" : ""}`}>
+              <input type="file" accept="image/*" onChange={(event) => updateReference(index, event.target.files?.[0])} />
+              {references[index] ? <><img src={references[index].previewUrl} alt={zh ? `第 ${index + 1} 级参考图` : `Frame ${index + 1} reference`} /><span>{zh ? "更换参考图" : "Replace reference"}</span></> : <><ImageSquare size={18} /><span>{zh ? "添加参考图（可选）" : "Add reference (optional)"}</span></>}
+            </label>
+            {references[index] && <button type="button" className="ancestor-reference-clear" onClick={() => clearReference(index)}><X size={13} />{zh ? "移除" : "Remove"}</button>}
+          </article>)}</div>
+        </section>}
 
         <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果属于虚构娱乐性的形态变化，不评价人物真实能力或身份。" : "Only upload images you may use. Results are fictional transformations and do not judge real ability or identity."}</p>
         {error && <div className="form-error ancestor-error"><Warning size={17} /><span>{error}</span>{error.includes("100") && <a href="/?view=files">{zh ? "前往文件中心" : "Open File Center"}</a>}</div>}

@@ -119,6 +119,33 @@ test("sliding generator styles use three complete and visibly distinct ten-stage
   assert.notEqual(profiles[1][5], profiles[2][5]);
 });
 
+test("custom sliding sequence uses ten user prompts and keeps each reference image in its assigned frame", async () => {
+  const form = new FormData();
+  const customPrompts = Array.from({ length: 10 }, (_, index) => `CUSTOM-FRAME-${index + 1}: preserve identity and create a distinct transformation.`);
+  form.append("file", new File([sourcePng], "portrait.png", { type: "image/png" }));
+  form.append("style", "custom");
+  form.append("customPrompts", JSON.stringify(customPrompts));
+  form.append("reference3", new File([sourcePng], "frame-3-reference.png", { type: "image/png" }));
+  const requestOffset = providerRequests.length;
+  const promptOffset = prompts.length;
+  const result = await processAiImageTool("sliding-ancestor-generator", form, providerFetch);
+  assert.equal(result.files.length, 10);
+  assert.equal(result.output.style, "custom");
+  assert.equal(result.output.referenceCount, 1);
+  assert.deepEqual(result.output.customPrompts, customPrompts);
+  const customOutputs = prompts.slice(promptOffset, promptOffset + 10);
+  customOutputs.forEach((prompt, index) => {
+    assert.match(prompt, new RegExp(`FRAME ${index + 1} OF 10`, "i"));
+    assert.match(prompt, new RegExp(`CUSTOM-FRAME-${index + 1}`));
+  });
+  assert.match(customOutputs[2], /IMAGE 2 is a visual reference for this frame only/i);
+  assert.match(customOutputs[1], /There is no additional reference image/i);
+  const customRequests = providerRequests.slice(requestOffset, requestOffset + 10);
+  assert.equal(customRequests[2].input.messages[0].content.filter((item) => item.image).length, 2);
+  assert.equal(customRequests[1].input.messages[0].content.filter((item) => item.image).length, 1);
+  assert.match(customRequests[2].parameters.negative_prompt, /swapping image roles/i);
+});
+
 test("outfit changer accepts a second clothing reference image", async () => {
   const form = new FormData();
   form.append("files", new File([sourcePng], "person.png", { type: "image/png" }));

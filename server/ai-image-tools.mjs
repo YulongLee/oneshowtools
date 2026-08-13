@@ -176,21 +176,47 @@ OUTPUT RULES
 Return one seamless portrait only. No collage, split screen, before/after panel, captions, labels, borders, UI, watermark or readable text.`;
 }
 
+export function customAncestorStagePrompt(stage, userPrompt, hasReference = false) {
+  const direction = clean(userPrompt, 1200);
+  if (!direction) throw toolError("ANCESTOR_CUSTOM_PROMPT_REQUIRED", 400);
+  return `ONE-SHOW-TOOLS / CUSTOM SAME-PERSON TEN-FRAME SEQUENCE
+
+Create FRAME ${stage} OF 10 using the user's creative direction below. This is one frame of a user-authored visual sequence, not a collage.
+
+IMAGE ROLES
+IMAGE 1 is the identity and composition source. Preserve this person's recognizable face, approximate age, skin tone and core identity. Keep exactly one person in the output.
+${hasReference ? "IMAGE 2 is a visual reference for this frame only. Use its permitted style, clothing, pose, lighting, mood, environment or composition cues only when requested. Never copy or substitute a person from IMAGE 2; IMAGE 1 always owns the identity." : "There is no additional reference image for this frame."}
+
+USER DIRECTION — PRIMARY CREATIVE REQUIREMENT
+${direction}
+
+SEQUENCE CONTRACT
+Interpret the user direction specifically for Frame ${stage}/10. Keep the output visually compatible with a ten-frame slider: one seamless portrait, consistent aspect ratio, clearly readable subject and no accidental layout changes. Unless the user explicitly requests a scene or pose change, retain IMAGE 1's crop, camera angle and background geometry.
+
+SAFETY AND QUALITY LOCK
+Do not change ethnicity or invent a real identity. No extra person, duplicate person, face swap, collage, split screen, source thumbnail, before/after panel, caption, UI, border, watermark or readable text. Keep anatomy coherent, hands plausible and the main face visible. Do not create sexual content involving young-looking people, hateful identity transformations, graphic gore or deceptive official documents.
+
+FINAL SELF-CHECK
+Before returning verify: the output follows the user's Frame ${stage} direction; the person is still recognizably IMAGE 1; any IMAGE 2 person was ignored; exactly one finished image is returned.`;
+}
+
 async function normalizeFrame(buffer, width, height) {
   return sharp(buffer).rotate().resize(width, height, { fit: "cover", position: "attention" }).png().toBuffer();
 }
 
-export async function processAncestorStage({ buffer, mimeType = "image/png", name = "portrait.png", stage, style = "realistic" }, fetchImpl = fetch) {
+export async function processAncestorStage({ buffer, mimeType = "image/png", name = "portrait.png", stage, style = "realistic", customPrompt = "", referenceBuffer = null, referenceMimeType = "image/png" }, fetchImpl = fetch) {
   const input = await imageInput(new File([buffer], name, { type: mimeType }));
   const normalizedStyle = style === "dynasty" ? "realistic" : style === "clan" ? "cinematic" : style;
   if (!Number.isInteger(stage) || stage < 1 || stage > 10) throw toolError("ANCESTOR_STAGE_INVALID", 400);
-  if (!["realistic", "cinematic", "chaos"].includes(normalizedStyle)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
+  if (!["realistic", "cinematic", "chaos", "custom"].includes(normalizedStyle)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
   const width = Math.min(1280, input.width);
   const height = Math.max(512, Math.round(width * input.height / input.width));
+  const reference = referenceBuffer?.length ? await imageInput(new File([referenceBuffer], `reference-${stage}.png`, { type: referenceMimeType })) : null;
   const generated = await editPlatformImage({
     purpose: "image_editing",
-    images: [{ buffer: input.buffer, mimeType: input.mimeType }],
-    prompt: ancestorStagePrompt(stage, normalizedStyle),
+    images: [{ buffer: input.buffer, mimeType: input.mimeType }, ...(reference ? [{ buffer: reference.buffer, mimeType: reference.mimeType }] : [])],
+    prompt: normalizedStyle === "custom" ? customAncestorStagePrompt(stage, customPrompt, Boolean(reference)) : ancestorStagePrompt(stage, normalizedStyle),
+    negativePrompt: reference ? "reference person's face, identity, age, skin, hair or body; swapping image roles; replacing the target person; two people; second person; duplicated person; collage; split screen; source thumbnails; distorted anatomy; extra limbs; fused hands; invented text; watermark" : "",
     fetchImpl,
   });
   return {
@@ -213,13 +239,20 @@ async function processAncestorSeries(form, fetchImpl) {
   const input = await imageInput(primaryFile);
   const requestedStyle = clean(form.get("style"), 40) || "realistic";
   const style = requestedStyle === "dynasty" ? "realistic" : requestedStyle === "clan" ? "cinematic" : requestedStyle;
-  if (!["realistic", "cinematic", "chaos"].includes(style)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
+  if (!["realistic", "cinematic", "chaos", "custom"].includes(style)) throw toolError("ANCESTOR_STYLE_INVALID", 400);
+  let customPrompts = [];
+  if (style === "custom") {
+    try { customPrompts = JSON.parse(clean(form.get("customPrompts"), 14000) || "[]"); } catch { throw toolError("ANCESTOR_CUSTOM_PROMPTS_INVALID", 400); }
+    if (!Array.isArray(customPrompts) || customPrompts.length !== 10 || customPrompts.some((item) => !clean(item, 1200))) throw toolError("ANCESTOR_CUSTOM_PROMPT_REQUIRED", 400);
+  }
   const width = Math.min(1280, input.width);
   const height = Math.max(512, Math.round(width * input.height / input.width));
   const generationStartedAt = Date.now();
   const outputs = [];
   for (let stage = 1; stage <= 10; stage += 1) {
-    const generated = await processAncestorStage({ buffer: input.buffer, mimeType: input.mimeType, name: input.name, stage, style }, fetchImpl);
+    const referenceFile = style === "custom" ? form.get(`reference${stage}`) : null;
+    const reference = referenceFile?.size ? await imageInput(referenceFile) : null;
+    const generated = await processAncestorStage({ buffer: input.buffer, mimeType: input.mimeType, name: input.name, stage, style, customPrompt: customPrompts[stage - 1] || "", referenceBuffer: reference?.buffer, referenceMimeType: reference?.mimeType }, fetchImpl);
     outputs.push({
       buffer: generated.buffer, extension: generated.extension, mimeType: generated.mimeType,
       name: generated.name, direction: generated.direction, level: generated.level,
@@ -231,6 +264,7 @@ async function processAncestorSeries(form, fetchImpl) {
       mode: "ai-ordered-power-series",
       providerPurpose: "image_editing",
       style,
+      ...(style === "custom" ? { customPrompts, referenceCount: Array.from({ length: 10 }, (_, index) => form.get(`reference${index + 1}`)).filter((item) => item?.size).length } : {}),
       frameCount: outputs.length,
       generatedFrameCount: 10,
       width,
