@@ -14,6 +14,11 @@ process.env.MODEL_CONNECTIONS_ENABLED = "false";
 const { handleApi } = await import(`../server/api.mjs?test=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 
+db.prepare(`
+  UPDATE tools SET active = 1
+  WHERE id IN ('tool_polish', 'tool_compress', 'tool_og_image')
+`).run();
+
 const request = (path, options = {}) => new Request(`http://localhost${path}`, options);
 const authenticated = (path, cookie, options = {}) => request(path, {
   ...options,

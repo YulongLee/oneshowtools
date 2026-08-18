@@ -144,7 +144,7 @@ export function initializeDatabase() {
       runtime_kind TEXT NOT NULL DEFAULT 'external',
       runtime_status TEXT NOT NULL DEFAULT 'configuration_required',
       runtime_url TEXT,
-      active INTEGER NOT NULL DEFAULT 1,
+      active INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -298,6 +298,7 @@ export function initializeDatabase() {
         ON platform_model_invocations(purpose, started_at DESC);
     `);
   }
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0025_tool_publication_control.sql"), "utf8"));
   const planColumns = new Set(db.prepare("PRAGMA table_info(plans)").all().map((item) => item.name));
   if (!planColumns.has("file_limit")) db.exec("ALTER TABLE plans ADD COLUMN file_limit INTEGER NOT NULL DEFAULT 100");
   db.exec(`
@@ -490,8 +491,8 @@ export function initializeDatabase() {
   const insertTool = db.prepare(`
     INSERT INTO tools (
       id, slug, name_zh, name_en, description_zh, description_en, category, icon,
-      credit_cost, runtime_kind, runtime_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      credit_cost, runtime_kind, runtime_status, active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name_zh = excluded.name_zh,
       name_en = excluded.name_en,
@@ -505,6 +506,27 @@ export function initializeDatabase() {
       updated_at = excluded.updated_at
   `);
   for (const tool of tools) insertTool.run(...tool, "configuration_required", timestamp, timestamp);
+
+  const publicationDefaultsKey = "tool_publication_defaults_v1";
+  if (!db.prepare("SELECT 1 AS configured FROM platform_settings WHERE key = ?").get(publicationDefaultsKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      if (!db.prepare("SELECT 1 AS configured FROM platform_settings WHERE key = ?").get(publicationDefaultsKey)) {
+        const publishedSlugs = ["ai-music-studio", "ai-outfit-changer"];
+        db.prepare("UPDATE tools SET active = 0, updated_at = ?").run(timestamp);
+        db.prepare(`
+          UPDATE tools SET active = 1, updated_at = ?
+          WHERE slug IN (${publishedSlugs.map(() => "?").join(", ")})
+        `).run(timestamp, ...publishedSlugs);
+        db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+          .run(publicationDefaultsKey, JSON.stringify({ publishedSlugs }), timestamp);
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
 
   const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`

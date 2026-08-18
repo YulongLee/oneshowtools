@@ -15,6 +15,7 @@ const aiImageMigration = await readFile(new URL("../db/migrations/0021_ai_image_
 const modelStudioWorkspaceMigration = await readFile(new URL("../db/migrations/0022_model_studio_workspace.sql", import.meta.url), "utf8");
 const customerSupportMigration = await readFile(new URL("../db/migrations/0023_customer_support.sql", import.meta.url), "utf8");
 const oneShowHomeGatewayMigration = await readFile(new URL("../db/migrations/0024_oneshow_home_model_gateway.sql", import.meta.url), "utf8");
+const toolPublicationMigration = await readFile(new URL("../db/migrations/0025_tool_publication_control.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -95,6 +96,10 @@ for (const invariant of ["oneshow_home_chat", "platform_model_invocations"]) {
   if (!oneShowHomeGatewayMigration.includes(invariant)) {
     throw new Error(`OneShow Home gateway migration is missing invariant: ${invariant}`);
   }
+}
+
+if (!toolPublicationMigration.includes("CREATE TABLE IF NOT EXISTS platform_settings ")) {
+  throw new Error("Tool publication migration is missing platform_settings");
 }
 
 for (const table of [

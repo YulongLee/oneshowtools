@@ -64,6 +64,9 @@ const copy = {
     verifyMfa: "验证并进入后台", recovery: "恢复代码", recoveryBody: "请立即安全保存，代码只展示一次。",
     saved: "我已安全保存", lifecycle: "生命周期", cost: "积分价格", runtime: "运行状态",
     publish: "发布", maintenance: "维护", retire: "下架", draft: "草稿", staged: "预发布",
+    publicationTitle: "工具上线管理", publicationHint: "新工具默认不上线。上线后才会出现在工具市场并允许用户执行。",
+    onlineTools: "已上线", offlineTools: "未上线", searchTools: "搜索工具名称或标识", onlineOnly: "仅已上线",
+    offlineOnly: "仅未上线", putOnline: "上线", takeOffline: "下线", online: "已上线", offline: "未上线",
     orders: "订单", subscriptions: "订阅", invoices: "发票", refunds: "退款",
     disputes: "争议", exceptions: "对账异常", approvals: "待审批", approve: "批准",
     jobs: "作业队列", alerts: "运营告警", retry: "重试", policies: "政策版本",
@@ -145,6 +148,9 @@ const copy = {
     verifyMfa: "Verify and continue", recovery: "Recovery codes", recoveryBody: "Store these securely now. They are shown once.",
     saved: "I saved them securely", lifecycle: "Lifecycle", cost: "Credit cost", runtime: "Runtime",
     publish: "Publish", maintenance: "Maintenance", retire: "Retire", draft: "Draft", staged: "Staged",
+    publicationTitle: "Tool publication", publicationHint: "New tools stay offline by default. Only published tools appear in the marketplace and can run.",
+    onlineTools: "Online", offlineTools: "Offline", searchTools: "Search name or slug", onlineOnly: "Online only",
+    offlineOnly: "Offline only", putOnline: "Publish", takeOffline: "Take offline", online: "Online", offline: "Offline",
     orders: "Orders", subscriptions: "Subscriptions", invoices: "Invoices", refunds: "Refunds",
     disputes: "Disputes", exceptions: "Exceptions", approvals: "Approvals", approve: "Approve",
     jobs: "Jobs", alerts: "Alerts", retry: "Retry", policies: "Policies", deletions: "Deletion queue",
@@ -923,11 +929,32 @@ function CommerceView({ data, locale, onApprove }) {
 
 function ToolsView({ data, locale, onLifecycle }) {
   const t = copy[locale];
-  return <div className="admin-tool-admin-grid">{data?.tools?.map((tool) => <article className="admin-tool-admin-card" key={tool.id}>
-    <header><span><Wrench size={22} /></span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${tool.lifecycleState}`}>{tool.lifecycleState}</i></header>
-    <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong>{tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-    <footer><button onClick={() => onLifecycle(tool.id, "staged")}>{t.staged}</button><button className="primary" onClick={() => onLifecycle(tool.id, "published")}>{t.publish}</button><button onClick={() => onLifecycle(tool.id, "maintenance")}>{t.maintenance}</button><button className="danger" onClick={() => onLifecycle(tool.id, "retired")}>{t.retire}</button></footer>
-  </article>)}</div>;
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const tools = data?.tools || [];
+  const onlineCount = tools.filter((tool) => tool.active).length;
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleTools = tools.filter((tool) => {
+    if (filter === "online" && !tool.active) return false;
+    if (filter === "offline" && tool.active) return false;
+    if (!normalizedQuery) return true;
+    return [tool.slug, tool.nameZh, tool.nameEn, tool.category].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+  });
+  return <div className="admin-tool-publication-page">
+    <section className="admin-tool-publication-head">
+      <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
+      <div className="admin-tool-publication-counts"><article><span className="online" /><div><strong>{onlineCount}</strong><small>{t.onlineTools}</small></div></article><article><span /><div><strong>{tools.length - onlineCount}</strong><small>{t.offlineTools}</small></div></article></div>
+    </section>
+    <section className="admin-tool-publication-toolbar">
+      <label><MagnifyingGlass size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.searchTools} /></label>
+      <nav><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t.all} <span>{tools.length}</span></button><button className={filter === "online" ? "active" : ""} onClick={() => setFilter("online")}>{t.onlineOnly} <span>{onlineCount}</span></button><button className={filter === "offline" ? "active" : ""} onClick={() => setFilter("offline")}>{t.offlineOnly} <span>{tools.length - onlineCount}</span></button></nav>
+    </section>
+    <div className="admin-tool-admin-grid">{visibleTools.map((tool) => <article className={`admin-tool-admin-card ${tool.active ? "is-online" : "is-offline"}`} key={tool.id}>
+      <header><span><Wrench size={22} /></span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${tool.active ? "published" : "retired"}`}><span />{tool.active ? t.online : t.offline}</i></header>
+      <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong>{tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><button className={tool.active ? "danger" : "primary"} onClick={() => onLifecycle(tool.id, tool.active ? "retired" : "published")}>{tool.active ? t.takeOffline : t.putOnline}</button></footer>
+    </article>)}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
+  </div>;
 }
 
 function OperationsView({ data, locale, onRetry }) {

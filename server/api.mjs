@@ -192,6 +192,14 @@ function storefrontTools() {
   });
 }
 
+function toolIsPublished(slug) {
+  return Boolean(db.prepare("SELECT 1 AS published FROM tools WHERE slug = ? AND active = 1").get(slug));
+}
+
+function unpublishedToolResponse() {
+  return fail("TOOL_NOT_PUBLISHED", 404);
+}
+
 async function handleAdmin(request, path) {
   const auth = requireAdmin(request);
   if (auth.response) return auth.response;
@@ -1014,9 +1022,15 @@ export async function handleApi(request) {
   if (path === "/api/tools" && request.method === "GET") {
     return json({ tools: storefrontTools() });
   }
-  if (path === "/api/writing/catalog" && request.method === "GET") return json(writingCatalog());
-  if (path === "/api/seo/catalog" && request.method === "GET") return json(seoCatalog());
-  if (path === "/api/music/status" && request.method === "GET") return json(musicStudioStatus());
+  if (path === "/api/writing/catalog" && request.method === "GET") {
+    return toolIsPublished("ai-writer") ? json(writingCatalog()) : unpublishedToolResponse();
+  }
+  if (path === "/api/seo/catalog" && request.method === "GET") {
+    return toolIsPublished("seo-workbench") ? json(seoCatalog()) : unpublishedToolResponse();
+  }
+  if (path === "/api/music/status" && request.method === "GET") {
+    return toolIsPublished("ai-music-studio") ? json(musicStudioStatus()) : unpublishedToolResponse();
+  }
   if (path === "/api/plans" && request.method === "GET") {
     const plans = db.prepare("SELECT * FROM plans WHERE active = 1").all().map(billingPlanPayload)
       .sort((left, right) => left.sortOrder - right.sortOrder);
@@ -1029,13 +1043,16 @@ export async function handleApi(request) {
   if (auth.response) return auth.response;
   const user = auth.user;
 
-  if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) return handleSeoAgent(request, user, path);
+  if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) {
+    return toolIsPublished("seo-agent") ? handleSeoAgent(request, user, path) : unpublishedToolResponse();
+  }
   if (path === "/api/music/tracks" && request.method === "GET") return json({ tracks: listMusicTracks(user.id) });
   if (path === "/api/music/singing-voices" && request.method === "GET") {
     if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
     return json({ voices: listSingingVoices(user.id) });
   }
   if (path === "/api/music/singing-voices" && request.method === "POST") {
+    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
     if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try { return json({ voice: await enrollSingingVoice(user, await request.formData()) }, 201); }
@@ -1048,12 +1065,14 @@ export async function handleApi(request) {
     catch (error) { return fail(error.code || "SINGING_VOICE_DELETE_FAILED", error.status || 500); }
   }
   if (path === "/api/music/singing-covers" && request.method === "POST") {
+    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
     if (!musicStudioStatus().singingCover.available) return fail("FEATURE_NOT_AVAILABLE", 404);
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try { return json(await submitSingingCover(user, await request.formData()), 201); }
     catch (error) { return fail(error.code || "SINGING_COVER_SUBMIT_FAILED", error.status || 500); }
   }
   if (path === "/api/music/references" && request.method === "POST") {
+    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try {
       const form = await request.formData();
@@ -1063,6 +1082,7 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/music/generations" && request.method === "POST") {
+    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try {
       const generation = createMusicGeneration(user, await body(request));
@@ -1079,6 +1099,7 @@ export async function handleApi(request) {
   }
   const musicCoverMatch = path.match(/^\/api\/music\/tracks\/([^/]+)\/cover$/);
   if (musicCoverMatch && request.method === "POST") {
+    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
     try { return json(await createMusicCover(user, musicCoverMatch[1]), 201); }
     catch (error) { return fail(error.code || "MUSIC_COVER_GENERATION_FAILED", error.status || 500); }
   }

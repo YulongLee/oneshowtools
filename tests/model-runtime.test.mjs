@@ -367,6 +367,7 @@ test("OneShow Home uses its own encrypted platform route and records the invocat
 });
 
 test("each model-backed tool stores an owner-scoped model preference", () => {
+  db.prepare("UPDATE tools SET active = 1 WHERE id IN ('tool_polish', 'tool_compress')").run();
   const ownerId = addUser("tool-model-owner@example.com");
   const otherId = addUser("tool-model-other@example.com");
   const connection = createModelConnection(ownerId, {

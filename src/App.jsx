@@ -1801,6 +1801,14 @@ export function App() {
     window.addEventListener("popstate", updateRoute);
     return () => window.removeEventListener("popstate", updateRoute);
   }, []);
+  useEffect(() => {
+    if (session === undefined || !routeSlug || tools.some((tool) => tool.slug === routeSlug)) return;
+    history.replaceState({}, "", session ? "/?view=marketplace" : "/#tools");
+    setRouteSlug(null);
+    setRouteTaskId(null);
+    setView(session ? "marketplace" : "dashboard");
+    setToast(locale === "en" ? "This tool is not currently available." : "该工具暂未上线，请先使用已开放的工具。");
+  }, [locale, routeSlug, session, tools]);
   useEffect(() => { if (!toast) return undefined; const timer = setTimeout(() => setToast(""), 3500); return () => clearTimeout(timer); }, [toast]);
   useEffect(() => {
     const normalized = query.trim();
@@ -1864,7 +1872,6 @@ export function App() {
   if (session === undefined) return <Loading locale={locale} />;
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
   const routeTask = routeTaskId ? privateData.tasks.find((task) => task.id === routeTaskId) : null;
-  if (!session && routeSlug && !routeTool) return <Loading locale={locale} />;
   const specialistCatalog = seoCatalogForTool(seoCatalog, routeTool);
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
   if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
