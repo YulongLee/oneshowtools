@@ -134,6 +134,15 @@ fi
 
 systemctl restart oneshowtools
 systemctl is-active --quiet oneshowtools
-curl -fsS http://127.0.0.1:8787/api/health >/dev/null
+
+health_ready=false
+for _attempt in {1..20}; do
+  if curl -fsS http://127.0.0.1:8787/api/health >/dev/null 2>&1; then
+    health_ready=true
+    break
+  fi
+  sleep 1
+done
+[[ "$health_ready" == "true" ]] || { echo "Application health check failed" >&2; exit 1; }
 
 echo "OneShowTools public URL is now $APP_URL"
