@@ -17,3 +17,19 @@ test("music studio responds to its actual container without horizontal overflow"
   assert.match(styles, /\.music-composer,\.music-library \{ min-width: 0;/);
   assert.match(styles, /\.music-track \{ min-width: 0;[\s\S]*grid-template-columns: 52px minmax\(0,1fr\)/);
 });
+
+test("commercial homepage prevents overflow and stacks its showcase on narrow screens", () => {
+  assert.match(styles, /html, body, #root \{[^}]*min-width: 0;[^}]*overflow-x: clip/);
+  assert.match(styles, /\.commercial-header \.brand-lockup \{[^}]*padding: 0/);
+  assert.match(styles, /\.landing-live-showcase \{[^}]*grid-template-columns:/);
+  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*\.landing-live-showcase \{ grid-template-columns: 1fr;/);
+  assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.landing-hero h1 \{[^}]*overflow-wrap: anywhere/);
+});
+
+test("guest homepage exposes real catalog states instead of presenting zero as a product claim", () => {
+  assert.match(appSource, /catalogStatus === "loading"/);
+  assert.match(appSource, /catalogStatus === "error"/);
+  assert.match(appSource, /retryCatalog/);
+  assert.match(appSource, /live-capabilities-showcase\.webp/);
+  assert.match(appSource, /featuredTools\.slice\(0, 2\)/);
+});

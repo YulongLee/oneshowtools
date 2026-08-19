@@ -23,5 +23,8 @@ When implementing from a selected generated mock, treat that image as the source
 - Preserve the selected blue-and-white tool-portal paradigm: top navigation, search-led hero, primary tool library, and a secondary recent-usage/credits panel.
 - Keep the visual system calm, bright, practical, and low-decoration rather than experimental or highly thematic.
 - Scale the Tool Marketplace as a category directory rather than a wall of large cards. Keep all 13 product categories visible, use compact tool rows for real available tools, and let empty categories communicate future expansion without inventing fake products.
+- Keep the public homepage grounded in the tools that are actually published. Never present a loading or failed catalog request as “0 real tools”; show an honest loading, retry, or not-yet-published state instead.
+- Lead public acquisition with the currently published customer outcomes before explaining platform infrastructure. The current launch pair is AI music generation and AI outfit changing.
+- Treat narrow-window and mobile layouts as first-class. Public pages must not rely on a 320px minimum viewport or hide clipped content behind horizontal overflow.
 
 Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-build.mjs`, and `tests/sites-worker.test.mjs` intact so the same local prototype can be handed to Sites. Before a Sites handoff, run `npm run build` and `npm run test:sites`; the build must leave `dist/client/index.html`, `dist/server/index.js`, and `dist/.openai/hosting.json`.

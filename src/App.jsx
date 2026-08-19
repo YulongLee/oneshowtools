@@ -1638,7 +1638,7 @@ function CapabilityNetwork({ locale }) {
   </div>;
 }
 
-function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
+function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, onRun }) {
   const t = dictionary[locale];
   const [guestQuery, setGuestQuery] = useState("");
   const isEn = locale === "en";
@@ -1678,6 +1678,7 @@ function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
     stepsTitle: "How OneShowTools works", steps: [["Choose a tool", "Find the right capability by category or search"], ["Describe the task", "Provide goals, materials and output preferences"], ["AI processes", "The platform routes the task to the right runtime"], ["Get the result", "Review, download and continue from task history"]],
     cta: "Ready to put AI to work?", ctaSub: "Create one account and start with the tools you need today.",
     footer: "A unified AI tools platform for everyday work.", product: "Product", resources: "Resources", company: "Company", support: "Support",
+    liveEyebrow: "LIVE CAPABILITIES", liveTitle: "Start with two tools that already work", liveBody: "Create original music or produce an identity-preserving outfit try-on. Results stay connected to your account, tasks, credits, and file history.", liveProof: "Outputs saved to your account", liveIllustration: "Illustration of music creation and AI outfit try-on", retryCatalog: "Retry tool catalog", catalogUnavailable: "The tool catalog is temporarily unavailable. Retry to see the tools currently online.", catalogEmpty: "No tools are public yet. Check back after the next release.", openTool: "Open tool",
   } : {
     nav: ["工具市场", "AI Runtime", "AI Agent", "使用方式"],
     badge: "一个账户 · 一站式 AI 工作平台",
@@ -1703,7 +1704,19 @@ function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
     stepsTitle: "如何使用 OneShowTools", steps: [["选择工具", "按分类或搜索找到适合的能力"], ["输入需求", "提供目标、素材与输出偏好"], ["AI 处理", "平台将任务路由到合适的运行能力"], ["获取结果", "查看、下载并在任务历史中继续处理"]],
     cta: "准备好让 AI 成为你的工作助手了吗？", ctaSub: "创建一个账户，从今天真正需要的工具开始。",
     footer: "解决日常小需求的一站式 AI 工具平台。", product: "产品", resources: "资源", company: "公司", support: "支持",
+    liveEyebrow: "已上线能力", liveTitle: "先把两个真实需求做好", liveBody: "生成原创音乐，或完成保持人物身份的一键换装。结果会统一进入你的账户、任务、积分与文件记录。", liveProof: "生成结果自动进入账户记录", liveIllustration: "音乐生成和 AI 一键换装能力场景示意", retryCatalog: "重新加载工具", catalogUnavailable: "工具目录暂时没有加载成功，请重试查看当前已上线能力。", catalogEmpty: "目前暂无公开工具，请等待下一次能力上线。", openTool: "打开工具",
   };
+  const catalogLoading = catalogStatus === "loading";
+  const catalogUnavailable = catalogStatus === "error";
+  const toolCountValue = catalogLoading || catalogUnavailable ? "—" : tools.length;
+  const publicSubtitle = catalogLoading
+    ? (isEn ? "Syncing the tools currently available on OneShowTools…" : "正在同步 OneShowTools 当前已上线的工具…")
+    : catalogUnavailable
+      ? copy.catalogUnavailable
+      : copy.subtitle;
+  const strengthRows = copy.strengths.map((row, index) => index === 0
+    ? [catalogLoading || catalogUnavailable ? (isEn ? "Live tool catalog" : "真实工具目录") : row[0], catalogLoading ? (isEn ? "Syncing published capabilities" : "正在同步已发布能力") : catalogUnavailable ? copy.catalogUnavailable : row[1]]
+    : row);
   const showResults = (event) => {
     event.preventDefault();
     document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" });
@@ -1715,9 +1728,9 @@ function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
     <header className="guest-header commercial-header"><a href="#top" aria-label="OneShowTools home"><Brand /></a><nav>{copy.nav.map((item, index) => <a key={item} href={index === 0 ? "#tools" : index === 2 ? "#agents" : index === 3 ? "#how" : "#platform"}>{item}</a>)}</nav><div><button className="locale-button" onClick={onLocale}><Translate size={16} />{t.language}</button><button className="landing-login" onClick={onAuth}>{t.login}</button><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={15} /></button></div></header>
     <main id="top">
       <section className="landing-hero">
-        <div className="landing-hero-copy"><span className="landing-badge"><Sparkle size={14} weight="fill" />{copy.badge}</span><h1>{copy.titleA}<br /><span>{copy.titleB}</span></h1><p>{copy.subtitle}</p>
+        <div className="landing-hero-copy"><span className="landing-badge"><Sparkle size={14} weight="fill" />{copy.badge}</span><h1>{copy.titleA}<br /><span>{copy.titleB}</span></h1><p>{publicSubtitle}</p>
           <form className="landing-search" onSubmit={showResults}><MagnifyingGlass size={21} /><input value={guestQuery} onChange={(event) => setGuestQuery(event.target.value)} placeholder={copy.search} /><button>{t.searchAction}<ArrowRight size={16} /></button></form>
-          <div className="landing-popular"><span>{copy.popular}</span>{featuredTools.slice(0, 5).map((tool) => <button key={tool.id} onClick={() => chooseSearch(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
+          {featuredTools.length > 0 && <div className="landing-popular"><span>{copy.popular}</span>{featuredTools.slice(0, 5).map((tool) => <button key={tool.id} onClick={() => chooseSearch(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>}
           <div className="hero-actions"><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={18} /></button><a className="secondary-button" href="#tools">{copy.browse}</a></div>
           <div className="landing-trust">{copy.trust.map((item, index) => { const Icon = [CreditCard, UserCircle, PlugsConnected, ShieldCheck][index]; return <span key={item}><Icon size={16} />{item}</span>; })}</div>
         </div>
@@ -1725,16 +1738,18 @@ function GuestHome({ locale, tools, onAuth, onLocale, onRun }) {
           <aside><Brand /><nav><span className="active"><House size={15} />{isEn ? "Overview" : "首页"}</span><span><SquaresFour size={15} />{isEn ? "Tool Marketplace" : "工具市场"}</span><span><RocketLaunch size={15} />AI Runtime</span><span><Robot size={15} />AI Agent</span><span><FolderOpen size={15} />{isEn ? "Files" : "文件中心"}</span></nav></aside>
           <section><header><div><small>ONESH​OWTOOLS PLATFORM</small><h2>{copy.hello}</h2><p>{copy.today}</p></div><span><GearSix size={16} /></span></header>
             <div className="preview-search"><MagnifyingGlass size={16} /><span>{copy.search}</span></div>
-            <div className="preview-summary"><div><span><SquaresFour size={16} /></span><small>{copy.available}</small><strong>{tools.length}</strong></div><div><span><GridFour size={16} /></span><small>{copy.categories}</small><strong>14</strong></div><div><span><Coins size={16} /></span><small>{copy.newCredits}</small><strong>200</strong></div></div>
+            <div className="preview-summary"><div><span><SquaresFour size={16} /></span><small>{copy.available}</small><strong>{toolCountValue}</strong></div><div><span><GridFour size={16} /></span><small>{copy.categories}</small><strong>14</strong></div><div><span><Coins size={16} /></span><small>{copy.newCredits}</small><strong>200</strong></div></div>
             <h3>{copy.quick}</h3><div className="preview-tools">{quickTools.map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`tool-icon compact ${tool.category}`}><Icon size={17} /></span><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={14} /></button>; })}</div>
-            <div className="preview-foot"><span><CheckCircle size={15} weight="fill" />{copy.ready}</span><p>{copy.recent}</p><strong>{tools.length} {isEn ? "tools connected" : "个工具已接入"}</strong></div>
+            <div className="preview-foot"><span><CheckCircle size={15} weight="fill" />{copy.ready}</span><p>{copy.recent}</p><strong>{toolCountValue} {isEn ? "tools connected" : "个工具已接入"}</strong></div>
           </section>
         </div>
       </section>
 
-      <section className="landing-section landing-why"><header><span>ONESH​OWTOOLS</span><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div>{copy.strengths.map(([title, body], index) => { const Icon = strengthIcons[index]; return <article key={title}><span><Icon size={23} weight="duotone" /></span><h3>{title}</h3><p>{body}</p></article>; })}</div></section>
+      {featuredTools.length > 0 && <section className="landing-section landing-live-showcase" aria-labelledby="live-capabilities-title"><figure><img src="/landing/live-capabilities-showcase.webp" alt={copy.liveIllustration} loading="lazy" /><figcaption>{copy.liveIllustration}</figcaption></figure><div className="landing-live-copy"><span>{copy.liveEyebrow}</span><h2 id="live-capabilities-title">{copy.liveTitle}</h2><p>{copy.liveBody}</p><div className="landing-live-tools">{featuredTools.slice(0, 2).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`tool-icon ${tool.category}`}><Icon size={22} weight="duotone" /></span><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={17} /></button>; })}</div><div className="landing-live-proof"><ShieldCheck size={17} weight="duotone" /><span>{copy.liveProof}</span></div></div></section>}
 
-      <section id="tools" className="landing-section landing-featured"><header><div><span>TOOL MARKETPLACE</span><h2>{copy.featured}</h2><p>{copy.featuredSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header>{visibleTools.length ? <div className="landing-tool-grid">{(guestQuery ? visibleTools : featuredTools).slice(0, 6).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <article key={tool.id}><button className="landing-tool-open" onClick={() => onRun(tool)} aria-label={`${t.run} ${isEn ? tool.nameEn : tool.nameZh}`}><span className={`tool-icon ${tool.category}`}><Icon size={23} /></span><span className="landing-tool-state"><CheckCircle size={13} weight="fill" />{copy.ready}</span><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={14} />{tool.creditCost} {t.creditsUnit}</span><ArrowRight size={17} /></footer></button></article>; })}</div> : <EmptyState icon={MagnifyingGlass} title={t.noResults} />}</section>
+      <section className="landing-section landing-why"><header><span>ONESH​OWTOOLS</span><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div>{strengthRows.map(([title, body], index) => { const Icon = strengthIcons[index]; return <article key={`${index}-${title}`}><span><Icon size={23} weight="duotone" /></span><h3>{title}</h3><p>{body}</p></article>; })}</div></section>
+
+      <section id="tools" className="landing-section landing-featured"><header><div><span>TOOL MARKETPLACE</span><h2>{copy.featured}</h2><p>{copy.featuredSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header>{visibleTools.length ? <div className="landing-tool-grid">{(guestQuery ? visibleTools : featuredTools).slice(0, 6).map((tool) => { const Icon = iconMap[tool.icon] || Wrench; return <article key={tool.id}><button className="landing-tool-open" onClick={() => onRun(tool)} aria-label={`${t.run} ${isEn ? tool.nameEn : tool.nameZh}`}><span className={`tool-icon ${tool.category}`}><Icon size={23} /></span><span className="landing-tool-state"><CheckCircle size={13} weight="fill" />{copy.ready}</span><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={14} />{tool.creditCost} {t.creditsUnit}</span><span className="landing-tool-cta">{copy.openTool}<ArrowRight size={15} /></span></footer></button></article>; })}</div> : <div className={`landing-catalog-state ${catalogUnavailable ? "error" : ""}`}>{catalogLoading ? <Loading locale={locale} /> : <EmptyState icon={catalogUnavailable ? WarningCircle : MagnifyingGlass} title={catalogUnavailable ? copy.catalogUnavailable : guestQuery ? t.noResults : copy.catalogEmpty} action={catalogUnavailable ? <button className="secondary-button" onClick={onReload}>{copy.retryCatalog}</button> : null} />}</div>}</section>
 
       {agentTools.length > 0 && <section id="agents" className="landing-section landing-agents"><header><div><span>AI AGENT</span><h2>{copy.agents}</h2><p>{copy.agentsSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header><div>{agentTools.map((tool, index) => { const Icon = iconMap[tool.icon] || Robot; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`agent-orb agent-${index}`}><Icon size={28} weight="duotone" /></span><div><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p></div><ArrowRight size={17} /></button>; })}</div></section>}
 
@@ -1756,6 +1771,7 @@ export function App() {
   const [session, setSession] = useState(undefined);
   const [health, setHealth] = useState({});
   const [tools, setTools] = useState([]);
+  const [catalogStatus, setCatalogStatus] = useState("loading");
   const [plans, setPlans] = useState([]);
   const [writingCatalog, setWritingCatalog] = useState(null);
   const [seoCatalog, setSeoCatalog] = useState(null);
@@ -1768,11 +1784,12 @@ export function App() {
   const t = dictionary[locale];
 
   const loadPublic = useCallback(async () => {
+    setCatalogStatus("loading");
     const [sessionResult, healthResult, toolsResult, plansResult, writingResult, seoResult] = await Promise.all([
       api("/api/auth/session").catch(() => ({ user: null })), api("/api/health").catch(() => ({})),
-      api("/api/tools").catch(() => ({ tools: [] })), api("/api/plans").catch(() => ({ plans: [] })), api("/api/writing/catalog").catch(() => null), api("/api/seo/catalog").catch(() => null),
+      api("/api/tools").catch(() => null), api("/api/plans").catch(() => ({ plans: [] })), api("/api/writing/catalog").catch(() => null), api("/api/seo/catalog").catch(() => null),
     ]);
-    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult.tools); setPlans(plansResult.plans); setWritingCatalog(writingResult); setSeoCatalog(seoResult);
+    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult?.tools || []); setCatalogStatus(toolsResult ? "ready" : "error"); setPlans(plansResult.plans); setWritingCatalog(writingResult); setSeoCatalog(seoResult);
   }, []);
   const loadPrivate = useCallback(async () => {
     if (!session) return;
@@ -1889,7 +1906,7 @@ export function App() {
   const routeTask = routeTaskId ? privateData.tasks.find((task) => task.id === routeTaskId) : null;
   const specialistCatalog = seoCatalogForTool(seoCatalog, routeTool);
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {
