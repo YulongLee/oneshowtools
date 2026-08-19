@@ -164,6 +164,7 @@ const dictionary = {
     textInput: "输入原始文案", pdfInput: "上传 PDF 文件", imageInput: "上传图片", speechInput: "实时语音识别", startSpeech: "开始识别", stopSpeech: "停止识别",
     browserUnsupported: "当前浏览器不支持实时语音识别。", loginToUse: "登录后即可运行此工具并保存任务记录。", localMode: "本地处理", aiMode: "AI 增强",
     registrationUnavailable: "邮箱注册尚未开放，请稍后再试。", verificationPending: "验证邮件已发送", verificationPendingBody: "验证邮箱后即可登录并领取欢迎积分。", resendVerification: "重新发送验证邮件",
+    emailLogin: "邮箱登录", smsLogin: "短信登录", phone: "手机号", smsCode: "短信验证码", sendSmsCode: "获取验证码", resendSmsIn: "秒后重发", smsAuthTitle: "手机号登录或注册", smsAuthSub: "中国大陆手机号验证后即可登录，首次使用会自动创建账户。", smsCodeSent: "验证码已发送，5 分钟内有效。", smsUnavailable: "短信登录尚未开放。", smsInvalidPhone: "请输入正确的中国大陆手机号。", smsInvalidCode: "验证码不正确，请重新输入。", smsExpired: "验证码已过期，请重新获取。", smsRateLimited: "发送过于频繁，请稍后再试。",
     forgotPassword: "忘记密码？", recoveryTitle: "找回密码", recoveryBody: "如果该邮箱已注册，你将收到重置邮件。", sendRecovery: "发送重置邮件", resetTitle: "设置新密码", newPassword: "新密码", resetSuccess: "密码已更新，请重新登录。",
     accountProfile: "账户资料", saveProfile: "保存资料", accountSecurity: "账户安全", currentPassword: "当前密码", changePassword: "修改密码", newEmail: "新邮箱", changeEmail: "验证新邮箱",
     activeSessions: "登录设备", revokeOthers: "退出其他设备", privacyControls: "隐私与数据", exportData: "导出账户数据", deleteAccount: "删除账户", deletionUnavailable: "账户删除需完成政策配置后开放。",
@@ -200,6 +201,7 @@ const dictionary = {
     textInput: "Enter original copy", pdfInput: "Upload PDF", imageInput: "Upload image", speechInput: "Live speech recognition", startSpeech: "Start recognition", stopSpeech: "Stop recognition",
     browserUnsupported: "Live speech recognition is not supported in this browser.", loginToUse: "Sign in to run this tool and save its task record.", localMode: "Local processing", aiMode: "AI enhanced",
     registrationUnavailable: "Email registration is not open yet.", verificationPending: "Verification email sent", verificationPendingBody: "Verify your email before signing in and receiving welcome credits.", resendVerification: "Resend verification",
+    emailLogin: "Email", smsLogin: "SMS", phone: "Phone number", smsCode: "Verification code", sendSmsCode: "Send code", resendSmsIn: "s to resend", smsAuthTitle: "Sign in or register by phone", smsAuthSub: "Verify a mainland China phone number. A new account is created on first use.", smsCodeSent: "Code sent and valid for 5 minutes.", smsUnavailable: "SMS sign-in is not available.", smsInvalidPhone: "Enter a valid mainland China phone number.", smsInvalidCode: "The verification code is incorrect.", smsExpired: "The code has expired. Request a new one.", smsRateLimited: "Too many attempts. Try again later.",
     forgotPassword: "Forgot password?", recoveryTitle: "Recover your account", recoveryBody: "If the email is registered, a reset message is on the way.", sendRecovery: "Send reset email", resetTitle: "Choose a new password", newPassword: "New password", resetSuccess: "Password updated. Sign in again.",
     accountProfile: "Profile", saveProfile: "Save profile", accountSecurity: "Account security", currentPassword: "Current password", changePassword: "Change password", newEmail: "New email", changeEmail: "Verify new email",
     activeSessions: "Signed-in devices", revokeOthers: "Sign out other devices", privacyControls: "Privacy and data", exportData: "Export account data", deleteAccount: "Delete account", deletionUnavailable: "Account deletion opens after the retention policy is configured.",
@@ -262,59 +264,72 @@ function EmptyState({ icon: Icon = ListChecks, title, body, action }) {
   return <div className="empty-state"><span><Icon size={28} /></span><h3>{title}</h3>{body && <p>{body}</p>}{action}</div>;
 }
 
-function AuthDialog({ locale, registrationEnabled, onClose, onAuthenticated }) {
+function AuthDialog({ locale, registrationEnabled, smsAuthEnabled, onClose, onAuthenticated }) {
   const t = dictionary[locale];
   const resetToken = new URLSearchParams(location.search).get("resetToken");
   const [mode, setMode] = useState(resetToken ? "reset" : "login");
+  const [authMethod, setAuthMethod] = useState("email");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [smsForm, setSmsForm] = useState({ phone: "", code: "", name: "" });
+  const [smsSent, setSmsSent] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!countdown) return undefined;
+    const timer = setInterval(() => setCountdown((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
+  const authError = (error) => ({
+    INVALID_PHONE: t.smsInvalidPhone,
+    INVALID_SMS_CODE: t.smsInvalidCode,
+    SMS_CODE_INVALID: t.smsInvalidCode,
+    SMS_CODE_EXPIRED: t.smsExpired,
+    SMS_RATE_LIMITED: t.smsRateLimited,
+    SMS_AUTH_UNAVAILABLE: t.smsUnavailable,
+  })[error.message] || (error.message === "EMAIL_UNVERIFIED" ? t.verificationPendingBody : t.invalid);
   const submit = async (event) => {
-    event.preventDefault();
-    setBusy(true);
-    setMessage("");
+    event.preventDefault(); setBusy(true); setMessage("");
     try {
-      if (mode === "signup") {
-        await api("/api/auth/register", jsonOptions("POST", { ...form, locale }));
-        setMode("pending");
-      } else if (mode === "forgot") {
-        await api("/api/auth/forgot-password", jsonOptions("POST", { email: form.email }));
-        setMessage(t.recoveryBody);
-      } else if (mode === "reset") {
-        await api("/api/auth/reset-password", jsonOptions("POST", { token: resetToken, password: form.password }));
-        history.replaceState({}, "", location.pathname);
-        setMode("login");
-        setMessage(t.resetSuccess);
-      } else {
-        const result = await api("/api/auth/login", jsonOptions("POST", { ...form, locale }));
-        onAuthenticated(result.user);
-        onClose();
-      }
-    } catch (error) {
-      setMessage(error.message === "EMAIL_UNVERIFIED" ? t.verificationPendingBody : t.invalid);
-    } finally {
-      setBusy(false);
-    }
+      if (mode === "signup") { await api("/api/auth/register", jsonOptions("POST", { ...form, locale })); setMode("pending"); }
+      else if (mode === "forgot") { await api("/api/auth/forgot-password", jsonOptions("POST", { email: form.email })); setMessage(t.recoveryBody); }
+      else if (mode === "reset") { await api("/api/auth/reset-password", jsonOptions("POST", { token: resetToken, password: form.password })); history.replaceState({}, "", location.pathname); setMode("login"); setMessage(t.resetSuccess); }
+      else { const result = await api("/api/auth/login", jsonOptions("POST", { ...form, locale })); onAuthenticated(result.user); onClose(); }
+    } catch (error) { setMessage(authError(error)); }
+    finally { setBusy(false); }
   };
   const resend = async () => {
-    setBusy(true);
-    await api("/api/auth/resend-verification", jsonOptions("POST", { email: form.email })).catch(() => {});
-    setMessage(t.verificationPendingBody);
-    setBusy(false);
+    setBusy(true); await api("/api/auth/resend-verification", jsonOptions("POST", { email: form.email })).catch(() => {});
+    setMessage(t.verificationPendingBody); setBusy(false);
   };
-  const title = mode === "signup" ? t.signUpTitle : mode === "forgot" ? t.recoveryTitle : mode === "reset" ? t.resetTitle : mode === "pending" ? t.verificationPending : t.signInTitle;
+  const sendSms = async () => {
+    setBusy(true); setMessage("");
+    try {
+      const result = await api("/api/auth/sms/send", jsonOptions("POST", { phone: smsForm.phone, locale }));
+      setSmsSent(true); setCountdown(Number(result.retryAfter || 60)); setMessage(t.smsCodeSent);
+    } catch (error) { setMessage(authError(error)); }
+    finally { setBusy(false); }
+  };
+  const verifySms = async (event) => {
+    event.preventDefault(); setBusy(true); setMessage("");
+    try { const result = await api("/api/auth/sms/verify", jsonOptions("POST", { ...smsForm, locale })); onAuthenticated(result.user); onClose(); }
+    catch (error) { setMessage(authError(error)); }
+    finally { setBusy(false); }
+  };
+  const title = authMethod === "sms" ? t.smsAuthTitle : mode === "signup" ? t.signUpTitle : mode === "forgot" ? t.recoveryTitle : mode === "reset" ? t.resetTitle : mode === "pending" ? t.verificationPending : t.signInTitle;
   return <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="auth-modal" role="dialog" aria-modal="true">
     <button className="icon-button modal-close" onClick={onClose}><X size={20} /></button><Brand />
-    <h2>{title}</h2><p className="modal-subtitle">{mode === "pending" ? t.verificationPendingBody : mode === "forgot" ? t.recoveryBody : t.authSub}</p>
-    {mode === "pending" ? <div className="auth-form"><button className="secondary-button full" disabled={busy || !form.email} onClick={resend}>{t.resendVerification}</button><button className="primary-button full" onClick={() => setMode("login")}>{t.login}</button>{message && <p className="form-note">{message}</p>}</div> : <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
+    <h2>{title}</h2><p className="modal-subtitle">{authMethod === "sms" ? t.smsAuthSub : mode === "pending" ? t.verificationPendingBody : mode === "forgot" ? t.recoveryBody : t.authSub}</p>
+    {!["reset", "pending"].includes(mode) && <div className="auth-method-tabs" role="tablist"><button type="button" className={authMethod === "email" ? "active" : ""} onClick={() => { setAuthMethod("email"); setMessage(""); }}>{t.emailLogin}</button><button type="button" disabled={!smsAuthEnabled} className={authMethod === "sms" ? "active" : ""} onClick={() => { setAuthMethod("sms"); setMode("login"); setMessage(""); }}>{t.smsLogin}</button></div>}
+    {authMethod === "sms" ? <form onSubmit={verifySms} className="auth-form"><label>{t.phone}<div className="phone-input"><span>+86</span><input inputMode="numeric" autoComplete="tel" required maxLength={11} placeholder="138 0000 0000" value={smsForm.phone} onChange={(event) => setSmsForm({ ...smsForm, phone: event.target.value.replace(/\D/g, "").slice(0, 11) })} /></div></label><label>{t.smsCode}<div className="sms-code-input"><input inputMode="numeric" autoComplete="one-time-code" required maxLength={6} value={smsForm.code} onChange={(event) => setSmsForm({ ...smsForm, code: event.target.value.replace(/\D/g, "").slice(0, 6) })} /><button type="button" disabled={busy || countdown > 0 || smsForm.phone.length !== 11} onClick={sendSms}>{countdown > 0 ? `${countdown}${t.resendSmsIn}` : t.sendSmsCode}</button></div></label>{!smsSent && <label>{t.name}<input maxLength={80} value={smsForm.name} onChange={(event) => setSmsForm({ ...smsForm, name: event.target.value })} /></label>}{message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || !smsSent || smsForm.code.length !== 6}>{busy ? <SpinnerGap className="spin" size={20} /> : t.login}</button></form> : mode === "pending" ? <div className="auth-form"><button className="secondary-button full" disabled={busy || !form.email} onClick={resend}>{t.resendVerification}</button><button className="primary-button full" onClick={() => setMode("login")}>{t.login}</button>{message && <p className="form-note">{message}</p>}</div> : <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
       {mode !== "reset" && <label>{t.email}<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>}
       {!["forgot"].includes(mode) && <label>{mode === "reset" ? t.newPassword : t.password}<input type="password" required minLength={10} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>{t.passwordHint}</small></label>}
       {message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || (mode === "signup" && !registrationEnabled)}>{busy ? <SpinnerGap className="spin" size={20} /> : mode === "signup" ? t.signup : mode === "forgot" ? t.sendRecovery : mode === "reset" ? t.changePassword : t.login}</button>
       {mode === "login" && <button className="text-button" type="button" onClick={() => { setMode("forgot"); setMessage(""); }}>{t.forgotPassword}</button>}
       {mode === "signup" && !registrationEnabled && <p className="config-caption">{t.registrationUnavailable}</p>}
     </form>}
-    {["login", "signup"].includes(mode) && <p className="auth-switch">{mode === "signup" ? t.hasAccount : t.noAccount}{(registrationEnabled || mode === "signup") && <button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? t.login : t.signup}</button>}</p>}
-    {mode === "forgot" && <p className="auth-switch"><button onClick={() => { setMode("login"); setMessage(""); }}>{t.login}</button></p>}
+    {authMethod === "email" && ["login", "signup"].includes(mode) && <p className="auth-switch">{mode === "signup" ? t.hasAccount : t.noAccount}{(registrationEnabled || mode === "signup") && <button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? t.login : t.signup}</button>}</p>}
+    {authMethod === "email" && mode === "forgot" && <p className="auth-switch"><button onClick={() => { setMode("login"); setMessage(""); }}>{t.login}</button></p>}
   </section></div>;
 }
 
@@ -1874,7 +1889,7 @@ export function App() {
   const routeTask = routeTaskId ? privateData.tasks.find((task) => task.id === routeTaskId) : null;
   const specialistCatalog = seoCatalogForTool(seoCatalog, routeTool);
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
   const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
   const content = {

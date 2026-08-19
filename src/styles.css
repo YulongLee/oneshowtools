@@ -994,11 +994,21 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .auth-modal .brand-lockup { height: auto; padding: 0; justify-content: center; }
 .auth-modal h2 { margin: 25px 0 7px; text-align: center; font-size: 23px; }
 .modal-subtitle { margin-bottom: 20px; color: var(--muted); text-align: center; font-size: 12px; }
+.auth-method-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 18px 0; padding: 4px; border-radius: 10px; background: #f2f5fa; }
+.auth-method-tabs button { height: 38px; border: 0; border-radius: 8px; color: #69758a; background: transparent; font-weight: 650; }
+.auth-method-tabs button.active { color: var(--blue); background: #fff; box-shadow: 0 2px 8px rgba(30,67,130,.1); }
+.auth-method-tabs button:disabled { cursor: not-allowed; opacity: .45; }
 .config-caption { margin-top: 6px; display: block; color: #9a6a28; text-align: center; font-size: 9px; }
 .auth-form { display: grid; gap: 14px; }
 .auth-form label, .field-label { display: grid; gap: 7px; color: #465268; font-size: 11px; font-weight: 600; }
 .auth-form input, .auth-form select, textarea { width: 100%; border: 1px solid #dce3ec; border-radius: 8px; outline: 0; color: var(--navy); background: #fff; }
 .auth-form input { height: 42px; padding: 0 12px; }
+.phone-input, .sms-code-input { display: flex; width: 100%; border: 1px solid #dce3ec; border-radius: 8px; background: #fff; overflow: hidden; }
+.phone-input:focus-within, .sms-code-input:focus-within { border-color: #76a5e8; box-shadow: 0 0 0 3px rgba(23,105,232,.1); }
+.phone-input > span { display: grid; place-items: center; min-width: 58px; border-right: 1px solid #e6ebf2; color: #465268; background: #f8fafc; font-size: 13px; }
+.auth-form .phone-input input, .auth-form .sms-code-input input { min-width: 0; border: 0; box-shadow: none; }
+.sms-code-input button { min-width: 112px; border: 0; border-left: 1px solid #e6ebf2; color: var(--blue); background: #f8fbff; font-size: 12px; font-weight: 650; }
+.sms-code-input button:disabled { color: #9da8b8; cursor: not-allowed; }
 .auth-form select { height: 42px; padding: 0 10px; }
 textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .auth-form input:focus, .auth-form select:focus, textarea:focus { border-color: #76a5e8; box-shadow: 0 0 0 3px rgba(23,105,232,.1); }

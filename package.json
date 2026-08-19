@@ -19,6 +19,7 @@
     "openspec:validate": "openspec validate add-global-auth-and-billing --strict"
   },
   "dependencies": {
+    "@alicloud/dysmsapi20170525": "^4.6.0",
     "@napi-rs/canvas": "^1.0.3",
     "@openai/codex-sdk": "^0.146.0",
     "@phosphor-icons/react": "^2.1.10",

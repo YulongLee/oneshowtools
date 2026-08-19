@@ -1,10 +1,18 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { basename } from "node:path";
 import { audit, db } from "./database.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
 import { assertUserFileCapacity, userFileQuota } from "./file-quota.mjs";
 import { getServerConfig, validateServerConfig } from "./config.mjs";
 import { sendAccountEmail } from "./email.mjs";
+import {
+  createSmsCodeRecord,
+  generateSmsCode,
+  normalizeMainlandPhone,
+  phoneIdentityHash,
+  sendLoginCode,
+  verifySmsCodeHash,
+} from "./sms-provider.mjs";
 import {
   createSessionToken,
   hashPassword,
@@ -64,14 +72,22 @@ function internalServiceAuthorized(request) {
   const suppliedHash = createHash("sha256").update(supplied).digest();
   return timingSafeEqual(expectedHash, suppliedHash);
 }
-const cleanUser = (row) => row && ({
-  id: row.id,
-  name: row.name,
-  email: row.email,
-  locale: row.locale,
-  emailVerified: Boolean(row.email_verified),
-  createdAt: row.created_at,
-});
+const phoneOnlyEmail = (email) => String(email || "").endsWith("@phone.oneshowtools.invalid");
+const cleanUser = (row) => {
+  if (!row) return row;
+  const phone = db.prepare("SELECT phone_last4 AS last4, country_code AS countryCode FROM user_phone_identities WHERE user_id = ?").get(row.id);
+  return {
+    id: row.id,
+    name: row.name,
+    email: phoneOnlyEmail(row.email) ? null : row.email,
+    phone: phone ? `${phone.countryCode} **** ${phone.last4}` : null,
+    locale: row.locale,
+    emailVerified: phoneOnlyEmail(row.email) ? false : Boolean(row.email_verified),
+    phoneVerified: Boolean(phone),
+    authMethods: [!phoneOnlyEmail(row.email) ? "email" : null, phone ? "sms" : null].filter(Boolean),
+    createdAt: row.created_at,
+  };
+};
 
 async function body(request) {
   try {
@@ -174,6 +190,10 @@ function deletionPending(userId) {
   return Boolean(db.prepare(`
     SELECT id FROM deletion_requests WHERE user_id = ? AND status = 'pending'
   `).get(userId));
+}
+
+function accountVerified(user) {
+  return Boolean(user?.email_verified || db.prepare("SELECT 1 AS verified FROM user_phone_identities WHERE user_id = ?").get(user?.id));
 }
 
 function toolSelect() {
@@ -369,6 +389,133 @@ async function login(request) {
   audit(user.id, "user.login", "user", user.id);
   securityEvent(request, "auth.login", "success", user.id);
   return createLoginResponse(user.id, request);
+}
+
+function smsLimits(phoneHash) {
+  const timestamp = Date.now();
+  const latest = db.prepare(`
+    SELECT created_at AS createdAt FROM sms_verification_codes
+    WHERE phone_hash = ? AND purpose = 'login' ORDER BY created_at DESC LIMIT 1
+  `).get(phoneHash);
+  const hour = db.prepare(`
+    SELECT COUNT(*) AS count FROM sms_verification_codes
+    WHERE phone_hash = ? AND purpose = 'login' AND created_at > ?
+  `).get(phoneHash, timestamp - 3600000).count;
+  const day = db.prepare(`
+    SELECT COUNT(*) AS count FROM sms_verification_codes
+    WHERE phone_hash = ? AND purpose = 'login' AND created_at > ?
+  `).get(phoneHash, timestamp - 86400000).count;
+  if (latest && timestamp - latest.createdAt < 60000) return { limited: true, retryAfter: Math.ceil((60000 - (timestamp - latest.createdAt)) / 1000) };
+  if (hour >= 5 || day >= 10) return { limited: true, retryAfter: hour >= 5 ? 3600 : 86400 };
+  return { limited: false, retryAfter: 0 };
+}
+
+async function sendSmsVerification(request) {
+  const config = getServerConfig(request.url);
+  if (!config.smsAuthEnabled) return fail("SMS_AUTH_UNAVAILABLE", 503);
+  const data = await body(request);
+  let phone;
+  try { phone = normalizeMainlandPhone(data.phone); }
+  catch (error) { return fail(error.code || "INVALID_PHONE", error.status || 400); }
+  const phoneHash = phoneIdentityHash(phone);
+  const limit = smsLimits(phoneHash);
+  if (limit.limited || rateLimited(request, "sms-send", phoneHash, 10, 3600000)) {
+    securityEvent(request, "auth.sms.send", "rate_limited", null, { retryAfter: limit.retryAfter });
+    return json({ error: { code: "SMS_RATE_LIMITED", retryAfter: limit.retryAfter || 3600 } }, 429);
+  }
+  const code = generateSmsCode();
+  const record = createSmsCodeRecord(phoneHash, code);
+  let delivery;
+  try { delivery = await sendLoginCode(phone, code); }
+  catch (error) {
+    securityEvent(request, "auth.sms.send", "provider_failed", null, { code: error.code || "SMS_SEND_FAILED" });
+    return fail(error.code || "SMS_SEND_FAILED", error.status || 502);
+  }
+  const timestamp = Date.now();
+  db.prepare("UPDATE sms_verification_codes SET consumed_at = ? WHERE phone_hash = ? AND purpose = 'login' AND consumed_at IS NULL")
+    .run(timestamp, phoneHash);
+  db.prepare(`
+    INSERT INTO sms_verification_codes
+    (id, phone_hash, purpose, code_hash, code_salt, attempts, max_attempts, expires_at, provider_request_id, ip_hash, created_at)
+    VALUES (?, ?, 'login', ?, ?, 0, 5, ?, ?, ?, ?)
+  `).run(
+    randomUUID(), phoneHash, record.hash, record.salt,
+    timestamp + Number(process.env.SMS_CODE_TTL_SECONDS || 300) * 1000,
+    delivery.requestId, requestClient(request).ipHash, timestamp,
+  );
+  securityEvent(request, "auth.sms.send", "accepted");
+  return json({ ok: true, expiresIn: Number(process.env.SMS_CODE_TTL_SECONDS || 300), retryAfter: 60 }, 202);
+}
+
+async function verifySmsLogin(request) {
+  const config = getServerConfig(request.url);
+  if (!config.smsAuthEnabled) return fail("SMS_AUTH_UNAVAILABLE", 503);
+  const data = await body(request);
+  let phone;
+  try { phone = normalizeMainlandPhone(data.phone); }
+  catch (error) { return fail(error.code || "INVALID_PHONE", error.status || 400); }
+  const code = String(data.code || "").trim();
+  if (!/^\d{6}$/.test(code)) return fail("INVALID_SMS_CODE", 400);
+  const phoneHash = phoneIdentityHash(phone);
+  if (rateLimited(request, "sms-verify", phoneHash, 10, 600000)) return fail("SMS_CODE_INVALID", 400);
+  const verification = db.prepare(`
+    SELECT * FROM sms_verification_codes
+    WHERE phone_hash = ? AND purpose = 'login' AND consumed_at IS NULL
+    ORDER BY created_at DESC LIMIT 1
+  `).get(phoneHash);
+  if (!verification || verification.expires_at <= Date.now() || verification.attempts >= verification.max_attempts) {
+    securityEvent(request, "auth.sms.verify", verification?.expires_at <= Date.now() ? "expired" : "denied");
+    return fail(verification?.expires_at <= Date.now() ? "SMS_CODE_EXPIRED" : "SMS_CODE_INVALID", 400);
+  }
+  db.prepare("UPDATE sms_verification_codes SET attempts = attempts + 1 WHERE id = ?").run(verification.id);
+  if (!verifySmsCodeHash(phoneHash, code, verification.code_salt, verification.code_hash)) {
+    securityEvent(request, "auth.sms.verify", "denied");
+    return fail("SMS_CODE_INVALID", 400);
+  }
+  let identity = db.prepare(`
+    SELECT p.*, u.status FROM user_phone_identities p JOIN users u ON u.id = p.user_id
+    WHERE p.phone_hash = ?
+  `).get(phoneHash);
+  if (identity?.status !== undefined && identity.status !== "active") return fail("ACCOUNT_SUSPENDED", 403);
+  let userId = identity?.user_id;
+  const timestamp = Date.now();
+  if (!userId) {
+    const name = String(data.name || "").trim().slice(0, 80) || `用户${phone.last4}`;
+    userId = randomUUID();
+    const internalEmail = `phone-${phoneHash.slice(0, 32)}@phone.oneshowtools.invalid`;
+    const randomPassword = await hashPassword(randomBytes(32).toString("base64url"));
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`
+        INSERT INTO users (id, name, email, password_hash, locale, email_verified, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+      `).run(userId, name, internalEmail, randomPassword, data.locale === "en" ? "en" : "zh-CN", timestamp, timestamp);
+      db.prepare(`
+        INSERT INTO user_phone_identities
+        (user_id, phone_hash, phone_last4, country_code, verified_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(userId, phoneHash, phone.last4, phone.countryCode, timestamp, timestamp, timestamp);
+      db.prepare(`
+        INSERT OR IGNORE INTO credit_ledger
+        (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+        VALUES (?, ?, 'welcome', 200, '新用户欢迎积分', 'New account welcome credits', 'user', ?, ?)
+      `).run(randomUUID(), userId, userId, timestamp);
+      db.prepare("UPDATE sms_verification_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").run(timestamp, verification.id);
+      db.exec("COMMIT");
+      audit(userId, "user.register.sms", "user", userId);
+    } catch (error) {
+      db.exec("ROLLBACK");
+      const raced = db.prepare("SELECT user_id FROM user_phone_identities WHERE phone_hash = ?").get(phoneHash);
+      if (!raced) throw error;
+      userId = raced.user_id;
+      db.prepare("UPDATE sms_verification_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").run(timestamp, verification.id);
+    }
+  } else {
+    db.prepare("UPDATE sms_verification_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").run(timestamp, verification.id);
+  }
+  audit(userId, "user.login.sms", "user", userId);
+  securityEvent(request, "auth.sms.verify", "success", userId);
+  return createLoginResponse(userId, request, identity ? 200 : 201);
 }
 
 function validToken(rawToken, purpose) {
@@ -751,7 +898,7 @@ async function requestDeletion(request, user) {
 async function billingCheckout(request, user) {
   const config = getServerConfig(request.url);
   if (!config.billingEnabled) return fail("BILLING_NOT_CONFIGURED", 503);
-  if (!user.email_verified) return fail("EMAIL_UNVERIFIED", 403);
+  if (!accountVerified(user)) return fail("ACCOUNT_UNVERIFIED", 403);
   if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
   const data = await body(request);
   const plan = db.prepare("SELECT * FROM plans WHERE id = ? AND active = 1").get(String(data.planId || ""));
@@ -764,7 +911,7 @@ async function billingCheckout(request, user) {
   const metadata = { userId: user.id, planId: plan.id, credits: String(offer.totalCredits) };
   const checkoutPayload = {
     mode: subscription ? "subscription" : "payment",
-    customer_email: user.email,
+    ...(!phoneOnlyEmail(user.email) ? { customer_email: user.email } : {}),
     client_reference_id: user.id,
     line_items: [{
       price_data: {
@@ -988,6 +1135,7 @@ export async function handleApi(request) {
     billingEnabled: config.billingEnabled,
     accountDeletionEnabled: config.accountDeletionEnabled,
     emailEnabled: config.emailConfigured,
+    smsAuthEnabled: config.smsAuthEnabled,
     configurationReady: configurationErrors.length === 0,
     configurationErrors,
     oneShowModelEnabled: gatewayFlags().managedConfigured && gatewayFlags().managedExecutionEnabled,
@@ -1007,6 +1155,8 @@ export async function handleApi(request) {
   if (!sameOrigin(request, config.appUrl)) return fail("ORIGIN_NOT_ALLOWED", 403);
   if (path === "/api/auth/register" && request.method === "POST") return register(request);
   if (path === "/api/auth/login" && request.method === "POST") return login(request);
+  if (path === "/api/auth/sms/send" && request.method === "POST") return sendSmsVerification(request);
+  if (path === "/api/auth/sms/verify" && request.method === "POST") return verifySmsLogin(request);
   if (path === "/api/auth/resend-verification" && request.method === "POST") return resendVerification(request);
   if (path === "/api/auth/forgot-password" && request.method === "POST") return requestPasswordReset(request);
   if (path === "/api/auth/reset-password" && request.method === "POST") return resetPassword(request);
