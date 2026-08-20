@@ -35,6 +35,10 @@ import {
   saveSingingProviderConfiguration, singingProviderConfiguration, testSingingProviderConfiguration,
 } from "./singing-provider.mjs";
 import {
+  paymentProviderConfiguration, paymentProviderConfigurations,
+  savePaymentProviderConfiguration, testPaymentProviderConfiguration,
+} from "./domestic-payments.mjs";
+import {
   adminSupportConversation, adminSupportOverview, replyToSupportConversation, resolveSupportConversation,
 } from "./customer-support.mjs";
 
@@ -882,12 +886,12 @@ async function toolCommands(request, path, context) {
 }
 
 function commerce() {
+  const domesticProviders = paymentProviderConfigurations();
   return {
-    billingEnabled: process.env.BILLING_ENABLED === "true",
+    billingEnabled: process.env.BILLING_ENABLED === "true" || domesticProviders.some((item) => item.enabled),
     providers: [
       { id: "stripe", configured: Boolean(process.env.STRIPE_SECRET_KEY), enabled: process.env.BILLING_ENABLED === "true" },
-      { id: "alipay", configured: Boolean(process.env.ALIPAY_APP_ID), enabled: process.env.ALIPAY_ENABLED === "true" },
-      { id: "wechat_pay", configured: Boolean(process.env.WECHAT_PAY_MCH_ID), enabled: process.env.WECHAT_PAY_ENABLED === "true" },
+      ...domesticProviders.map((item) => ({ id: item.provider, ...item })),
     ],
     plans: db.prepare("SELECT * FROM plans ORDER BY amount_minor").all(),
     subscriptions: db.prepare(`
@@ -1676,6 +1680,27 @@ export function createAdminHandler(dependencies) {
         richAudit({ request, actor: context.user, roles: context.roles, permission: "seo_sources.manage", action: "admin.seo_provider.update", targetType: "seo_provider", targetId: "dataforseo", reason: String(data.reason), before, after: configuration });
         return json({ configuration });
       } catch (error) { return fail(error?.code || "SEO_PROVIDER_UPDATE_FAILED", error?.status || 502); }
+    }
+    let paymentProviderMatch = path.match(/^\/api\/admin\/v1\/payment-providers\/(alipay|wechat_pay)\/(test)$/);
+    if (paymentProviderMatch && request.method === "POST") {
+      const denied = requirePermission(context, "billing.manage"); if (denied) return denied;
+      try {
+        const result = testPaymentProviderConfiguration(paymentProviderMatch[1], await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "billing.manage", action: "admin.payment_provider.test", targetType: "payment_provider", targetId: paymentProviderMatch[1], after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "PAYMENT_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    paymentProviderMatch = path.match(/^\/api\/admin\/v1\/payment-providers\/(alipay|wechat_pay)$/);
+    if (paymentProviderMatch && request.method === "PUT") {
+      const denied = requirePermission(context, "billing.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = paymentProviderConfiguration(paymentProviderMatch[1]);
+        const configuration = savePaymentProviderConfiguration(paymentProviderMatch[1], data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "billing.manage", action: "admin.payment_provider.update", targetType: "payment_provider", targetId: paymentProviderMatch[1], reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "PAYMENT_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
     let modelMatch = path.match(/^\/api\/admin\/v1\/platform-models\/([^/]+)\/(test)$/);
     if (modelMatch && request.method === "POST") {

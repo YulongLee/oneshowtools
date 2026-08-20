@@ -38,6 +38,10 @@ import { createAdminHandler } from "./admin.mjs";
 import { recordMarketplaceBehavior, recordMarketplaceSearch } from "./market-intelligence.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import { billingPlanPayload } from "./billing-catalog.mjs";
+import {
+  activePaymentProviders, createDomesticCheckout, domesticOrderStatus,
+  handleAlipayNotification, handleWechatNotification,
+} from "./domestic-payments.mjs";
 import { effectiveMembership } from "./membership.mjs";
 import { createAncestorTask } from "./ancestor-jobs.mjs";
 import {
@@ -904,12 +908,20 @@ async function requestDeletion(request, user) {
 
 async function billingCheckout(request, user) {
   const config = getServerConfig(request.url);
-  if (!config.billingEnabled) return fail("BILLING_NOT_CONFIGURED", 503);
   if (!accountVerified(user)) return fail("ACCOUNT_UNVERIFIED", 403);
   if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
   const data = await body(request);
   const plan = db.prepare("SELECT * FROM plans WHERE id = ? AND active = 1").get(String(data.planId || ""));
   if (!plan || plan.amount_minor <= 0) return fail("PLAN_NOT_FOUND", 404);
+  const provider = String(data.provider || "stripe");
+  if (["alipay", "wechat_pay"].includes(provider)) {
+    try {
+      return json(await createDomesticCheckout({ provider, user, plan, appUrl: config.appUrl }));
+    } catch (error) {
+      return fail(error.code || "PAYMENT_ORDER_FAILED", error.status || 502);
+    }
+  }
+  if (provider !== "stripe" || !config.billingEnabled) return fail("BILLING_NOT_CONFIGURED", 503);
   const offer = billingPlanPayload(plan);
   const subscription = plan.interval === "month";
   const Stripe = (await import("stripe")).default;
@@ -1139,7 +1151,7 @@ export async function handleApi(request) {
     ok: true,
     database: "sqlite",
     registrationEnabled: config.registrationEnabled,
-    billingEnabled: config.billingEnabled,
+    billingEnabled: config.billingEnabled || activePaymentProviders().length > 0,
     accountDeletionEnabled: config.accountDeletionEnabled,
     emailEnabled: config.emailConfigured,
     smsAuthEnabled: config.smsAuthEnabled,
@@ -1152,6 +1164,14 @@ export async function handleApi(request) {
     adminMfaEnforced: config.adminMfaEnforced,
   });
   if (path === "/api/billing/webhook" && request.method === "POST") return stripeWebhook(request);
+  if (path === "/api/billing/webhooks/alipay" && request.method === "POST") {
+    try { await handleAlipayNotification(request); return new Response("success", { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } }); }
+    catch (error) { securityEvent(request, "billing.alipay.webhook", error.code || "failed"); return new Response("failure", { status: error.status || 400 }); }
+  }
+  if (path === "/api/billing/webhooks/wechat" && request.method === "POST") {
+    try { await handleWechatNotification(request); return json({ code: "SUCCESS", message: "成功" }); }
+    catch (error) { securityEvent(request, "billing.wechat.webhook", error.code || "failed"); return json({ code: "FAIL", message: error.code || "支付通知处理失败" }, error.status || 400); }
+  }
   const singingCallbackMatch = path.match(/^\/api\/music\/singing-provider\/callback\/([^/]+)$/);
   if (singingCallbackMatch && request.method === "POST") {
     try { return json(await handleSingingProviderCallback(request, singingCallbackMatch[1])); }
@@ -1557,9 +1577,18 @@ export async function handleApi(request) {
       SELECT id, status, amount_paid AS amountPaid, currency, hosted_url AS hostedUrl, created_at AS createdAt
       FROM invoices WHERE user_id = ? ORDER BY created_at DESC LIMIT 20
     `).all(user.id);
-    return json({ configured: config.billingEnabled, subscription, invoices });
+    const providers = [
+      ...(config.billingEnabled ? [{ id: "stripe", mode: "production" }] : []),
+      ...activePaymentProviders(),
+    ];
+    return json({ configured: providers.length > 0, providers, subscription, invoices });
   }
   if (path === "/api/billing/checkout" && request.method === "POST") return billingCheckout(request, user);
+  const billingOrderMatch = path.match(/^\/api\/billing\/orders\/([^/]+)$/);
+  if (billingOrderMatch && request.method === "GET") {
+    try { return json({ order: domesticOrderStatus(decodeURIComponent(billingOrderMatch[1]), user.id) }); }
+    catch (error) { return fail(error.code || "PAYMENT_ORDER_NOT_FOUND", error.status || 404); }
+  }
   if (path === "/api/billing/portal" && request.method === "POST") return billingPortal(request, user);
   if (path === "/api/runtime/status" && request.method === "GET") {
     const preferences = listToolModelPreferences(user.id);

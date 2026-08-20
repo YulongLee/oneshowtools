@@ -54,6 +54,7 @@ use. The platform runs without provider keys, but AI tasks remain in
 - `DURABLE_WORKER_ENABLED` runs persisted, leased jobs that recover after a process restart.
 - `TOOL_RUNTIME_BASE_URL` connects independent tool runtimes.
 - `STRIPE_SECRET_KEY` and `STRIPE_PRO_PRICE_ID` enable real subscription checkout.
+- Alipay and WeChat Pay credentials are configured in `/admin` under Commerce. Their encrypted key material is stored server-side, and verified provider notifications are the only path that grants credits.
 - `ADMIN_EMAILS` is a comma-separated allowlist of verified accounts that may access `/admin`.
 
 ## Internal Codex executor

@@ -17,6 +17,7 @@ const customerSupportMigration = await readFile(new URL("../db/migrations/0023_c
 const oneShowHomeGatewayMigration = await readFile(new URL("../db/migrations/0024_oneshow_home_model_gateway.sql", import.meta.url), "utf8");
 const toolPublicationMigration = await readFile(new URL("../db/migrations/0025_tool_publication_control.sql", import.meta.url), "utf8");
 const toolBrandingMigration = await readFile(new URL("../db/migrations/0027_tool_branding.sql", import.meta.url), "utf8");
+const domesticPaymentsMigration = await readFile(new URL("../db/migrations/0028_domestic_payment_providers.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -104,6 +105,9 @@ if (!toolPublicationMigration.includes("CREATE TABLE IF NOT EXISTS platform_sett
 }
 if (!toolBrandingMigration.includes("CREATE TABLE IF NOT EXISTS tool_branding ")) {
   throw new Error("Tool branding migration is missing tool_branding");
+}
+if (!domesticPaymentsMigration.includes("CREATE TABLE IF NOT EXISTS payment_provider_configs ")) {
+  throw new Error("Domestic payment migration is missing payment_provider_configs");
 }
 
 for (const table of [

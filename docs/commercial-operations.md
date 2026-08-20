@@ -12,8 +12,8 @@ required provider configuration are present:
 | Account deletion | `ACCOUNT_DELETION_ENABLED=true` | approved retention and deletion policy |
 | Admin RBAC | `ADMIN_RBAC_ENABLED=true` | bootstrapped verified administrator and role migration |
 | Admin MFA | `ADMIN_MFA_ENFORCED=true` | `ADMIN_MFA_ENCRYPTION_KEY`, enrolled owner, tested recovery codes |
-| Alipay adapter | `ALIPAY_ENABLED=true` | approved Alipay application, signing keys, callback verification |
-| WeChat Pay adapter | `WECHAT_PAY_ENABLED=true` | approved merchant account, certificates, callback verification |
+| Alipay website payment | enabled in Admin → Commerce | approved Alipay application, App ID, application private key, Alipay public key |
+| WeChat Pay Native | enabled in Admin → Commerce | approved merchant account, App ID, merchant ID, merchant certificate serial, merchant private key, API v3 key, WeChat Pay public key |
 
 Public tool discovery and existing authenticated free use remain available when
 commercial features are disabled.
@@ -50,6 +50,26 @@ must never be enabled with an HTTPS production `APP_URL`.
 
 Browser checkout returns are informational. Only verified webhook reconciliation
 changes subscriptions or credits.
+
+## Alipay and WeChat Pay
+
+1. Keep `MODEL_CREDENTIAL_ENCRYPTION_KEY` configured as a 32-byte key. Domestic
+   payment credentials use the same server-side AES-256-GCM credential vault and
+   are never returned to the browser after saving.
+2. Configure each channel under Admin → Commerce → Payment channels. Leave the
+   channel disabled until merchant onboarding and callback testing are complete.
+3. Alipay uses desktop website payment and the callback URL
+   `https://<public-domain>/api/billing/webhooks/alipay`.
+4. WeChat uses Native QR payment and the callback URL
+   `https://<public-domain>/api/billing/webhooks/wechat`.
+5. Ensure `APP_URL` is the final public HTTPS origin before placing a real order;
+   both callback URLs are derived from this value.
+6. Credits and one-month membership access are granted only after a signed,
+   amount-matched provider notification. Browser returns and QR polling never
+   grant value.
+7. Until separate recurring-payment agreements are approved and implemented,
+   Alipay and WeChat membership purchases grant a single 30-day period and do
+   not silently renew.
 
 ## Backup, deployment, and rollback
 
