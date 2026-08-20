@@ -13,7 +13,8 @@ import {
   listPlatformModelConfigurations, savePlatformModelConfiguration, testPlatformModelConfiguration,
 } from "./model-gateway.mjs";
 import {
-  objectStorageConfiguration, saveObjectStorageConfiguration, testObjectStorageConfiguration,
+  deleteStoredFile, objectStorageConfiguration, putPlatformAsset,
+  saveObjectStorageConfiguration, testObjectStorageConfiguration,
 } from "./object-storage.mjs";
 import {
   saveSeoProviderConfiguration, seoProviderConfiguration, testSeoProviderConfiguration,
@@ -711,12 +712,107 @@ function listTools() {
       (SELECT version FROM tool_versions WHERE tool_id = t.id ORDER BY version DESC LIMIT 1) AS version,
       (SELECT status FROM tool_health_reports WHERE tool_id = t.id ORDER BY reported_at DESC LIMIT 1) AS healthStatus,
       (SELECT latency_ms FROM tool_health_reports WHERE tool_id = t.id ORDER BY reported_at DESC LIMIT 1) AS latencyMs,
-      (SELECT reported_at FROM tool_health_reports WHERE tool_id = t.id ORDER BY reported_at DESC LIMIT 1) AS healthReportedAt
-    FROM tools t ORDER BY t.name_en
+      (SELECT reported_at FROM tool_health_reports WHERE tool_id = t.id ORDER BY reported_at DESC LIMIT 1) AS healthReportedAt,
+      b.accent_color AS iconColor, b.background_color AS iconBackground,
+      b.updated_at AS brandingUpdatedAt,
+      CASE WHEN b.object_key IS NOT NULL
+        THEN '/api/tools/' || t.slug || '/icon?v=' || b.updated_at ELSE NULL END AS iconUrl
+    FROM tools t LEFT JOIN tool_branding b ON b.tool_id = t.id ORDER BY t.name_en
   `).all().map((tool) => ({ ...tool, active: Boolean(tool.active) }));
 }
 
+function brandingColor(value, fallback) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : fallback;
+}
+
+function validToolIcon(file) {
+  return file instanceof File && file.size > 0 && file.size <= 2 * 1024 * 1024
+    && ["image/png", "image/jpeg", "image/webp"].includes(file.type);
+}
+
+function publicBranding(row, slug) {
+  return {
+    iconColor: row?.accent_color || "#2768EB",
+    iconBackground: row?.background_color || "#EDF4FF",
+    iconUrl: row?.object_key ? `/api/tools/${encodeURIComponent(slug)}/icon?v=${row.updated_at}` : null,
+    updatedAt: row?.updated_at || null,
+  };
+}
+
 async function toolCommands(request, path, context) {
+  let brandingMatch = path.match(/^\/api\/admin\/v1\/tools\/([^/]+)\/branding$/);
+  if (brandingMatch && request.method === "PUT") {
+    const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
+    const tool = db.prepare("SELECT * FROM tools WHERE id = ?").get(brandingMatch[1]);
+    if (!tool) return fail("TOOL_NOT_FOUND", 404);
+    const form = await request.formData();
+    const reason = String(form.get("reason") || "").trim().slice(0, 500);
+    if (!reason) return fail("REASON_REQUIRED");
+    const previous = db.prepare("SELECT * FROM tool_branding WHERE tool_id = ?").get(tool.id);
+    const requestedAccent = String(form.get("iconColor") || "").trim();
+    const requestedBackground = String(form.get("iconBackground") || "").trim();
+    if ((requestedAccent && !/^#[0-9A-Fa-f]{6}$/.test(requestedAccent))
+      || (requestedBackground && !/^#[0-9A-Fa-f]{6}$/.test(requestedBackground))) return fail("INVALID_BRANDING_COLOR");
+    const accentColor = brandingColor(requestedAccent, previous?.accent_color || "#2768EB");
+    const backgroundColor = brandingColor(requestedBackground, previous?.background_color || "#EDF4FF");
+    const icon = form.get("icon");
+    if (icon instanceof File && icon.size && !validToolIcon(icon)) return fail("INVALID_TOOL_ICON", 413);
+    let stored = null;
+    if (icon instanceof File && icon.size) {
+      stored = await putPlatformAsset({
+        scope: "tool-branding", assetId: `${tool.id}-${randomUUID()}`, fileName: icon.name,
+        mimeType: icon.type, buffer: Buffer.from(await icon.arrayBuffer()),
+      });
+    }
+    const timestamp = now();
+    db.prepare(`
+      INSERT INTO tool_branding
+        (tool_id, storage_provider, storage_name, object_key, etag, mime_type, size_bytes,
+          accent_color, background_color, updated_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(tool_id) DO UPDATE SET
+        storage_provider = COALESCE(excluded.storage_provider, tool_branding.storage_provider),
+        storage_name = COALESCE(excluded.storage_name, tool_branding.storage_name),
+        object_key = COALESCE(excluded.object_key, tool_branding.object_key),
+        etag = COALESCE(excluded.etag, tool_branding.etag),
+        mime_type = COALESCE(excluded.mime_type, tool_branding.mime_type),
+        size_bytes = COALESCE(excluded.size_bytes, tool_branding.size_bytes),
+        accent_color = excluded.accent_color, background_color = excluded.background_color,
+        updated_by = excluded.updated_by, updated_at = excluded.updated_at
+    `).run(
+      tool.id, stored?.provider || null, stored?.storageName || null, stored?.objectKey || null,
+      stored?.etag || null, stored ? icon.type : null, stored ? icon.size : null,
+      accentColor, backgroundColor, context.user.id, timestamp, timestamp,
+    );
+    if (stored && previous?.object_key && previous.object_key !== stored.objectKey) {
+      await deleteStoredFile({
+        provider: previous.storage_provider, storageName: previous.storage_name,
+        objectKey: previous.object_key,
+      }).catch(() => {});
+    }
+    const after = db.prepare("SELECT * FROM tool_branding WHERE tool_id = ?").get(tool.id);
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "tools.manage", action: "admin.tool.branding.update", targetType: "tool", targetId: tool.id, reason, before: publicBranding(previous, tool.slug), after: publicBranding(after, tool.slug) });
+    return json({ ok: true, branding: publicBranding(after, tool.slug) });
+  }
+  if (brandingMatch && request.method === "DELETE") {
+    const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const reason = String(data.reason || "").trim().slice(0, 500);
+    if (!reason) return fail("REASON_REQUIRED");
+    const tool = db.prepare("SELECT * FROM tools WHERE id = ?").get(brandingMatch[1]);
+    if (!tool) return fail("TOOL_NOT_FOUND", 404);
+    const previous = db.prepare("SELECT * FROM tool_branding WHERE tool_id = ?").get(tool.id);
+    db.prepare("DELETE FROM tool_branding WHERE tool_id = ?").run(tool.id);
+    if (previous?.object_key) {
+      await deleteStoredFile({
+        provider: previous.storage_provider, storageName: previous.storage_name,
+        objectKey: previous.object_key,
+      }).catch(() => {});
+    }
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "tools.manage", action: "admin.tool.branding.reset", targetType: "tool", targetId: tool.id, reason, before: publicBranding(previous, tool.slug), after: publicBranding(null, tool.slug) });
+    return json({ ok: true, branding: publicBranding(null, tool.slug) });
+  }
   let match = path.match(/^\/api\/admin\/v1\/tools\/([^/]+)$/);
   if (match && request.method === "PATCH") {
     const denied = requirePermission(context, "tools.manage"); if (denied) return denied;

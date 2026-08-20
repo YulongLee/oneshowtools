@@ -67,6 +67,9 @@ const copy = {
     publicationTitle: "工具上线管理", publicationHint: "新工具默认不上线。上线后才会出现在工具市场并允许用户执行。",
     onlineTools: "已上线", offlineTools: "未上线", searchTools: "搜索工具名称或标识", onlineOnly: "仅已上线",
     offlineOnly: "仅未上线", putOnline: "上线", takeOffline: "下线", online: "已上线", offline: "未上线",
+    configureBranding: "配置产品图标", brandingTitle: "产品品牌外观", brandingHint: "上传独立产品图标并配置图标底色。PNG、JPG 或 WebP，最大 2MB。",
+    iconUpload: "上传产品图标", iconColor: "强调色", iconBackground: "图标背景色", brandingReason: "本次变更原因",
+    saveBranding: "保存品牌外观", resetBranding: "恢复默认图标", brandingSaved: "产品图标配置已保存",
     orders: "订单", subscriptions: "订阅", invoices: "发票", refunds: "退款",
     disputes: "争议", exceptions: "对账异常", approvals: "待审批", approve: "批准",
     jobs: "作业队列", alerts: "运营告警", retry: "重试", policies: "政策版本",
@@ -151,6 +154,9 @@ const copy = {
     publicationTitle: "Tool publication", publicationHint: "New tools stay offline by default. Only published tools appear in the marketplace and can run.",
     onlineTools: "Online", offlineTools: "Offline", searchTools: "Search name or slug", onlineOnly: "Online only",
     offlineOnly: "Offline only", putOnline: "Publish", takeOffline: "Take offline", online: "Online", offline: "Offline",
+    configureBranding: "Configure icon", brandingTitle: "Product branding", brandingHint: "Upload a product icon and choose its accent and background colors. PNG, JPG or WebP, up to 2 MB.",
+    iconUpload: "Upload product icon", iconColor: "Accent color", iconBackground: "Icon background", brandingReason: "Reason for change",
+    saveBranding: "Save branding", resetBranding: "Restore default icon", brandingSaved: "Product branding saved",
     orders: "Orders", subscriptions: "Subscriptions", invoices: "Invoices", refunds: "Refunds",
     disputes: "Disputes", exceptions: "Exceptions", approvals: "Approvals", approve: "Approve",
     jobs: "Jobs", alerts: "Alerts", retry: "Retry", policies: "Policies", deletions: "Deletion queue",
@@ -927,10 +933,14 @@ function CommerceView({ data, locale, onApprove }) {
         {!sections[tab]?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div></section></div>;
 }
 
-function ToolsView({ data, locale, onLifecycle }) {
+function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding }) {
   const t = copy[locale];
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [brandingTool, setBrandingTool] = useState(null);
+  const [branding, setBranding] = useState({ icon: null, iconColor: "#2768EB", iconBackground: "#EDF4FF", reason: "" });
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [saving, setSaving] = useState(false);
   const tools = data?.tools || [];
   const onlineCount = tools.filter((tool) => tool.active).length;
   const normalizedQuery = query.trim().toLowerCase();
@@ -940,6 +950,31 @@ function ToolsView({ data, locale, onLifecycle }) {
     if (!normalizedQuery) return true;
     return [tool.slug, tool.nameZh, tool.nameEn, tool.category].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
   });
+  useEffect(() => () => { if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  const openBranding = (tool) => {
+    if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+    setBrandingTool(tool);
+    setPreviewUrl(tool.iconUrl || "");
+    setBranding({ icon: null, iconColor: tool.iconColor || "#2768EB", iconBackground: tool.iconBackground || "#EDF4FF", reason: "" });
+  };
+  const chooseIcon = (file) => {
+    if (!file) return;
+    if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    setBranding((current) => ({ ...current, icon: file }));
+  };
+  const saveBranding = async (event) => {
+    event.preventDefault();
+    if (!branding.reason.trim()) return;
+    const form = new FormData();
+    form.set("reason", branding.reason.trim());
+    form.set("iconColor", branding.iconColor);
+    form.set("iconBackground", branding.iconBackground);
+    if (branding.icon) form.set("icon", branding.icon);
+    setSaving(true);
+    try { if (await onBranding(brandingTool.id, form)) setBrandingTool(null); }
+    finally { setSaving(false); }
+  };
   return <div className="admin-tool-publication-page">
     <section className="admin-tool-publication-head">
       <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
@@ -950,10 +985,18 @@ function ToolsView({ data, locale, onLifecycle }) {
       <nav><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t.all} <span>{tools.length}</span></button><button className={filter === "online" ? "active" : ""} onClick={() => setFilter("online")}>{t.onlineOnly} <span>{onlineCount}</span></button><button className={filter === "offline" ? "active" : ""} onClick={() => setFilter("offline")}>{t.offlineOnly} <span>{tools.length - onlineCount}</span></button></nav>
     </section>
     <div className="admin-tool-admin-grid">{visibleTools.map((tool) => <article className={`admin-tool-admin-card ${tool.active ? "is-online" : "is-offline"}`} key={tool.id}>
-      <header><span><Wrench size={22} /></span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${tool.active ? "published" : "retired"}`}><span />{tool.active ? t.online : t.offline}</i></header>
+      <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${tool.active ? "published" : "retired"}`}><span />{tool.active ? t.online : t.offline}</i></header>
       <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong>{tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-      <footer className="admin-tool-publication-action"><span>{tool.category}</span><button className={tool.active ? "danger" : "primary"} onClick={() => onLifecycle(tool.id, tool.active ? "retired" : "published")}>{tool.active ? t.takeOffline : t.putOnline}</button></footer>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className={tool.active ? "danger" : "primary"} onClick={() => onLifecycle(tool.id, tool.active ? "retired" : "published")}>{tool.active ? t.takeOffline : t.putOnline}</button></div></footer>
     </article>)}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
+    {brandingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBrandingTool(null); }}><form className="admin-branding-dialog" onSubmit={saveBranding}>
+      <header><div><small>PRODUCT IDENTITY</small><h2>{t.brandingTitle}</h2><p>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</p></div><button type="button" onClick={() => setBrandingTool(null)} aria-label={t.close}><X size={20} /></button></header>
+      <div className="admin-branding-preview"><span style={{ color: branding.iconColor, background: branding.iconBackground }}>{previewUrl ? <img src={previewUrl} alt="" /> : <Wrench size={30} weight="duotone" />}</span><div><strong>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</strong><p>{t.brandingHint}</p></div></div>
+      <label className="admin-branding-upload"><ImageSquare size={20} /><span><strong>{t.iconUpload}</strong><small>PNG / JPG / WebP · 2MB</small></span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseIcon(event.target.files?.[0])} /></label>
+      <div className="admin-branding-colors"><label>{t.iconColor}<span><input type="color" value={branding.iconColor} onChange={(event) => setBranding({ ...branding, iconColor: event.target.value.toUpperCase() })} /><code>{branding.iconColor}</code></span></label><label>{t.iconBackground}<span><input type="color" value={branding.iconBackground} onChange={(event) => setBranding({ ...branding, iconBackground: event.target.value.toUpperCase() })} /><code>{branding.iconBackground}</code></span></label></div>
+      <label>{t.brandingReason}<input value={branding.reason} onChange={(event) => setBranding({ ...branding, reason: event.target.value })} required maxLength="500" /></label>
+      <footer><button type="button" className="danger" disabled={saving || (!brandingTool.iconUrl && !brandingTool.iconColor)} onClick={async () => { if (!branding.reason.trim()) return; setSaving(true); try { if (await onResetBranding(brandingTool.id, branding.reason.trim())) setBrandingTool(null); } finally { setSaving(false); } }}>{t.resetBranding}</button><button className="admin-primary" disabled={saving || !branding.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.saveBranding}</button></footer>
+    </form></div>}
   </div>;
 }
 
@@ -1118,6 +1161,14 @@ export function AdminApp() {
   };
   const approve = async (id) => { try { await api(`/api/admin/v1/approvals/${id}/approve`, { method: "POST" }); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const lifecycle = async (id, state) => { try { await api(`/api/admin/v1/tools/${id}/lifecycle`, json("POST", { state, reason: "admin_console" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
+  const saveToolBranding = async (id, form) => {
+    try { await api(`/api/admin/v1/tools/${id}/branding`, { method: "PUT", body: form }); await loadView(); showToast(t.brandingSaved); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
+  const resetToolBranding = async (id, reason) => {
+    try { await api(`/api/admin/v1/tools/${id}/branding`, json("DELETE", { reason })); await loadView(); showToast(t.brandingSaved); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const createAdmin = async (draft) => {
     if (!draft.email?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
@@ -1264,7 +1315,7 @@ export function AdminApp() {
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} />,
-    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} />,
+    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
     audit: <AuditView data={data.audit} locale={locale} onPage={setPage} />,

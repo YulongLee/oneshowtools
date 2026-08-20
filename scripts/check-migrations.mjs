@@ -16,6 +16,7 @@ const modelStudioWorkspaceMigration = await readFile(new URL("../db/migrations/0
 const customerSupportMigration = await readFile(new URL("../db/migrations/0023_customer_support.sql", import.meta.url), "utf8");
 const oneShowHomeGatewayMigration = await readFile(new URL("../db/migrations/0024_oneshow_home_model_gateway.sql", import.meta.url), "utf8");
 const toolPublicationMigration = await readFile(new URL("../db/migrations/0025_tool_publication_control.sql", import.meta.url), "utf8");
+const toolBrandingMigration = await readFile(new URL("../db/migrations/0027_tool_branding.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -100,6 +101,9 @@ for (const invariant of ["oneshow_home_chat", "platform_model_invocations"]) {
 
 if (!toolPublicationMigration.includes("CREATE TABLE IF NOT EXISTS platform_settings ")) {
   throw new Error("Tool publication migration is missing platform_settings");
+}
+if (!toolBrandingMigration.includes("CREATE TABLE IF NOT EXISTS tool_branding ")) {
+  throw new Error("Tool branding migration is missing tool_branding");
 }
 
 for (const table of [

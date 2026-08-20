@@ -189,6 +189,39 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
     200,
   );
 
+  const publishedTool = db.prepare("SELECT id, slug FROM tools WHERE active = 1 ORDER BY slug LIMIT 1").get();
+  assert.ok(publishedTool);
+  const brandingForm = new FormData();
+  brandingForm.set("reason", "Create a distinct commercial product identity");
+  brandingForm.set("iconColor", "#123456");
+  brandingForm.set("iconBackground", "#EEF2FF");
+  brandingForm.set("icon", new File([Buffer.from("89504e470d0a1a0a", "hex")], "product.png", { type: "image/png" }));
+  const branded = await handleApi(authenticated(`/api/admin/v1/tools/${publishedTool.id}/branding`, owner.cookie, {
+    method: "PUT", body: brandingForm,
+  }));
+  assert.equal(branded.status, 200);
+  const brandedBody = await branded.json();
+  assert.equal(brandedBody.branding.iconColor, "#123456");
+  assert.match(brandedBody.branding.iconUrl, new RegExp(`/api/tools/${publishedTool.slug}/icon\\?v=`));
+  assert.equal(/objectKey|storageName|storage_provider/.test(JSON.stringify(brandedBody)), false);
+  const publicTools = await handleApi(request("/api/tools"));
+  const publicTool = (await publicTools.json()).tools.find((tool) => tool.id === publishedTool.id);
+  assert.equal(publicTool.iconBackground, "#EEF2FF");
+  const publicIcon = await handleApi(request(publicTool.iconUrl));
+  assert.equal(publicIcon.status, 200);
+  assert.equal(publicIcon.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await publicIcon.arrayBuffer()).toString("hex"), "89504e470d0a1a0a");
+  const unauthorizedBranding = new FormData();
+  unauthorizedBranding.set("reason", "Unauthorized branding change");
+  assert.equal((await handleApi(authenticated(`/api/admin/v1/tools/${publishedTool.id}/branding`, support.cookie, {
+    method: "PUT", body: unauthorizedBranding,
+  }))).status, 403);
+  const resetBranding = await handleApi(authenticatedJson(`/api/admin/v1/tools/${publishedTool.id}/branding`, owner.cookie, {
+    reason: "Return to the default product identity",
+  }, { method: "DELETE" }));
+  assert.equal(resetBranding.status, 200);
+  assert.equal((await resetBranding.json()).branding.iconUrl, null);
+
   process.env.ADMIN_MFA_ENFORCED = "true";
   const mfaBlocked = await handleApi(authenticated("/api/admin/v1/overview", owner.cookie));
   assert.equal(mfaBlocked.status, 428);

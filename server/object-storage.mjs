@@ -269,6 +269,33 @@ export function objectKeyFor(userId, fileId, fileName, env = process.env) {
   return `${config.prefix}/users/${opaqueUser}/${storageName(fileId, fileName)}`;
 }
 
+export function platformAssetKey(scope, assetId, fileName, env = process.env) {
+  const config = objectStorageConfig(env);
+  const safeScope = String(scope || "assets").replace(/[^A-Za-z0-9/_-]/g, "-").replace(/^\/+|\/+$/g, "") || "assets";
+  const safeAssetId = String(assetId || randomUUID()).replace(/[^A-Za-z0-9_-]/g, "-");
+  return `${config.prefix}/platform/${safeScope}/${storageName(safeAssetId, fileName)}`;
+}
+
+export async function putPlatformAsset({ scope, assetId, fileName, mimeType, buffer, env = process.env }) {
+  const config = objectStorageConfig(env);
+  const localName = storageName(assetId, fileName);
+  if (!config.configured) {
+    await writeFile(resolve(uploadDirectory, localName), buffer);
+    return { provider: "local", storageName: localName, objectKey: localName, etag: null };
+  }
+  const objectKey = safeObjectKey(platformAssetKey(scope, assetId, fileName, env), env);
+  try {
+    const result = await client(env).put(objectKey, buffer, { headers: {
+      "content-type": mimeType || "application/octet-stream",
+      "x-oss-object-acl": "private",
+      "x-oss-forbid-overwrite": "true",
+    } });
+    return { provider: "oss", storageName: localName, objectKey, etag: result?.res?.headers?.etag || result?.etag || null };
+  } catch (error) {
+    throw storageError(error?.code === "FileAlreadyExists" ? "OSS_OBJECT_COLLISION" : "OSS_UPLOAD_FAILED", 502);
+  }
+}
+
 export async function putStoredFile({ userId, fileId, fileName, mimeType, buffer, env = process.env }) {
   const config = objectStorageConfig(env);
   const localName = storageName(fileId, fileName);

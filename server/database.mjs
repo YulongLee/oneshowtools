@@ -300,6 +300,7 @@ export function initializeDatabase() {
   }
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0025_tool_publication_control.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0026_sms_auth.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0027_tool_branding.sql"), "utf8"));
   const planColumns = new Set(db.prepare("PRAGMA table_info(plans)").all().map((item) => item.name));
   if (!planColumns.has("file_limit")) db.exec("ALTER TABLE plans ADD COLUMN file_limit INTEGER NOT NULL DEFAULT 100");
   db.exec(`

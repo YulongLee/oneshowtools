@@ -197,10 +197,17 @@ function accountVerified(user) {
 }
 
 function toolSelect() {
-  return `SELECT id, slug, name_zh AS nameZh, name_en AS nameEn,
-    description_zh AS descriptionZh, description_en AS descriptionEn,
-    category, icon, credit_cost AS creditCost, runtime_kind AS runtimeKind,
-    runtime_status AS runtimeStatus, active FROM tools`;
+  return `SELECT tools.id, tools.slug, tools.name_zh AS nameZh, tools.name_en AS nameEn,
+    tools.description_zh AS descriptionZh, tools.description_en AS descriptionEn,
+    tools.category, tools.icon, tools.credit_cost AS creditCost, tools.runtime_kind AS runtimeKind,
+    tools.runtime_status AS runtimeStatus, tools.active,
+    (SELECT accent_color FROM tool_branding WHERE tool_id = tools.id) AS iconColor,
+    (SELECT background_color FROM tool_branding WHERE tool_id = tools.id) AS iconBackground,
+    CASE WHEN (SELECT object_key FROM tool_branding WHERE tool_id = tools.id) IS NOT NULL
+      THEN '/api/tools/' || tools.slug || '/icon?v=' ||
+        (SELECT updated_at FROM tool_branding WHERE tool_id = tools.id)
+      ELSE NULL END AS iconUrl
+    FROM tools`;
 }
 
 function storefrontTools() {
@@ -1168,6 +1175,32 @@ export async function handleApi(request) {
   }
   if (path === "/api/auth/session" && request.method === "GET") {
     return json({ user: cleanUser(currentUser(request)) });
+  }
+  const publicToolIconMatch = path.match(/^\/api\/tools\/([^/]+)\/icon$/);
+  if (publicToolIconMatch && request.method === "GET") {
+    let slug;
+    try { slug = decodeURIComponent(publicToolIconMatch[1]); }
+    catch { return fail("INVALID_TOOL_SLUG"); }
+    const branding = db.prepare(`
+      SELECT b.storage_provider AS provider, b.storage_name AS storageName,
+        b.object_key AS objectKey, b.mime_type AS mimeType, b.etag
+      FROM tool_branding b JOIN tools t ON t.id = b.tool_id
+      WHERE t.slug = ? AND t.active = 1 AND b.object_key IS NOT NULL
+    `).get(slug);
+    if (!branding) return fail("TOOL_ICON_NOT_FOUND", 404);
+    try {
+      const stored = await readStoredFile(branding);
+      return new Response(stored, {
+        status: 200,
+        headers: {
+          "content-type": branding.mimeType || "application/octet-stream",
+          "cache-control": "public, max-age=86400, immutable",
+          ...(branding.etag ? { etag: branding.etag } : {}),
+        },
+      });
+    } catch {
+      return fail("TOOL_ICON_NOT_FOUND", 404);
+    }
   }
   if (path === "/api/tools" && request.method === "GET") {
     return json({ tools: storefrontTools() });
