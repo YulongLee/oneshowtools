@@ -15,6 +15,7 @@ import { pdfToolSlugSet, processPdfTool } from "./pdf-tools.mjs";
 import { processUtilityTool, utilityToolSlugs } from "./utility-tools.mjs";
 import { mediaToolSlugs, processMediaTool } from "./media-tools.mjs";
 import { dataFileToolSlugs, processDataFileTool } from "./data-tools.mjs";
+import { analyzeFoodNutrition } from "./food-nutrition.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -296,7 +297,11 @@ export async function runToolAction(request, user, tool) {
       input.outfit = String(form.get("outfit") || "").trim().slice(0, 300);
       input.prompt = String(form.get("prompt") || "").trim().slice(0, 1200);
     }
-    if (tool.slug === "background-remover") processed = await processBackground(file, form);
+    if (tool.slug === "food-nutrition-analyzer") {
+      processed = await analyzeFoodNutrition(form);
+      input = processed.safeInput;
+    }
+    else if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);
     else if (imageToolSlugs.has(tool.slug)) processed = await processImageTool(tool.slug, form);
     else if (aiImageToolSlugs.has(tool.slug)) processed = await processAiImageTool(tool.slug, form);

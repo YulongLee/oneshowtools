@@ -120,7 +120,14 @@ function keyHint(apiKey) {
   return compact.length > 4 ? `••••${compact.slice(-4)}` : "••••";
 }
 
-const platformPurposes = new Set(["managed_runtime", "market_intelligence", "oneshow_home_chat"]);
+const platformPurposes = new Set(["managed_runtime", "market_intelligence", "oneshow_home_chat", "food_nutrition"]);
+
+function platformPurposeName(purpose) {
+  if (purpose === "managed_runtime") return MANAGED_MODEL_ALIAS;
+  if (purpose === "oneshow_home_chat") return "OneShow Home Buddy";
+  if (purpose === "food_nutrition") return "Food Nutrition Vision";
+  return "Market Intelligence";
+}
 
 function normalizeWorkspaceId(value) {
   const workspaceId = String(value || "").trim();
@@ -147,24 +154,30 @@ function serializePlatformModel(row, purpose) {
   if (!row) return {
     purpose,
     source: "environment",
-    name: purpose === "managed_runtime" ? MANAGED_MODEL_ALIAS : purpose === "oneshow_home_chat" ? "OneShow Home Buddy" : "Market Intelligence",
+    name: platformPurposeName(purpose),
     providerTemplate: "openai",
     baseUrl: purpose === "managed_runtime"
       ? process.env.ONESHOW_MODEL_BASE_URL || "https://api.openai.com/v1"
       : purpose === "oneshow_home_chat"
       ? process.env.ONESHOW_HOME_CHAT_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      : purpose === "food_nutrition"
+      ? process.env.FOOD_NUTRITION_MODEL_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1"
       : process.env.CODEX_BASE_URL || process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1",
     modelId: purpose === "managed_runtime"
       ? process.env.ONESHOW_MODEL_ID || process.env.OPENAI_MODEL || null
       : purpose === "oneshow_home_chat"
       ? process.env.ONESHOW_HOME_CHAT_MODEL || null
+      : purpose === "food_nutrition"
+      ? process.env.FOOD_NUTRITION_MODEL_ID || "qwen3.6-flash"
       : process.env.MARKET_INTELLIGENCE_MODEL || null,
-    workspaceId: purpose === "market_intelligence" ? process.env.DASHSCOPE_WORKSPACE_ID || null : null,
+    workspaceId: ["market_intelligence", "food_nutrition"].includes(purpose) ? process.env.DASHSCOPE_WORKSPACE_ID || null : null,
     keyHint: null,
     configured: purpose === "managed_runtime"
       ? Boolean(process.env.ONESHOW_MODEL_API_KEY || process.env.OPENAI_API_KEY)
       : purpose === "oneshow_home_chat"
       ? Boolean(process.env.ONESHOW_HOME_CHAT_API_KEY)
+      : purpose === "food_nutrition"
+      ? Boolean(process.env.FOOD_NUTRITION_MODEL_API_KEY)
       : Boolean(process.env.DASHSCOPE_API_KEY || process.env.OFFERSTEADY_DASHSCOPE_API_KEY),
     status: "environment",
     lastTestStatus: null,
@@ -191,7 +204,7 @@ function serializePlatformModel(row, purpose) {
 }
 
 export function listPlatformModelConfigurations() {
-  return ["managed_runtime", "market_intelligence", "oneshow_home_chat"].map((purpose) => serializePlatformModel(platformModelRow(purpose), purpose));
+  return ["managed_runtime", "market_intelligence", "oneshow_home_chat", "food_nutrition"].map((purpose) => serializePlatformModel(platformModelRow(purpose), purpose));
 }
 
 export function platformModelConfiguration(purpose) {
@@ -525,7 +538,7 @@ function validPlatformInput(purpose, data, existing = null) {
   if (!platformPurposes.has(purpose)) throw gatewayError("INVALID_PLATFORM_MODEL_PURPOSE", 400);
   const apiKey = String(data.apiKey || "").trim();
   const input = validConnectionInput({
-    name: data.name || existing?.name || (purpose === "managed_runtime" ? MANAGED_MODEL_ALIAS : "Market Intelligence"),
+    name: data.name || existing?.name || platformPurposeName(purpose),
     providerTemplate: data.providerTemplate || existing?.provider_template || "openai",
     baseUrl: data.baseUrl || existing?.base_url,
     modelId: data.modelId || existing?.model_id,
@@ -630,6 +643,43 @@ export async function invokePlatformModel({ purpose, service = "unknown", instru
       instruction: String(instruction || "").slice(0, 12_000),
       text: normalizedMessages.at(-1).content,
       messages: normalizedMessages,
+      signal,
+      timeoutMs,
+    });
+    db.prepare(`UPDATE platform_model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,
+      latency_ms = ?, completed_at = ? WHERE id = ?`)
+      .run(result.usage.inputTokens, result.usage.outputTokens, Date.now() - startedAt, Date.now(), invocationId);
+    return { ...result, modelId: route.modelId, invocationId };
+  } catch (error) {
+    db.prepare(`UPDATE platform_model_invocations SET status = 'failed', error_class = ?, latency_ms = ?,
+      completed_at = ? WHERE id = ?`)
+      .run(error.code || "MODEL_REQUEST_FAILED", Date.now() - startedAt, Date.now(), invocationId);
+    throw error;
+  }
+}
+
+export async function invokePlatformVisionModel({ purpose, service = "unknown", instruction, prompt, imageDataUrl, signal, timeoutMs = null }) {
+  const route = platformModelRoute(purpose);
+  if (!route) throw gatewayError("PLATFORM_MODEL_UNAVAILABLE", 503, true);
+  const image = String(imageDataUrl || "");
+  const match = image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match || image.length > 10_000_000) throw gatewayError("INVALID_MODEL_IMAGE", 400);
+  const text = String(prompt || "").trim().slice(0, 16_000);
+  if (!text) throw gatewayError("INVALID_MODEL_MESSAGES", 400);
+  const content = route.protocol === "anthropic"
+    ? [{ type: "image", source: { type: "base64", media_type: match[1], data: match[2] } }, { type: "text", text }]
+    : [{ type: "text", text }, { type: "image_url", image_url: { url: image } }];
+  const invocationId = randomUUID();
+  const startedAt = Date.now();
+  db.prepare(`INSERT INTO platform_model_invocations (id, purpose, service, status, model_id, started_at)
+    VALUES (?, ?, ?, 'running', ?, ?)`)
+    .run(invocationId, purpose, String(service).slice(0, 80), route.modelId, startedAt);
+  try {
+    const result = await requestModel({
+      ...route,
+      instruction: String(instruction || "").slice(0, 12_000),
+      text,
+      messages: [{ role: "user", content }],
       signal,
       timeoutMs,
     });

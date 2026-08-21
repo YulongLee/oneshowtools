@@ -436,6 +436,7 @@ export function initializeDatabase() {
     ["tool_ai_cutout", "ai-smart-cutout", "智能抠图", "Smart AI Cutout", "识别人物、商品和复杂边缘，生成透明背景 PNG。", "Extract people and products with fine edges into a transparent PNG.", "image", "GridFour", 20, "platform-image-edit"],
     ["tool_ai_bg_replace", "ai-background-replacer", "背景替换", "AI Background Replacer", "保留主体细节并根据描述生成光影与透视自然的新背景。", "Replace a background while matching the subject's lighting, perspective, and contact shadow.", "image", "ArrowsClockwise", 25, "platform-image-edit"],
     ["tool_ai_restore", "ai-image-restorer", "图片高清修复", "AI Image Restorer", "修复模糊、噪点、压缩痕迹和老照片划痕，输出高清图片。", "Restore blur, noise, compression artifacts, and scratches into a high-resolution image.", "image", "Sparkle", 25, "platform-image-upscale"],
+    ["tool_food_nutrition", "food-nutrition-analyzer", "AI 食物热量分析", "AI Food Nutrition Analyzer", "上传一张食物照片，识别菜品与份量，估算热量、蛋白质、碳水、脂肪、膳食纤维和钠，并说明误差来源。", "Upload a food photo to estimate portions, calories, protein, carbs, fat, fiber, and sodium with transparent uncertainty.", "image", "ChartBar", 8, "platform-food-vision"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
@@ -577,6 +578,8 @@ export function refreshRuntimeStatuses() {
   `).get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(imageEditingReady ? "ready" : "configuration_required");
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(imageUpscalingReady ? "ready" : "configuration_required");
+  const foodVisionReady = db.prepare("SELECT 1 AS ready FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active' LIMIT 1").get();
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-food-vision'").run(foodVisionReady ? "ready" : "configuration_required");
 }
 
 export function audit(userId, action, targetType = null, targetId = null, metadata = {}) {

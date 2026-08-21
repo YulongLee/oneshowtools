@@ -16,6 +16,7 @@ import { MusicStudio } from "./MusicStudio.jsx";
 import { LyricsGenerator } from "./LyricsGenerator.jsx";
 import { SupportWidget } from "./SupportWidget.jsx";
 import { SlidingAncestorStudio } from "./SlidingAncestorStudio.jsx";
+import { FoodNutritionAnalyzer } from "./FoodNutritionAnalyzer.jsx";
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -780,6 +781,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 }
 
 function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
