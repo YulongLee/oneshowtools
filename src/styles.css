@@ -1679,7 +1679,6 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .billing-dashboard-layout .membership-price { margin-top: 17px; font-size: 25px; }
 .billing-dashboard-layout .membership-credits { min-height: 43px; margin-top: 13px; }
 .billing-dashboard-layout .membership-card ul { margin: 14px 0 18px; gap: 7px; }
-.billing-invoices { display: grid; gap: 10px; }
 .billing-side { display: grid; gap: 14px; }
 .billing-side > article { border-radius: 13px; }
 .billing-account { padding: 20px 16px 17px; text-align: center; }
