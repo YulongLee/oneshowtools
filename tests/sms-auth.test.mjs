@@ -50,7 +50,7 @@ test("SMS login sends through Aliyun, creates one account, and consumes the code
   assert.equal((await incorrect.json()).error.code, "SMS_CODE_INVALID");
 
   const verified = await handleApi(request("/api/auth/sms/verify", {
-    phone: "+8613800138000", code: deliveredCode, name: "短信用户", locale: "zh-CN",
+    phone: "+8613800138000", code: deliveredCode, locale: "zh-CN",
   }));
   assert.equal(verified.status, 201);
   const payload = await verified.json();
@@ -58,6 +58,7 @@ test("SMS login sends through Aliyun, creates one account, and consumes the code
   assert.equal(payload.user.phone, "+86 **** 8000");
   assert.equal(payload.user.phoneVerified, true);
   assert.deepEqual(payload.user.authMethods, ["sms"]);
+  assert.equal(payload.user.name, "用户_8000");
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 1);
   assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id = ?").get(payload.user.id).balance, 200);
 

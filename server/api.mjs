@@ -491,7 +491,7 @@ async function verifySmsLogin(request) {
   let userId = identity?.user_id;
   const timestamp = Date.now();
   if (!userId) {
-    const name = String(data.name || "").trim().slice(0, 80) || `用户${phone.last4}`;
+    const name = data.locale === "en" ? `User_${phone.last4}` : `用户_${phone.last4}`;
     userId = randomUUID();
     const internalEmail = `phone-${phoneHash.slice(0, 32)}@phone.oneshowtools.invalid`;
     const randomPassword = await hashPassword(randomBytes(32).toString("base64url"));
