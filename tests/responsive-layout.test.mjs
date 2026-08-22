@@ -18,18 +18,35 @@ test("music studio responds to its actual container without horizontal overflow"
   assert.match(styles, /\.music-track \{ min-width: 0;[\s\S]*grid-template-columns: 52px minmax\(0,1fr\)/);
 });
 
-test("commercial homepage prevents overflow and stacks its showcase on narrow screens", () => {
+test("commercial homepage prevents overflow and stacks its capability cards on narrow screens", () => {
   assert.match(styles, /html, body, #root \{[^}]*min-width: 0;[^}]*overflow-x: clip/);
   assert.match(styles, /\.commercial-header \.brand-lockup \{[^}]*padding: 0/);
-  assert.match(styles, /\.landing-live-showcase \{[^}]*grid-template-columns:/);
-  assert.match(styles, /@media \(max-width: 900px\)[\s\S]*\.landing-live-showcase \{ grid-template-columns: 1fr;/);
+  assert.match(styles, /\.landing-capability-mosaic \{[^}]*grid-template-columns:/);
+  assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.landing-capability-mosaic \{ grid-template-columns: 1fr;/);
   assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.landing-hero h1 \{[^}]*overflow-wrap: anywhere/);
 });
 
-test("guest homepage exposes real catalog states instead of presenting zero as a product claim", () => {
+test("guest homepage exposes real catalog states and a stable reference-led hero", () => {
   assert.match(appSource, /catalogStatus === "loading"/);
   assert.match(appSource, /catalogStatus === "error"/);
   assert.match(appSource, /retryCatalog/);
-  assert.match(appSource, /live-capabilities-showcase\.webp/);
-  assert.match(appSource, /featuredTools\.slice\(0, 2\)/);
+  assert.match(appSource, /landing-v2\/ai-agent-robot\.png/);
+  assert.match(appSource, /landing-v2\/cta-ai-platform\.png/);
+  assert.match(appSource, /className="landing-product-stories"/);
+  assert.match(appSource, /landing\/creative-suite-triptych\.png/);
+  assert.match(appSource, /copy\.stories\.map/);
+  assert.match(appSource, /heroToolCatalog/);
+  assert.match(appSource, /oneshowtools-mark-512\.png/);
+  assert.match(appSource, /data-orbit-card/);
+  assert.match(appSource, /requestAnimationFrame\(placeCards\)/);
+  assert.match(appSource, /\* \.000022/);
+  assert.match(appSource, /key={`orbit-slot-\$\{index\}`}/);
+  assert.match(appSource, /disabled=\{!tool\}/);
+  assert.doesNotMatch(appSource, /key=\{heroToolPage\}/);
+  assert.doesNotMatch(styles, /orbit-card-enter/);
+  assert.doesNotMatch(styles, /@keyframes orbit-track-forward/);
+  assert.doesNotMatch(appSource, /className="orbit-note"/);
+  assert.match(appSource, /\["100\+", "AI 工具"\]/);
+  assert.match(appSource, /\["98%\+", "用户满意度"\]/);
+  assert.doesNotMatch(appSource, /setHeroToolPage/);
 });

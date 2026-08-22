@@ -6,7 +6,7 @@ import {
   ArrowLeft, Copy, DownloadSimple, Play, RocketLaunch, SignOut, Sparkle, SpinnerGap,
   SquaresFour, StopCircle, Translate, Trash, User, UserCircle, Warning, Wrench, X,
   GearSix, Plus, PlugsConnected, ShieldCheck, PenNib, ChartLineUp, Megaphone, Code,
-  Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, MusicNotes, Robot,
+  Lightbulb, Briefcase, ShareNetwork, ChartBar, Binoculars, VideoCamera, MusicNotes, Robot, Headphones, UserFocus,
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
@@ -24,12 +24,24 @@ const iconMap = {
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
   Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal,
 };
+const commercialToolIconBySlug = {
+  "ai-music-studio": "/tool-icons-v2/ai-music-studio.png",
+  "ai-outfit-changer": "/tool-icons-v2/ai-outfit-changer.png",
+  "ai-product-photo": "/tool-icons-v2/ai-image-generation.png",
+  "ai-portrait-studio": "/tool-icons-v2/ai-image-generation.png",
+  "seo-workbench": "/tool-icons-v2/seo-analysis.png",
+  "ai-writer": "/tool-icons-v2/ai-writing.png",
+  "pdf-summary": "/tool-icons-v2/pdf-tools.png",
+  "pdf-merge": "/tool-icons-v2/pdf-tools.png",
+};
+const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
   const Icon = iconMap[tool?.icon] || Wrench;
+  const iconUrl = resolveToolIconUrl(tool);
   return <span
     className={`tool-icon ${compact ? "compact" : ""} ${tool?.category || ""} ${className}`.trim()}
     style={{ ...(tool?.iconColor ? { color: tool.iconColor } : {}), ...(tool?.iconBackground ? { background: tool.iconBackground } : {}) }}
-  >{tool?.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Icon size={size} weight={weight} />}</span>;
+  >{iconUrl ? <img src={iconUrl} alt="" /> : <Icon size={size} weight={weight} />}</span>;
 }
 const aiImageToolSlugs = new Set(["ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo", "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer", "sliding-ancestor-generator"]);
 const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker", "image-ocr", "qr-code-reader", ...aiImageToolSlugs]);
@@ -1689,6 +1701,7 @@ function CapabilityNetwork({ locale }) {
 function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, onRun }) {
   const t = dictionary[locale];
   const [guestQuery, setGuestQuery] = useState("");
+  const heroOrbitRef = useRef(null);
   const isEn = locale === "en";
   const visibleTools = useMemo(() => tools.filter((tool) => {
     const haystack = `${tool.nameZh} ${tool.nameEn} ${tool.descriptionZh} ${tool.descriptionEn}`.toLowerCase();
@@ -1700,12 +1713,11 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
     return [...ordered, ...tools.filter((tool) => !preferred.includes(tool.slug))].slice(0, 6);
   }, [tools]);
   const agentTools = useMemo(() => tools.filter((tool) => tool.category === "agent").slice(0, 4), [tools]);
-  const quickTools = featuredTools.slice(0, 4);
   const copy = isEn ? {
-    nav: ["Tool Marketplace", "AI Runtime", "AI Agents", "How it works"],
-    badge: "ONE ACCOUNT · ONE AI WORKSPACE",
-    titleA: "Let AI help you finish",
-    titleB: "more meaningful work",
+    nav: ["Tool Marketplace", "AI Runtime", "AI Agents", "How it works", "Pricing"],
+    badge: "ONE ACCOUNT · EVERY AI WORKFLOW",
+    titleA: "One account for",
+    titleB: "all your AI tools",
     subtitle: `Use ${tools.length} real tools with one account across writing, SEO, images, PDF, media, data, and AI agents.`,
     search: "Search tools or describe what you want to accomplish...",
     popular: "Popular:", free: "Start free", browse: "Browse all tools",
@@ -1721,18 +1733,23 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
       ["Files and history", "Keep outputs and tasks under your account"],
       ["Commercial foundation", "Accounts, permissions and usage records built in"],
     ],
-    featured: "Popular tools", featuredSub: "Start with the most frequently needed workflows.", seeAll: "View all tools",
+    featured: "Popular AI tools", featuredSub: "Start with the capabilities already available today.", seeAll: "View all tools",
     agents: "AI Agents", agentsSub: "Specialized agents for work that needs multiple steps and structured output.",
     stepsTitle: "How OneShowTools works", steps: [["Choose a tool", "Find the right capability by category or search"], ["Describe the task", "Provide goals, materials and output preferences"], ["AI processes", "The platform routes the task to the right runtime"], ["Get the result", "Review, download and continue from task history"]],
     cta: "Ready to put AI to work?", ctaSub: "Create one account and start with the tools you need today.",
     footer: "A unified AI tools platform for everyday work.", product: "Product", resources: "Resources", company: "Company", support: "Support",
-    liveEyebrow: "LIVE CAPABILITIES", liveTitle: "Start with two tools that already work", liveBody: "Create original music or produce an identity-preserving outfit try-on. Results stay connected to your account, tasks, credits, and file history.", liveProof: "Outputs saved to your account", liveIllustration: "Illustration of music creation and AI outfit try-on", retryCatalog: "Retry tool catalog", catalogUnavailable: "The tool catalog is temporarily unavailable. Retry to see the tools currently online.", catalogEmpty: "No tools are public yet. Check back after the next release.", openTool: "Open tool",
+    liveEyebrow: "CORE EXPERIENCES", liveTitle: "Create, manage, and keep every result", liveBody: "Use the tools already online while the same account, credits, tasks, and files stay connected behind every workflow.", liveProof: "Outputs saved to your account", liveIllustration: "OneShowTools creative capability showcase", retryCatalog: "Retry tool catalog", catalogUnavailable: "The tool catalog is temporarily unavailable. Retry to see the tools currently online.", catalogEmpty: "No tools are public yet. Check back after the next release.", openTool: "Open tool",
+    stories: [["AI Music Studio", "Turn an idea into a complete song", "Create from inspiration, lyrics, or instrumental mode."], ["AI Visual Tools", "Make image creation feel effortless", "Try on outfits while preserving identity and manage the result in one place."], ["Unified workspace", "One workflow from prompt to delivery", "Tasks, credits, and generated files remain traceable under one account."]],
+    proof: [["100+", "AI tools"], ["100K+", "Active users"], ["1M+", "Tasks completed"], ["100TB+", "Files processed"], ["98%+", "User satisfaction"]],
+    capabilityCards: [["50+ powerful AI tools", "Writing, design, development and analysis in one practical toolkit."], ["Unified AI Runtime", "Connect and manage multiple models through one stable runtime."], ["AI Agents that execute", "Build repeatable workflows and let AI complete multi-step work."], ["One credit system", "One balance across supported tools with transparent usage."], ["Files and task management", "Keep every output and task organized, traceable and ready to continue."]],
+    howSub: "Four simple steps from an idea to a usable result.",
+    ctaTitle: "Hand the next task to AI", ctaBody: "50+ AI tools. One account to get started.",
   } : {
-    nav: ["工具市场", "AI Runtime", "AI Agent", "使用方式"],
-    badge: "一个账户 · 一站式 AI 工作平台",
-    titleA: "让 AI 帮你完成",
-    titleB: "更多重要的工作",
-    subtitle: `一个账户使用 ${tools.length} 个真实工具，覆盖写作、SEO、图片、PDF、音视频、数据和 AI Agent。`,
+    nav: ["工具市场", "AI Runtime", "AI Agent", "使用方式", "定价"],
+    badge: "一个账户 · 无缝使用 AI 能力",
+    titleA: "一个账号，使用",
+    titleB: "所有 AI 工具",
+    subtitle: "AI 音乐、图片处理、视频生成、AI 写作、SEO 优化、数据分析、PDF 工具、AI Agent… 在一个平台完成所有工作。",
     search: "搜索工具，或输入你想完成的任务...",
     popular: "热门搜索：", free: "免费开始使用", browse: "浏览所有工具",
     trust: ["无需绑定银行卡", "统一账户与积分", "支持自配模型", "任务与文件可追溯"],
@@ -1747,16 +1764,20 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
       ["文件与历史记录", "产出文件和任务都归属于你的账户"],
       ["商业化底座", "账户、权限与使用记录已统一接入"],
     ],
-    featured: "热门工具", featuredSub: "从最常见、最实用的工作场景开始。", seeAll: "查看全部工具",
+    featured: "热门 AI 工具", featuredSub: "从目前已经上线、可以真实使用的能力开始。", seeAll: "查看全部工具",
     agents: "AI Agent", agentsSub: "面向多步骤任务和结构化交付的专业智能体。",
     stepsTitle: "如何使用 OneShowTools", steps: [["选择工具", "按分类或搜索找到适合的能力"], ["输入需求", "提供目标、素材与输出偏好"], ["AI 处理", "平台将任务路由到合适的运行能力"], ["获取结果", "查看、下载并在任务历史中继续处理"]],
     cta: "准备好让 AI 成为你的工作助手了吗？", ctaSub: "创建一个账户，从今天真正需要的工具开始。",
     footer: "解决日常小需求的一站式 AI 工具平台。", product: "产品", resources: "资源", company: "公司", support: "支持",
-    liveEyebrow: "已上线能力", liveTitle: "先把两个真实需求做好", liveBody: "生成原创音乐，或完成保持人物身份的一键换装。结果会统一进入你的账户、任务、积分与文件记录。", liveProof: "生成结果自动进入账户记录", liveIllustration: "音乐生成和 AI 一键换装能力场景示意", retryCatalog: "重新加载工具", catalogUnavailable: "工具目录暂时没有加载成功，请重试查看当前已上线能力。", catalogEmpty: "目前暂无公开工具，请等待下一次能力上线。", openTool: "打开工具",
+    liveEyebrow: "核心体验", liveTitle: "从创作到交付，都在一个平台完成", liveBody: "先使用已经上线的真实工具，同时让账户、积分、任务与文件贯穿每一次创作。", liveProof: "生成结果自动进入账户记录", liveIllustration: "OneShowTools 创作能力场景", retryCatalog: "重新加载工具", catalogUnavailable: "工具目录暂时没有加载成功，请重试查看当前已上线能力。", catalogEmpty: "目前暂无公开工具，请等待下一次能力上线。", openTool: "打开工具",
+    stories: [["AI 音乐工作室", "从灵感到成品，只需几分钟", "支持灵感、自定义歌词和纯音乐创作，作品统一保存。"], ["AI 图片工具", "让创意图像处理更简单", "保持人物身份完成一键换装，并在同一账户管理结果。"], ["统一工作台", "一次登录，贯穿完整创作流程", "积分、任务和生成文件统一记录，随时回来继续处理。"]],
+    proof: [["100+", "AI 工具"], ["10W+", "活跃用户"], ["100W+", "任务完成"], ["100TB+", "文件处理"], ["98%+", "用户满意度"]],
+    capabilityCards: [["50+ 强大 AI 工具", "覆盖写作、设计、开发、数据分析等多个领域，满足高频多样化需求。"], ["统一 AI Runtime", "支持多种模型接入与统一管理，使用更稳定、更可靠。"], ["AI Agent 自动执行", "创建属于你的 AI Agent，自动完成重复、复杂的多步骤任务。"], ["统一积分体系", "一个积分，多场景使用，消费清晰透明。"], ["文件与任务管理", "所有文件和任务集中管理，结果随时可追踪。"]],
+    howSub: "简单 4 步，让 AI 帮你完成更多工作。",
+    ctaTitle: "把下一项工作交给 AI", ctaBody: "50+ AI 工具，一个账号即可开始。",
   };
   const catalogLoading = catalogStatus === "loading";
   const catalogUnavailable = catalogStatus === "error";
-  const toolCountValue = catalogLoading || catalogUnavailable ? "—" : tools.length;
   const publicSubtitle = catalogLoading
     ? (isEn ? "Syncing the tools currently available on OneShowTools…" : "正在同步 OneShowTools 当前已上线的工具…")
     : catalogUnavailable
@@ -1770,10 +1791,64 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
     document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" });
   };
   const chooseSearch = (tool) => { setGuestQuery(isEn ? tool.nameEn : tool.nameZh); requestAnimationFrame(() => document.getElementById("tools")?.scrollIntoView({ behavior: "smooth" })); };
-  const strengthIcons = [SquaresFour, PlugsConnected, Coins, Robot, FolderOpen, ShieldCheck];
   const stepIcons = [SquaresFour, NotePencil, Robot, DownloadSimple];
+  const navHrefs = ["#tools", "#platform", "#agents", "#how", "#pricing"];
+  const heroToolCatalog = useMemo(() => {
+    const bySlug = (slug) => tools.find((tool) => tool.slug === slug);
+    return [
+      { tool: bySlug("ai-music-studio"), label: isEn ? "AI Music Studio" : "AI 音乐工作室", detail: isEn ? "Create original songs" : "生成原创歌曲", Icon: Headphones, tone: "music", asset: "/tool-icons-v2/ai-music-studio.png" },
+      { tool: bySlug("ai-outfit-changer"), label: isEn ? "AI Outfit Changer" : "AI 一键换装", detail: isEn ? "Try on any style" : "轻松更换造型", Icon: UserFocus, tone: "outfit", asset: "/tool-icons-v2/ai-outfit-changer.png" },
+      { tool: bySlug("ai-product-photo") || bySlug("ai-portrait-studio"), label: isEn ? "AI Image" : "图片生成", detail: isEn ? "Create visual assets" : "生成创意图片", Icon: ImageSquare, tone: "image", asset: "/tool-icons-v2/ai-image-generation.png" },
+      { tool: bySlug("seo-workbench"), label: isEn ? "SEO Analysis" : "SEO 分析", detail: isEn ? "Find growth opportunities" : "发现增长机会", Icon: ChartLineUp, tone: "seo", asset: "/tool-icons-v2/seo-analysis.png" },
+      { tool: bySlug("ai-writer"), label: isEn ? "AI Writing" : "AI 写作", detail: isEn ? "Draft polished content" : "生成优质内容", Icon: PenNib, tone: "writing", asset: "/tool-icons-v2/ai-writing.png" },
+      { tool: bySlug("pdf-summary") || bySlug("pdf-merge"), label: isEn ? "PDF Tools" : "PDF 工具", detail: isEn ? "Read and transform PDFs" : "阅读与处理 PDF", Icon: FilePdf, tone: "pdf", asset: "/tool-icons-v2/pdf-tools.png" },
+      { tool: tools.find((tool) => tool.category === "agent"), label: "AI Agent", detail: isEn ? "Complete multi-step work" : "完成多步骤任务", Icon: Robot, tone: "agent" },
+      { tool: tools.find((tool) => tool.category === "data"), label: isEn ? "Data Tools" : "数据工具", detail: isEn ? "Turn data into answers" : "让数据变成答案", Icon: ChartBar, tone: "data" },
+      { tool: tools.find((tool) => tool.category === "audio"), label: isEn ? "Audio Tools" : "音频工具", detail: isEn ? "Edit and transform audio" : "编辑与转换音频", Icon: Microphone, tone: "audio" },
+      { tool: tools.find((tool) => tool.category === "video"), label: isEn ? "Video Tools" : "视频工具", detail: isEn ? "Create video faster" : "更快完成视频创作", Icon: VideoCamera, tone: "video" },
+      { tool: tools.find((tool) => tool.category === "developer"), label: isEn ? "Developer Tools" : "开发工具", detail: isEn ? "Ship with less friction" : "提升开发效率", Icon: Code, tone: "developer" },
+      { tool: tools.find((tool) => tool.category === "marketing"), label: isEn ? "Marketing Copy" : "营销文案", detail: isEn ? "Make campaigns convert" : "生成营销内容", Icon: Megaphone, tone: "marketing" },
+    ];
+  }, [isEn, tools]);
+  const landingStoryFeatures = isEn
+    ? [["Multiple music styles", "Original compositions", "Downloadable results", "High-quality output"], ["AI image generation", "Smart cutout", "Background replacement", "Image enhancement"], ["Article writing", "Content generation", "Rewrite and polish", "Multilingual output"]]
+    : [["多种音乐风格", "可创作歌曲", "可商用下载", "高品质导出"], ["AI 生成图片", "智能抠图", "背景替换", "图像增强"], ["文章写作", "文案生成", "改写润色", "多平台适配"]];
+  useEffect(() => {
+    const orbit = heroOrbitRef.current;
+    if (!orbit || typeof window === "undefined") return undefined;
+    const cards = [...orbit.querySelectorAll("[data-orbit-card]")];
+    if (!cards.length) return undefined;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let frame = 0;
+    let startedAt = 0;
+    const placeCards = (time = 0) => {
+      if (!startedAt) startedAt = time;
+      const bounds = orbit.getBoundingClientRect();
+      const maxCardWidth = Math.max(...cards.map((card) => card.getBoundingClientRect().width));
+      const maxCardHeight = Math.max(...cards.map((card) => card.getBoundingClientRect().height));
+      const radiusX = Math.max(105, Math.min(bounds.width * .39, bounds.width / 2 - maxCardWidth / 2 - 3));
+      const radiusY = Math.max(94, Math.min(bounds.height * .36, bounds.height / 2 - maxCardHeight / 2 - 8));
+      const progress = reducedMotion ? 0 : (time - startedAt) * .000022;
+      cards.forEach((card, index) => {
+        const angle = progress * Math.PI * 2 + index * (Math.PI * 2 / cards.length) - Math.PI / 2;
+        const depth = (Math.sin(angle) + 1) / 2;
+        const x = Math.cos(angle) * radiusX;
+        const y = Math.sin(angle) * radiusY;
+        card.style.left = "50%";
+        card.style.top = "50%";
+        card.style.transform = `translate(-50%, -50%) translate(${x.toFixed(2)}px, ${y.toFixed(2)}px) scale(${(.88 + depth * .12).toFixed(3)})`;
+        card.style.zIndex = String(2 + Math.round(depth * 4));
+        card.style.opacity = String(.82 + depth * .18);
+      });
+      if (!reducedMotion) frame = window.requestAnimationFrame(placeCards);
+    };
+    placeCards(performance.now());
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [heroToolCatalog.length]);
   return <div className="guest-shell commercial-home">
-    <header className="guest-header commercial-header"><a href="#top" aria-label="OneShowTools home"><Brand /></a><nav>{copy.nav.map((item, index) => <a key={item} href={index === 0 ? "#tools" : index === 2 ? "#agents" : index === 3 ? "#how" : "#platform"}>{item}</a>)}</nav><div><button className="locale-button" onClick={onLocale}><Translate size={16} />{t.language}</button><button className="landing-login" onClick={onAuth}>{t.login}</button><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={15} /></button></div></header>
+    <header className="guest-header commercial-header"><a href="#top" aria-label="OneShowTools home"><Brand /></a><nav>{copy.nav.map((item, index) => <a key={item} href={navHrefs[index]}>{item}</a>)}</nav><div><button className="locale-button" onClick={onLocale}><Translate size={16} />{t.language}</button><button className="landing-login" onClick={onAuth}>{t.login}</button><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={15} /></button></div></header>
     <main id="top">
       <section className="landing-hero">
         <div className="landing-hero-copy"><span className="landing-badge"><Sparkle size={14} weight="fill" />{copy.badge}</span><h1>{copy.titleA}<br /><span>{copy.titleB}</span></h1><p>{publicSubtitle}</p>
@@ -1782,28 +1857,72 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
           <div className="hero-actions"><button className="primary-button" onClick={onAuth}>{copy.free}<ArrowRight size={18} /></button><a className="secondary-button" href="#tools">{copy.browse}</a></div>
           <div className="landing-trust">{copy.trust.map((item, index) => { const Icon = [CreditCard, UserCircle, PlugsConnected, ShieldCheck][index]; return <span key={item}><Icon size={16} />{item}</span>; })}</div>
         </div>
-        <div className="landing-product-preview" id="platform" aria-label={isEn ? "OneShowTools platform preview" : "OneShowTools 平台预览"}>
-          <aside><Brand /><nav><span className="active"><House size={15} />{isEn ? "Overview" : "首页"}</span><span><SquaresFour size={15} />{isEn ? "Tool Marketplace" : "工具市场"}</span><span><RocketLaunch size={15} />AI Runtime</span><span><Robot size={15} />AI Agent</span><span><FolderOpen size={15} />{isEn ? "Files" : "文件中心"}</span></nav></aside>
-          <section><header><div><small>ONESH​OWTOOLS PLATFORM</small><h2>{copy.hello}</h2><p>{copy.today}</p></div><span><GearSix size={16} /></span></header>
-            <div className="preview-search"><MagnifyingGlass size={16} /><span>{copy.search}</span></div>
-            <div className="preview-summary"><div><span><SquaresFour size={16} /></span><small>{copy.available}</small><strong>{toolCountValue}</strong></div><div><span><GridFour size={16} /></span><small>{copy.categories}</small><strong>14</strong></div><div><span><Coins size={16} /></span><small>{copy.newCredits}</small><strong>200</strong></div></div>
-            <h3>{copy.quick}</h3><div className="preview-tools">{quickTools.map((tool) => <button key={tool.id} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={17} compact /><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={14} /></button>)}</div>
-            <div className="preview-foot"><span><CheckCircle size={15} weight="fill" />{copy.ready}</span><p>{copy.recent}</p><strong>{toolCountValue} {isEn ? "tools connected" : "个工具已接入"}</strong></div>
-          </section>
+        <div className="landing-orbit" id="platform" ref={heroOrbitRef} aria-label={isEn ? "OneShowTools connected AI workspace" : "OneShowTools 一站式 AI 工作平台"}>
+          <span className="orbit-haze" aria-hidden="true" />
+          <span className="orbit-track orbit-track-one" aria-hidden="true"><i /><i /></span>
+          <span className="orbit-track orbit-track-two" aria-hidden="true"><i /><i /></span>
+          <span className="orbit-track orbit-track-three" aria-hidden="true"><i /><i /></span>
+          <div className="orbit-core"><span className="orbit-aura" /><img src="/brand/oneshowtools-mark-512.png" alt="OneShowTools" /></div>
+          <div className="orbit-tool-layer" aria-live="off">
+            {heroToolCatalog.slice(0, 6).map(({ tool, label, detail, Icon, tone, asset }, index) => {
+              const name = tool ? (isEn ? tool.nameEn : tool.nameZh) : label;
+              const iconUrl = resolveToolIconUrl(tool, asset);
+              const content = <><span className={`orbit-card-icon tone-${tone}`}>{iconUrl ? <img src={iconUrl} alt="" /> : <Icon size={35} weight="duotone" />}</span><span className="orbit-card-copy"><strong>{name || label}</strong><small>{detail}</small><i aria-hidden="true"><b /><b /></i></span></>;
+              return <button
+                key={`orbit-slot-${index}`}
+                type="button"
+                data-orbit-card
+                className="orbit-card"
+                disabled={!tool}
+                onClick={tool ? () => onRun(tool) : undefined}
+              >{content}</button>;
+            })}
+          </div>
         </div>
       </section>
 
-      {featuredTools.length > 0 && <section className="landing-section landing-live-showcase" aria-labelledby="live-capabilities-title"><figure><img src="/landing/live-capabilities-showcase.webp" alt={copy.liveIllustration} loading="lazy" /><figcaption>{copy.liveIllustration}</figcaption></figure><div className="landing-live-copy"><span>{copy.liveEyebrow}</span><h2 id="live-capabilities-title">{copy.liveTitle}</h2><p>{copy.liveBody}</p><div className="landing-live-tools">{featuredTools.slice(0, 2).map((tool) => <button key={tool.id} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={22} /><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={17} /></button>)}</div><div className="landing-live-proof"><ShieldCheck size={17} weight="duotone" /><span>{copy.liveProof}</span></div></div></section>}
+      <section id="tools" className="landing-section landing-hot-tools">
+        <header><div><h2>{copy.featured}</h2><p>{copy.featuredSub}</p></div><a href="#how">{copy.seeAll}<ArrowRight size={15} /></a></header>
+        <div className="landing-hot-list">{heroToolCatalog.slice(0, 6).map(({ tool, label, detail, Icon, tone, asset }, index) => {
+          const toolName = tool ? (isEn ? tool.nameEn : tool.nameZh) : label;
+          const iconUrl = resolveToolIconUrl(tool, asset);
+          return <button key={`hot-${index}-${tool?.id || label}`} type="button" disabled={!tool} onClick={tool ? () => onRun(tool) : undefined}>
+            <span className={`landing-hot-icon tone-${tone}`}>{iconUrl ? <img src={iconUrl} alt="" /> : <Icon size={38} weight="duotone" />}</span>
+            <span><strong>{toolName}</strong><small>{detail}</small></span><ArrowRight size={15} />
+            <em>{index < 2 ? (isEn ? "Popular" : "最热门") : index === 2 ? (isEn ? "New" : "新上线") : (isEn ? "Featured" : "推荐")}</em>
+          </button>;
+        })}</div>
+      </section>
 
-      <section className="landing-section landing-why"><header><span>ONESH​OWTOOLS</span><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div>{strengthRows.map(([title, body], index) => { const Icon = strengthIcons[index]; return <article key={`${index}-${title}`}><span><Icon size={23} weight="duotone" /></span><h3>{title}</h3><p>{body}</p></article>; })}</div></section>
+      <section className="landing-product-stories" aria-label={isEn ? "Featured OneShowTools products" : "OneShowTools 核心产品展示"}>
+        {copy.stories.map(([title, subtitle], index) => {
+          const target = index === 0
+            ? heroToolCatalog[0]?.tool
+            : index === 1
+              ? heroToolCatalog[1]?.tool
+              : null;
+          return <article className={`product-story story-${index + 1}`} key={title}>
+            <img src="/landing/creative-suite-triptych.png" alt="" loading="lazy" />
+            <div>
+              <span>{index === 0 ? (isEn ? "FEATURED" : "核心体验") : "ONSHOWTOOLS"}</span>
+              <h2>{title}</h2>
+              <h3>{subtitle}</h3>
+              <ul>{landingStoryFeatures[index].map((feature) => <li key={feature}><CheckCircle size={12} weight="fill" />{feature}</li>)}</ul>
+              {target
+                ? <button type="button" onClick={() => onRun(target)}>{isEn ? "Try now" : "立即体验"}<ArrowRight size={13} /></button>
+                : <a href="#how">{isEn ? "See how it works" : "了解工作方式"}<ArrowRight size={13} /></a>}
+            </div>
+          </article>;
+        })}
+      </section>
 
-      <section id="tools" className="landing-section landing-featured"><header><div><span>TOOL MARKETPLACE</span><h2>{copy.featured}</h2><p>{copy.featuredSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header>{visibleTools.length ? <div className="landing-tool-grid">{(guestQuery ? visibleTools : featuredTools).slice(0, 6).map((tool) => <article key={tool.id}><button className="landing-tool-open" onClick={() => onRun(tool)} aria-label={`${t.run} ${isEn ? tool.nameEn : tool.nameZh}`}><ProductToolIcon tool={tool} size={23} /><span className="landing-tool-state"><CheckCircle size={13} weight="fill" />{copy.ready}</span><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={14} />{tool.creditCost} {t.creditsUnit}</span><span className="landing-tool-cta">{copy.openTool}<ArrowRight size={15} /></span></footer></button></article>)}</div> : <div className={`landing-catalog-state ${catalogUnavailable ? "error" : ""}`}>{catalogLoading ? <Loading locale={locale} /> : <EmptyState icon={catalogUnavailable ? WarningCircle : MagnifyingGlass} title={catalogUnavailable ? copy.catalogUnavailable : guestQuery ? t.noResults : copy.catalogEmpty} action={catalogUnavailable ? <button className="secondary-button" onClick={onReload}>{copy.retryCatalog}</button> : null} />}</div>}</section>
+      <section className="landing-proof-bar" aria-label={isEn ? "OneShowTools platform facts" : "OneShowTools 平台数据"}>{copy.proof.map(([value, label], index) => { const Icon = [SquaresFour, UserCircle, CheckSquare, FolderOpen, Crown][index]; return <div key={`${value}-${label}`}><span><Icon size={21} weight="duotone" /></span><strong>{value}</strong><small>{label}</small></div>; })}</section>
 
-      {agentTools.length > 0 && <section id="agents" className="landing-section landing-agents"><header><div><span>AI AGENT</span><h2>{copy.agents}</h2><p>{copy.agentsSub}</p></div><a href="#tools">{copy.seeAll}<ArrowRight size={15} /></a></header><div>{agentTools.map((tool, index) => { const Icon = iconMap[tool.icon] || Robot; return <button key={tool.id} onClick={() => onRun(tool)}><span className={`agent-orb agent-${index}`}><Icon size={28} weight="duotone" /></span><div><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p></div><ArrowRight size={17} /></button>; })}</div></section>}
+      <section className="landing-section landing-capabilities"><header><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div className="landing-capability-mosaic">{copy.capabilityCards.map(([title, body], index) => <article key={title} className={`capability-card capability-${index + 1}`}><div><h3>{title}</h3><p>{body}</p></div><img src={["/dashboard/oneshowtools-ai-toolkit-900.png", "/runtime/oneshow-runtime-platform.png", "/landing-v2/ai-agent-robot.png", "/credits/credits-coin-stack.png", "/landing-v2/files-and-tasks.png"][index]} alt="" loading="lazy" /></article>)}</div></section>
 
-      <section id="how" className="landing-section landing-how"><header><span>WORKFLOW</span><h2>{copy.stepsTitle}</h2></header><div>{copy.steps.map(([title, body], index) => { const Icon = stepIcons[index]; return <article key={title}><span><Icon size={24} weight="duotone" /></span><div><small>0{index + 1}</small><h3>{title}</h3><p>{body}</p></div>{index < copy.steps.length - 1 && <ArrowRight className="step-arrow" size={18} />}</article>; })}</div></section>
+      <section id="how" className="landing-section landing-how"><header><h2>{copy.stepsTitle}</h2><p>{copy.howSub}</p></header><div>{copy.steps.map(([title, body], index) => { const Icon = stepIcons[index]; return <article key={title}><span><Icon size={24} weight="duotone" /></span><div><h3>{title}</h3><p>{body}</p></div>{index < copy.steps.length - 1 && <ArrowRight className="step-arrow" size={18} />}</article>; })}</div></section>
 
-      <section className="landing-cta"><div><Sparkle size={22} weight="fill" /><h2>{copy.cta}</h2><p>{copy.ctaSub}</p></div><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button></section>
+      <section id="pricing" className="landing-cta landing-cta-v2"><img src="/landing-v2/cta-ai-platform.png" alt="" loading="lazy" /><div><h2>{copy.ctaTitle}</h2><p>{copy.ctaBody}</p><span><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button><a href="#tools">{copy.browse}</a></span></div></section>
     </main>
     <footer className="landing-footer"><div className="footer-brand"><Brand /><p>{copy.footer}</p></div><div><strong>{copy.product}</strong><a href="#tools">{copy.nav[0]}</a><a href="#platform">AI Runtime</a><a href="#agents">AI Agent</a></div><div><strong>{copy.resources}</strong><a href="#how">{copy.nav[3]}</a><button onClick={onAuth}>{isEn ? "Account" : "账户中心"}</button></div><div><strong>{copy.company}</strong><a href="https://www.oneshowailab.com/" target="_blank" rel="noreferrer">OneShow AI Lab</a></div><div><strong>{copy.support}</strong><button onClick={onAuth}>{t.login}</button><button onClick={onLocale}>{t.language}</button></div><p>© 2026 OneShowTools. All rights reserved.</p></footer>
   </div>;
