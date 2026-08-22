@@ -1069,6 +1069,43 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
   </div>;
 }
 
+function RecentUsagePage({ tools, tasks, files, locale, onRun, onOpenTask, onNavigate }) {
+  const isEn = locale === "en";
+  const [period, setPeriod] = useState("all");
+  const [toolLayout, setToolLayout] = useState("grid");
+  const copy = isEn ? {
+    title: "Recently used", subtitle: "Quickly revisit your recent AI tools, tasks and files.", tools: "Tools", tasks: "Tasks", files: "Files", recentTools: "Recently used tools", recentTasks: "Recent tasks", recentFiles: "Recent files", allTime: "All time", days7: "Last 7 days", days30: "Last 30 days", viewAllTasks: "View all tasks", viewAllFiles: "View all files", viewResult: "View result", noTools: "No tools used yet", noTasks: "No recent tasks", noFiles: "No recent files", browse: "Browse tools",
+  } : {
+    title: "最近使用", subtitle: "快速访问你最近使用过的 AI 工具、执行任务和文件内容。", tools: "工具", tasks: "任务", files: "文件", recentTools: "最近使用的工具", recentTasks: "最近任务", recentFiles: "最近文件", allTime: "全部时间", days7: "最近 7 天", days30: "最近 30 天", viewAllTasks: "查看全部任务", viewAllFiles: "查看全部文件", viewResult: "查看结果", noTools: "还没有使用过工具", noTasks: "暂无最近任务", noFiles: "暂无最近文件", browse: "浏览工具",
+  };
+  const cutoff = period === "all" ? 0 : Date.now() - Number(period) * 86400000;
+  const filteredTasks = tasks.filter((task) => Number(task.createdAt || 0) >= cutoff);
+  const recentToolRecords = [...new Map(filteredTasks.map((task) => [task.toolId, task])).values()];
+  const recentTools = recentToolRecords.map((task) => tools.find((tool) => tool.id === task.toolId)).filter(Boolean).slice(0, 6);
+  const recentTasks = filteredTasks.slice(0, 6);
+  const recentFiles = files.filter((file) => Number(file.createdAt || 0) >= cutoff).slice(0, 6);
+  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const taskSummary = (task) => String(task.input?.text || task.input?.prompt || task.input?.topic || task.input?.title || "").trim();
+  const fileKind = (file) => file.mimeType?.startsWith("image/") ? "image" : file.mimeType?.startsWith("audio/") ? "audio" : file.mimeType?.startsWith("video/") ? "video" : /pdf/i.test(`${file.mimeType} ${file.name}`) ? "pdf" : "document";
+  const fileMeta = { image: [ImageSquare, "image"], audio: [MusicNotes, "audio"], video: [VideoCamera, "video"], pdf: [FilePdf, "pdf"], document: [FileText, "document"] };
+  return <div className="recent-usage-page page-stack">
+    <header className="recent-usage-heading"><div><h1>{copy.title}</h1><p>{copy.subtitle}</p></div></header>
+    <nav className="recent-section-tabs" aria-label={copy.title}><button onClick={() => scrollTo("recent-tools")}><SquaresFour size={15} />{copy.tools}</button><button onClick={() => scrollTo("recent-tasks")}><ListChecks size={15} />{copy.tasks}</button><button onClick={() => scrollTo("recent-files")}><FolderOpen size={15} />{copy.files}</button></nav>
+    <section className="surface recent-tools-panel" id="recent-tools">
+      <header><h2>{copy.recentTools}</h2><div><label><Clock size={15} /><select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="all">{copy.allTime}</option><option value="7">{copy.days7}</option><option value="30">{copy.days30}</option></select><CaretDown size={13} /></label><button className={toolLayout === "grid" ? "active" : ""} aria-label="Grid" onClick={() => setToolLayout("grid")}><SquaresFour size={17} /></button><button className={toolLayout === "list" ? "active" : ""} aria-label="List" onClick={() => setToolLayout("list")}><ListChecks size={17} /></button></div></header>
+      {recentTools.length ? <div className={`recent-tool-cards ${toolLayout}`}>{recentTools.map((tool) => { const usedTask = recentToolRecords.find((task) => task.toolId === tool.id); return <button key={tool.id} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={28} /><span><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{isEn ? tool.descriptionEn : tool.descriptionZh}</small><em>{formatDate(usedTask?.createdAt, locale)}</em></span><ArrowRight size={16} /></button>; })}</div> : <div className="recent-empty"><Clock size={24} /><span>{copy.noTools}</span><button onClick={() => onNavigate("marketplace")}>{copy.browse}</button></div>}
+    </section>
+    <section className="surface recent-task-panel" id="recent-tasks">
+      <header><h2>{copy.recentTasks}</h2><button onClick={() => onNavigate("tasks")}>{copy.viewAllTasks}<ArrowRight size={14} /></button></header>
+      {recentTasks.length ? <div className="recent-task-table"><div className="recent-task-head"><span>{isEn ? "Task" : "任务内容"}</span><span>{isEn ? "Tool" : "使用工具"}</span><span>{isEn ? "Status" : "状态"}</span><span>{isEn ? "Created" : "创建时间"}</span><span>{isEn ? "Action" : "操作"}</span></div>{recentTasks.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button key={task.id} onClick={() => onOpenTask(task)}><ProductToolIcon tool={tool || { icon: task.icon, category: "tool" }} compact /><span><strong>{taskSummary(task) || (isEn ? task.toolNameEn : task.toolNameZh)}</strong><small>{isEn ? task.toolNameEn : task.toolNameZh}</small></span><span className="recent-task-tool"><ProductToolIcon tool={tool || { icon: task.icon }} compact />{isEn ? task.toolNameEn : task.toolNameZh}</span><StatusPill status={task.status} locale={locale} /><time>{formatDate(task.createdAt, locale)}</time><em>{copy.viewResult}<ArrowRight size={13} /></em></button>; })}</div> : <div className="recent-empty"><ListChecks size={24} /><span>{copy.noTasks}</span></div>}
+    </section>
+    <section className="surface recent-files-panel" id="recent-files">
+      <header><h2>{copy.recentFiles}</h2><button onClick={() => onNavigate("files")}>{copy.viewAllFiles}<ArrowRight size={14} /></button></header>
+      {recentFiles.length ? <div className="recent-file-cards">{recentFiles.map((file) => { const kind = fileKind(file); const [Icon, tone] = fileMeta[kind]; return <a href={`/api/files/${file.id}/download`} target="_blank" rel="noreferrer" key={file.id}><span className={`recent-file-preview ${tone}`}>{kind === "image" ? <img src={`/api/files/${file.id}/download`} alt={file.name} loading="lazy" /> : <Icon size={34} weight="duotone" />}</span><strong title={file.name}>{file.name}</strong><small>{formatDate(file.createdAt, locale)}</small></a>; })}</div> : <div className="recent-empty"><FolderOpen size={24} /><span>{copy.noFiles}</span></div>}
+    </section>
+  </div>;
+}
+
 function ToolCollectionPage({ mode, tools, tasks, favorites, locale, onRun, onToggleFavorite, onNavigate }) {
   const isEn = locale === "en";
   const taskToolIds = [...new Set(tasks.map((task) => task.toolId))];
@@ -2152,7 +2189,7 @@ export function App() {
   const content = {
     dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} projects={privateData.projects} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} />,
     marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} favorites={favorites} onToggleFavorite={toggleFavorite} />,
-    recent: <ToolCollectionPage mode="recent" tools={tools} tasks={privateData.tasks} favorites={favorites} locale={locale} onRun={openTool} onToggleFavorite={toggleFavorite} onNavigate={setView} />,
+    recent: <RecentUsagePage tools={tools} tasks={privateData.tasks} files={privateData.files} locale={locale} onRun={openTool} onOpenTask={openTask} onNavigate={setView} />,
     favorites: <ToolCollectionPage mode="favorites" tools={tools} tasks={privateData.tasks} favorites={favorites} locale={locale} onRun={openTool} onToggleFavorite={toggleFavorite} onNavigate={setView} />,
     agent: <ToolCollectionPage mode="agent" tools={tools} tasks={privateData.tasks} favorites={favorites} locale={locale} onRun={openTool} onToggleFavorite={toggleFavorite} onNavigate={setView} />,
     runtime: <Runtime data={privateData.runtime} dashboard={privateData.dashboard} tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onNotice={setToast} onNavigate={setView} />,

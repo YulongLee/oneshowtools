@@ -1,34 +1,43 @@
-# OneShowTools AI 工具市场设计 QA
+# OneShowTools — Design QA
 
-## 参考与实现
+## AI Tool Marketplace
 
-- 参考图：`/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-2734a0e7-75f9-4e63-b571-9322211c625d.png`
-- 桌面端：`qa/marketplace/marketplace-redesign-full.png`
-- 移动端：`qa/marketplace/marketplace-redesign-mobile-final.png`
-- 对比图：`qa/marketplace/marketplace-reference-comparison.png`
+- Reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-2734a0e7-75f9-4e63-b571-9322211c625d.png`
+- The hierarchy includes the market hero, category filters, featured tools, popular tools, and the complete catalog.
+- Featured cards use real published applications and their admin-configured icons.
+- Free applications display “免费”; paid applications display the configured per-run credit price.
+- Search, category, pricing, AI Agent, local-tool, favorite, and launch interactions use the existing product flows.
+- Desktop and 390 px mobile layouts passed visual and overflow checks.
 
-## 视觉核查
+## Recent Usage
 
-- 通过：页面层级与参考图一致，包含市场主视觉、分类筛选、精选推荐、热门工具和全部工具。
-- 通过：精选卡片使用真实已发布应用及其后台图标，没有补造不可用应用。
-- 通过：免费应用显示绿色“免费”，付费应用显示每次积分价格。
-- 通过：桌面端内容密度、间距、圆角、描边和品牌蓝紫色统一。
-- 通过：390px 移动端首屏无横向溢出，分类可横向浏览，精选卡片转为单列。
-- 通过：桌面端右侧旧信息栏已移除，避免页面下方产生无关内容和空白。
+## Evidence
 
-## 交互与功能核查
+- Reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-cccba4b9-4b91-4bee-8a26-ac31d25df956.png`
+- Desktop implementation inspected at 1440 × 1000.
+- Mobile implementation inspected at 390 × 844.
+- The reference and implementation were reviewed in one side-by-side comparison image before release.
 
-- 通过：搜索、分类、免费、付费、AI Agent、本地工具筛选保留真实交互。
-- 通过：应用卡片、收藏与使用入口保留原有业务链路。
-- 通过：后台应用管理可选择“免费”或“积分计费”，免费模式保存 `creditCost = 0`。
-- 通过：免费应用执行时不创建积分扣费流水；付费应用仍按成功执行结果结算。
-- 通过：价格修改仍受管理员权限、修改原因和审计记录保护。
+## Visual comparison
 
-## 验证结果
+- Matched the reference information hierarchy: page heading, section tabs, recent tools, recent tasks, and recent files.
+- Preserved the existing OneShowTools workspace shell, spacing system, borders, blue-violet palette, and typography.
+- Replaced reference-only sample content with the signed-in user's real task and file data; empty states remain structured and actionable.
+- Desktop sections align to the same content rail and keep consistent card radii, header heights, and section gaps.
+- Mobile layout stacks controls and cards without horizontal overflow (`scrollWidth = clientWidth = 390`). The task table intentionally scrolls inside its own card on narrow screens.
 
-- `npm run build`：通过。
-- 全量自动化测试：151 / 151 通过。
-- 商业化后台计费权限测试：通过。
-- `git diff --check`：通过。
+## Interaction verification
+
+- Tool cards reopen the selected tool.
+- Task rows reopen the original task result through its tool route.
+- File cards open the authenticated file download endpoint.
+- “查看全部任务 / 文件” navigate to the full management centers.
+- Time range and grid/list controls are interactive.
+
+## Engineering verification
+
+- Production build passed.
+- Full automated suite passed: 151 / 151.
+- Desktop and mobile browser inspection passed with no console errors.
 
 final result: passed
