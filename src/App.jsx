@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowClockwise, ArrowRight, Check, CheckCircle, Clock, CloudArrowUp,
   Coins, CreditCard, Database, File, FilePdf, FolderOpen, GridFour,
@@ -12,13 +12,14 @@ import {
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
   Bell, Star,
 } from "@phosphor-icons/react";
-import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
-import { MusicStudio } from "./MusicStudio.jsx";
-import { LyricsGenerator } from "./LyricsGenerator.jsx";
 import { SupportWidget } from "./SupportWidget.jsx";
-import { SlidingAncestorStudio } from "./SlidingAncestorStudio.jsx";
-import { FoodNutritionAnalyzer } from "./FoodNutritionAnalyzer.jsx";
 import "./workbench.css";
+
+const SeoAgentWorkspace = lazy(() => import("./SeoAgentWorkspace.jsx").then((module) => ({ default: module.SeoAgentWorkspace })));
+const MusicStudio = lazy(() => import("./MusicStudio.jsx").then((module) => ({ default: module.MusicStudio })));
+const LyricsGenerator = lazy(() => import("./LyricsGenerator.jsx").then((module) => ({ default: module.LyricsGenerator })));
+const SlidingAncestorStudio = lazy(() => import("./SlidingAncestorStudio.jsx").then((module) => ({ default: module.SlidingAncestorStudio })));
+const FoodNutritionAnalyzer = lazy(() => import("./FoodNutritionAnalyzer.jsx").then((module) => ({ default: module.FoodNutritionAnalyzer })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -1045,7 +1046,7 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
         <div className="dashboard-hot"><span>{t.popularTools}：</span>{recommended.slice(0, 6).map((tool) => <button key={tool.id} onClick={() => onRun(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
       </div>
       <div className="dashboard-hero-art" aria-hidden="true">
-        <div className="dashboard-brand-visual"><img src="/landing/oneshowtools-3d-orb-640.png" alt="" width="640" height="640" fetchPriority="high" decoding="async" /></div>
+        <div className="dashboard-brand-visual"><img src="/landing/oneshowtools-3d-orb-640.webp" alt="" width="640" height="640" fetchPriority="high" decoding="async" /></div>
         <div className={`dashboard-art-tools count-${Math.min(recommended.length, 4)}`}>{recommended.slice(0, 4).map((tool, index) => <div className={`dashboard-art-tool tool-${index + 1}`} key={tool.id}><ProductToolIcon tool={tool} size={20} compact /><span><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} Credits</small></span></div>)}</div>
       </div>
     </section>
@@ -1145,7 +1146,7 @@ function AgentHubPage({ tools, tasks, favorites, locale, onRun, onToggleFavorite
   return <div className="agent-hub page-stack">
     <header className="agent-hub-heading"><div><h1>{copy.title}</h1><p>{copy.subtitle}</p></div></header>
     <div className="agent-hub-layout"><main>
-      <section className="agent-hub-hero"><div><h2>{copy.heroTitle}</h2><p>{copy.heroBody}</p><button onClick={() => setCreateOpen(true)}><Plus size={16} weight="bold" />{copy.create}<ArrowRight size={15}/></button></div><img src="/landing-v2/ai-agent-robot.png" alt="" width="420" height="250" fetchPriority="high" decoding="async" /></section>
+      <section className="agent-hub-hero"><div><h2>{copy.heroTitle}</h2><p>{copy.heroBody}</p><button onClick={() => setCreateOpen(true)}><Plus size={16} weight="bold" />{copy.create}<ArrowRight size={15}/></button></div><img src="/landing-v2/ai-agent-robot.webp" alt="" width="420" height="250" fetchPriority="high" decoding="async" /></section>
       <nav className="agent-category-tabs" aria-label={copy.categories}>{categories.map(([id,label,Icon])=><button key={id} className={category===id?"active":""} onClick={()=>setCategory(id)}><Icon size={15} weight={category===id?"fill":"regular"}/>{label}</button>)}</nav>
       <section className="agent-featured" id="agent-templates"><header><div><h2>{copy.featured}</h2><p>{copy.featuredSub}</p></div>{filtered.length>5&&<button onClick={()=>setShowAll(!showAll)}>{showAll?(isEn?"Show less":"收起"):copy.all}<ArrowRight size={14}/></button>}</header>
         {featured.length?<div>{featured.map((tool)=><article key={tool.id}><div><ProductToolIcon tool={tool} size={26}/><button aria-label={isEn?"Toggle favorite":"切换收藏"} className={favorites.includes(tool.id)?"active":""} onClick={()=>onToggleFavorite(tool.id)}><Star size={16} weight={favorites.includes(tool.id)?"fill":"regular"}/></button></div><h3>{isEn?tool.nameEn:tool.nameZh}</h3><p>{isEn?tool.descriptionEn:tool.descriptionZh}</p><span><small>{categoryFor(tool)}</small><ToolPrice tool={tool} locale={locale}/></span><footer><em>{agentTasks.filter((task)=>task.toolId===tool.id).length.toLocaleString()} {copy.running}</em><button onClick={()=>onRun(tool)}>{copy.use}<ArrowRight size={13}/></button></footer></article>)}</div>:<EmptyState icon={Robot} title={isEn?"No Agent in this category":"该分类暂无 Agent"}/>}</section>
@@ -1559,7 +1560,7 @@ function Runtime({ data, dashboard, tasks = [], locale, onRefresh, onNotice, onN
   const runningTasks = Number(dashboard?.metrics?.running || 0);
   const failedTasks = Math.max(0, totalTasks - completedTasks - runningTasks);
   return <div className="runtime-dashboard-layout runtime-v3"><main className="runtime-page">
-    <section className="runtime-title-row"><div><span className="runtime-title-badge">Beta</span><h1>{t.runtime}</h1><p>{t.runtimeSub}</p></div><img src="/runtime/oneshow-runtime-platform.png" alt="" aria-hidden="true" />{data.byokEnabled && <button className="primary-button" onClick={() => setShowForm(true)}><Plus size={18} />{t.addModel}</button>}</section>
+    <section className="runtime-title-row"><div><span className="runtime-title-badge">Beta</span><h1>{t.runtime}</h1><p>{t.runtimeSub}</p></div><img src="/runtime/oneshow-runtime-platform.webp" alt="" aria-hidden="true" />{data.byokEnabled && <button className="primary-button" onClick={() => setShowForm(true)}><Plus size={18} />{t.addModel}</button>}</section>
     <section className="runtime-metric-strip">{runtimeMetrics.map(([label, value, Icon, hint]) => <article className="surface" key={label}><span><Icon size={18} weight="duotone" /></span><div><small>{label}</small><strong>{Number(value).toLocaleString()}</strong><em>{hint || (isEn ? "Connected" : "已连接")}</em></div></article>)}<article className="surface runtime-status-card"><span><ShieldCheck size={18} weight="duotone" /></span><div><small>{isEn ? "Runtime status" : "运行状态"}</small><strong>{data.managed.configured ? (isEn ? "Normal" : "正常") : t.notConfigured}</strong><em>{data.managed.configured ? (isEn ? "System is healthy" : "系统运行良好") : (isEn ? "Configure the platform model" : "请配置平台模型")}</em></div></article></section>
     <section className="runtime-console surface"><nav className="runtime-tabs">{tabs.map(([id, label]) => <button className={runtimeTab === id ? "active" : ""} key={id} onClick={() => setRuntimeTab(id)}>{label}</button>)}</nav>
     {runtimeTab === "connections" && <section className="runtime-section runtime-connections-panel"><div className="runtime-section-heading"><div><h2>{isEn ? "My model connections" : "我的模型连接"}</h2><p>{isEn ? "Connect model services and choose the runtime source for tools." : "接入你的模型服务，并自由设置工具的运行来源。"}</p></div><div className="runtime-connection-filters"><label><MagnifyingGlass size={15} /><input value={connectionQuery} onChange={(event) => setConnectionQuery(event.target.value)} placeholder={isEn ? "Search models" : "搜索模型名称"} /></label><select value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)}><option value="all">{isEn ? "All statuses" : "全部状态"}</option><option value="healthy">{isEn ? "Healthy" : "运行正常"}</option><option value="active">{isEn ? "Active" : "已启用"}</option><option value="disabled">{isEn ? "Disabled" : "已停用"}</option></select></div></div>{connectionRows}</section>}
@@ -2297,7 +2298,7 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
               ? heroToolCatalog[1]?.tool
               : null;
           return <article className={`product-story story-${index + 1}`} key={title}>
-            <img src="/landing/creative-suite-triptych.png" alt="" loading="lazy" />
+            <img src="/landing/creative-suite-triptych.webp" alt="" loading="lazy" decoding="async" />
             <div>
               <span>{index === 0 ? (isEn ? "FEATURED" : "核心体验") : "ONSHOWTOOLS"}</span>
               <h2>{title}</h2>
@@ -2313,11 +2314,11 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
 
       <section className="landing-proof-bar" aria-label={isEn ? "OneShowTools platform facts" : "OneShowTools 平台数据"}>{copy.proof.map(([value, label], index) => { const Icon = [SquaresFour, UserCircle, CheckSquare, FolderOpen, Crown][index]; return <div key={`${value}-${label}`}><span><Icon size={21} weight="duotone" /></span><strong>{value}</strong><small>{label}</small></div>; })}</section>
 
-      <section className="landing-section landing-capabilities"><header><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div className="landing-capability-mosaic">{copy.capabilityCards.map(([title, body], index) => <article key={title} className={`capability-card capability-${index + 1}`}><div><h3>{title}</h3><p>{body}</p></div><img src={["/dashboard/oneshowtools-ai-toolkit-900.png", "/runtime/oneshow-runtime-platform.png", "/landing-v2/ai-agent-robot.png", "/credits/credits-coin-stack.png", "/landing-v2/files-and-tasks.png"][index]} alt="" loading="lazy" /></article>)}</div></section>
+      <section className="landing-section landing-capabilities"><header><h2>{copy.why}</h2><p>{copy.whySub}</p></header><div className="landing-capability-mosaic">{copy.capabilityCards.map(([title, body], index) => <article key={title} className={`capability-card capability-${index + 1}`}><div><h3>{title}</h3><p>{body}</p></div><img src={["/dashboard/oneshowtools-ai-toolkit-900.webp", "/runtime/oneshow-runtime-platform.webp", "/landing-v2/ai-agent-robot.webp", "/credits/credits-coin-stack.webp", "/landing-v2/files-and-tasks.webp"][index]} alt="" loading="lazy" decoding="async" /></article>)}</div></section>
 
       <section id="how" className="landing-section landing-how"><header><h2>{copy.stepsTitle}</h2><p>{copy.howSub}</p></header><div>{copy.steps.map(([title, body], index) => { const Icon = stepIcons[index]; return <article key={title}><span><Icon size={24} weight="duotone" /></span><div><h3>{title}</h3><p>{body}</p></div>{index < copy.steps.length - 1 && <ArrowRight className="step-arrow" size={18} />}</article>; })}</div></section>
 
-      <section id="pricing" className="landing-cta landing-cta-v2"><img src="/landing-v2/cta-ai-platform.png" alt="" loading="lazy" /><div><h2>{copy.ctaTitle}</h2><p>{copy.ctaBody}</p><span><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button><a href="#tools">{copy.browse}</a></span></div></section>
+      <section id="pricing" className="landing-cta landing-cta-v2"><img src="/landing-v2/cta-ai-platform.webp" alt="" loading="lazy" decoding="async" /><div><h2>{copy.ctaTitle}</h2><p>{copy.ctaBody}</p><span><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button><a href="#tools">{copy.browse}</a></span></div></section>
     </main>
     <footer className="landing-footer"><div className="footer-brand"><Brand /><p>{copy.footer}</p></div><div><strong>{copy.product}</strong><a href="#tools">{copy.nav[0]}</a><a href="#platform">AI Runtime</a><a href="#agents">AI Agent</a></div><div><strong>{copy.resources}</strong><a href="#how">{copy.nav[3]}</a><button onClick={onAuth}>{isEn ? "Account" : "账户中心"}</button></div><div><strong>{copy.company}</strong><a href="https://www.oneshowailab.com/" target="_blank" rel="noreferrer">OneShow AI Lab</a></div><div><strong>{copy.support}</strong><button onClick={onAuth}>{t.login}</button><button onClick={onLocale}>{t.language}</button></div><p>© 2026 OneShowTools. All rights reserved.</p></footer>
   </div>;
@@ -2349,11 +2350,11 @@ export function App() {
 
   const loadPublic = useCallback(async () => {
     setCatalogStatus("loading");
-    const [sessionResult, healthResult, toolsResult, plansResult, writingResult, seoResult] = await Promise.all([
+    const [sessionResult, healthResult, toolsResult, plansResult] = await Promise.all([
       api("/api/auth/session").catch(() => ({ user: null })), api("/api/health").catch(() => ({})),
-      api("/api/tools").catch(() => null), api("/api/plans").catch(() => ({ plans: [] })), api("/api/writing/catalog").catch(() => null), api("/api/seo/catalog").catch(() => null),
+      api("/api/tools").catch(() => null), api("/api/plans").catch(() => ({ plans: [] })),
     ]);
-    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult?.tools || []); setCatalogStatus(toolsResult ? "ready" : "error"); setPlans(plansResult.plans); setWritingCatalog(writingResult); setSeoCatalog(seoResult);
+    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult?.tools || []); setCatalogStatus(toolsResult ? "ready" : "error"); setPlans(plansResult.plans);
   }, []);
   const loadPrivate = useCallback(async () => {
     if (!session) return;
@@ -2364,6 +2365,19 @@ export function App() {
   }, [session]);
 
   useEffect(() => { loadPublic(); }, [loadPublic]);
+  useEffect(() => {
+    if (!routeSlug || !tools.length || (writingCatalog && seoCatalog)) return undefined;
+    let cancelled = false;
+    Promise.all([
+      writingCatalog || api("/api/writing/catalog").catch(() => null),
+      seoCatalog || api("/api/seo/catalog").catch(() => null),
+    ]).then(([writingResult, seoResult]) => {
+      if (cancelled) return;
+      if (writingResult) setWritingCatalog(writingResult);
+      if (seoResult) setSeoCatalog(seoResult);
+    });
+    return () => { cancelled = true; };
+  }, [routeSlug, tools.length, writingCatalog, seoCatalog]);
   useEffect(() => { if (session) loadPrivate().catch(() => setToast(t.error)); }, [session, loadPrivate, t.error]);
   useEffect(() => {
     if (!session?.id || !tools.length || favoritesMigrationRef.current === session.id) return;
@@ -2510,7 +2524,7 @@ export function App() {
   const routeTask = routeTaskId ? privateData.tasks.find((task) => task.id === routeTaskId) : null;
   const specialistCatalog = seoCatalogForTool(seoCatalog, routeTool);
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
-  if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
+  if (!session) return <Suspense fallback={<Loading locale={locale} />}>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</Suspense>;
 
   const navGroups = [
     { items: [["dashboard", House], ["marketplace", SquaresFour], ["recent", Clock], ["favorites", Star]] },
@@ -2542,6 +2556,6 @@ export function App() {
   const planLabel = privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free;
   return <div className="platform-shell"><aside className="sidebar"><Brand /><nav className="sidebar-nav-groups">{navGroups.map((group, index) => <section key={group.label || index}>{group.label && <small>{group.label}</small>}{group.items.map(([key, Icon, badge]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={19} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span>{badge !== undefined && <em>{badge}</em>}</button>)}</section>)}</nav><div className="sidebar-upgrade"><Crown size={18} weight="fill" /><strong>{locale === "en" ? "Upgrade your plan" : "升级到专业版"}</strong><small>{locale === "en" ? "Unlock more AI tools and capabilities" : "解锁更多 AI 工具与高级能力"}</small><button onClick={() => navigateView("plans")}>{locale === "en" ? "Upgrade" : "立即升级"}<ArrowRight size={14} /></button></div><SupportWidget locale={locale} /><div className="sidebar-footer"><button className="mini-profile" onClick={() => navigateView("settings")}><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{privateData.credits?.balance?.toLocaleString() ?? "—"} {locale === "en" ? "credits" : "积分"}</small></div><ArrowRight size={15} /></button></div></aside>
     <div className="main-column"><header className="platform-header"><button className="global-search" onClick={() => navigateView("marketplace")}><MagnifyingGlass size={19} /><span>{t.search}</span><kbd>⌘ K</kbd></button><div className="header-actions"><button className="header-icon-button" aria-label={locale === "en" ? "Plans" : "套餐"} onClick={() => navigateView("plans")}><Gift size={20} /></button><button className="header-icon-button notification" aria-label={locale === "en" ? "Tasks" : "任务"} onClick={() => navigateView("tasks")}><Bell size={20} />{privateData.dashboard?.metrics?.running > 0 && <i>{Math.min(privateData.dashboard.metrics.running, 99)}</i>}</button><button className="header-credit-pill" onClick={() => navigateView("plans")}><Coins size={18} weight="fill" /><strong>{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong><span>{locale === "en" ? "credits" : "积分"}</span></button><button className="header-plan-pill" onClick={() => navigateView("plans")}><Crown size={20} weight="fill" /><span><strong>{planLabel}</strong><small>{locale === "en" ? "View plans" : "升级套餐"}</small></span></button></div></header>
-      <div className={`workspace-layout ${usesFullWorkspace ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : view === "runtime" ? "runtime-workspace" : view === "plans" ? "billing-workspace" : isWriter ? "writer-workspace" : isToolWorkspace ? "tool-workspace" : ""}`}>{content}</main>{!usesFullWorkspace && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>
+      <div className={`workspace-layout ${usesFullWorkspace ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : view === "runtime" ? "runtime-workspace" : view === "plans" ? "billing-workspace" : isWriter ? "writer-workspace" : isToolWorkspace ? "tool-workspace" : ""}`}><Suspense fallback={<Loading locale={locale} />}>{content}</Suspense></main>{!usesFullWorkspace && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>
     </div>{toast && <div className="toast"><CheckCircle size={19} weight="fill" />{toast}</div>}</div>;
 }

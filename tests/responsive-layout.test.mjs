@@ -30,10 +30,10 @@ test("guest homepage exposes real catalog states and a stable reference-led hero
   assert.match(appSource, /catalogStatus === "loading"/);
   assert.match(appSource, /catalogStatus === "error"/);
   assert.match(appSource, /retryCatalog/);
-  assert.match(appSource, /landing-v2\/ai-agent-robot\.png/);
-  assert.match(appSource, /landing-v2\/cta-ai-platform\.png/);
+  assert.match(appSource, /landing-v2\/ai-agent-robot\.webp/);
+  assert.match(appSource, /landing-v2\/cta-ai-platform\.webp/);
   assert.match(appSource, /className="landing-product-stories"/);
-  assert.match(appSource, /landing\/creative-suite-triptych\.png/);
+  assert.match(appSource, /landing\/creative-suite-triptych\.webp/);
   assert.match(appSource, /copy\.stories\.map/);
   assert.match(appSource, /heroToolCatalog/);
   assert.match(appSource, /oneshowtools-mark-512\.png/);
