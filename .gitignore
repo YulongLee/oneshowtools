@@ -9,8 +9,12 @@ dist/
 .idea/
 .vscode/
 coverage/
+.expo/
 data/
 qa-*.png
+qa/
 qa-tool-*
 qa-compare.html
 reference-current-live.png
+apps/**/.swc/
+apps/**/dist-check/

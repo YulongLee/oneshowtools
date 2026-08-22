@@ -271,6 +271,15 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   const customerDetailBody = await customerDetail.json();
   assert.equal(customerDetailBody.membership.code, "pro-monthly");
   assert.equal(customerDetailBody.fileQuota.limit, 500);
+  const configurableTool = db.prepare("SELECT id FROM tools ORDER BY id LIMIT 1").get();
+  const makeToolFree = await handleApi(authenticatedJson(`/api/admin/v1/tools/${configurableTool.id}`, owner.cookie, {
+    creditCost: 0, reason: "No-token utility should be free",
+  }, { method: "PATCH" }));
+  assert.equal(makeToolFree.status, 200);
+  assert.equal(db.prepare("SELECT credit_cost FROM tools WHERE id = ?").get(configurableTool.id).credit_cost, 0);
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/tools/${configurableTool.id}`, support.cookie, {
+    creditCost: 10, reason: "Unauthorized pricing change",
+  }, { method: "PATCH" }))).status, 403);
   const serialized = JSON.stringify(customerDetailBody);
   assert.equal(/password_hash|secret_encrypted|token_hash/i.test(serialized), false);
   const auditResponse = await handleApi(authenticated("/api/admin/v1/audit", owner.cookie));

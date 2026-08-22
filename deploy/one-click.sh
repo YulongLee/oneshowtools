@@ -81,6 +81,9 @@ rsync -az --delete \
   --exclude='node_modules/' \
   --exclude='data/' \
   --exclude='dist/' \
+  --exclude='apps/' \
+  --exclude='packages/' \
+  --exclude='qa/' \
   --exclude='artifacts/' \
   --exclude='qa-*' \
   --exclude='*.log' \

@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "OneShowTools",
+    "slug": "oneshowtools",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "oneshowtools",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.oneshowailab.oneshowtools"
+    },
+    "android": {
+      "package": "com.oneshowailab.oneshowtools"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      ["expo-image-picker", { "photosPermission": "允许 OneShowTools 选择你希望处理的图片。", "cameraPermission": "允许 OneShowTools 拍摄你希望处理的图片。" }]
+    ]
+  }
+}

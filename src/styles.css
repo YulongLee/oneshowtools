@@ -2351,6 +2351,7 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .admin-tool-meta > div { min-width: 0; display: grid; gap: 3px; padding: 10px; border-right: 1px solid #e7ebf1; }
 .admin-tool-meta > div:last-child { border: 0; }
 .admin-tool-meta strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; }
+.admin-tool-meta strong.is-free { color: #15966b; }
 .admin-tool-admin-card footer { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .admin-tool-admin-card footer button.primary { color: #fff; border-color: #1768e5; background: #1768e5; }
 .admin-tool-admin-card .admin-badge { display: inline-flex; align-items: center; gap: 6px; }
@@ -2387,7 +2388,23 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .admin-branding-dialog > footer button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 16px; border: 1px solid #d8e1ee; border-radius: 10px; background: #fff; }
 .admin-branding-dialog > footer button.danger { color: #bc3c3c; }
 .admin-branding-dialog > footer .admin-primary { color: #fff; border-color: #2768eb; background: #2768eb; }
+.admin-pricing-dialog { width: min(560px, calc(100vw - 32px)); }
+.admin-pricing-hint { margin: -4px 0 2px; padding: 12px 14px; border: 1px solid #dce8fb; border-radius: 11px; color: #4f6382; background: #f5f9ff; font-size: 11px; line-height: 1.55; }
+.admin-pricing-dialog fieldset { margin: 0; padding: 0; border: 0; }
+.admin-pricing-dialog legend { margin-bottom: 8px; color: #5a6880; font-size: 10px; font-weight: 700; }
+.admin-pricing-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.admin-pricing-options > button { min-height: 72px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 13px; border: 1px solid #dce3ef; border-radius: 12px; color: #53617a; background: #fff; text-align: left; }
+.admin-pricing-options > button span { display: grid; gap: 3px; }
+.admin-pricing-options > button strong { color: #22304a; font-size: 12px; }
+.admin-pricing-options > button small { color: #8a97aa; font-size: 9px; }
+.admin-pricing-options > button.active { color: #2862e3; border-color: #79a1ff; background: #f3f7ff; box-shadow: 0 0 0 2px rgba(52, 103, 232, .08); }
+.admin-pricing-options > button.active.free { color: #15966b; border-color: #8ed8bf; background: #f1fbf7; box-shadow: 0 0 0 2px rgba(21, 150, 107, .08); }
+.admin-credit-input { min-height: 44px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid #dbe3ef; border-radius: 10px; background: #fff; }
+.admin-credit-input input { width: 100%; padding: 0; border: 0; outline: 0; font: inherit; background: transparent; }
+.admin-credit-input input:disabled { color: #a0abbb; }
+.admin-credit-input span { color: #8390a5; font-size: 9px; }
 @media (max-width: 640px) { .admin-branding-colors { grid-template-columns: 1fr; } .admin-branding-dialog > footer { align-items: stretch; flex-direction: column-reverse; } }
+@media (max-width: 640px) { .admin-pricing-options { grid-template-columns: 1fr; } }
 .admin-tool-publication-empty { grid-column: 1 / -1; padding: 36px; border: 1px dashed #d9e1eb; border-radius: 12px; background: #fff; }
 .admin-inline-form { display: flex; gap: 5px; }
 .admin-inline-form select { width: 125px; padding: 0 7px; }

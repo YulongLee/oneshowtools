@@ -17,8 +17,9 @@ import {
   createSessionToken,
   hashPassword,
   hashToken,
-  parseCookies,
   requestClient,
+  requestClientKind,
+  requestSessionToken,
   sameOrigin,
   sessionCookie,
   verifyPassword,
@@ -77,18 +78,21 @@ function internalServiceAuthorized(request) {
   return timingSafeEqual(expectedHash, suppliedHash);
 }
 const phoneOnlyEmail = (email) => String(email || "").endsWith("@phone.oneshowtools.invalid");
+const wechatOnlyEmail = (email) => String(email || "").endsWith("@wechat.oneshowtools.invalid");
 const cleanUser = (row) => {
   if (!row) return row;
   const phone = db.prepare("SELECT phone_last4 AS last4, country_code AS countryCode FROM user_phone_identities WHERE user_id = ?").get(row.id);
+  const wechat = db.prepare("SELECT 1 AS linked FROM provider_accounts WHERE user_id = ? AND provider = 'wechat_miniprogram'").get(row.id);
+  const syntheticEmail = phoneOnlyEmail(row.email) || wechatOnlyEmail(row.email);
   return {
     id: row.id,
     name: row.name,
-    email: phoneOnlyEmail(row.email) ? null : row.email,
+    email: syntheticEmail ? null : row.email,
     phone: phone ? `${phone.countryCode} **** ${phone.last4}` : null,
     locale: row.locale,
-    emailVerified: phoneOnlyEmail(row.email) ? false : Boolean(row.email_verified),
+    emailVerified: syntheticEmail ? false : Boolean(row.email_verified),
     phoneVerified: Boolean(phone),
-    authMethods: [!phoneOnlyEmail(row.email) ? "email" : null, phone ? "sms" : null].filter(Boolean),
+    authMethods: [!syntheticEmail ? "email" : null, phone ? "sms" : null, wechat ? "wechat" : null].filter(Boolean),
     createdAt: row.created_at,
   };
 };
@@ -161,7 +165,7 @@ async function issueAccountToken(request, user, purpose, email = user.email) {
 }
 
 function currentUser(request) {
-  const token = parseCookies(request.headers.get("cookie") || "").ost_session;
+  const token = requestSessionToken(request);
   if (!token) return null;
   return db.prepare(`
     SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
@@ -378,7 +382,11 @@ function createLoginResponse(userId, request, status = 200) {
     client.ipHash,
   );
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId);
-  return json({ user: cleanUser(user) }, status, { "set-cookie": sessionCookie(token) });
+  const clientKind = requestClientKind(request);
+  return json({
+    user: cleanUser(user),
+    ...(clientKind ? { accessToken: token, expiresAt: timestamp + 14 * 86400000 } : {}),
+  }, status, { "set-cookie": sessionCookie(token) });
 }
 
 async function login(request) {
@@ -527,6 +535,72 @@ async function verifySmsLogin(request) {
   audit(userId, "user.login.sms", "user", userId);
   securityEvent(request, "auth.sms.verify", "success", userId);
   return createLoginResponse(userId, request, identity ? 200 : 201);
+}
+
+async function verifyWechatMiniProgramLogin(request) {
+  const config = getServerConfig(request.url);
+  if (!config.wechatMiniProgramEnabled) return fail("WECHAT_MINIPROGRAM_UNAVAILABLE", 503);
+  const data = await body(request);
+  const code = String(data.code || "").trim();
+  if (!/^[A-Za-z0-9_-]{4,160}$/.test(code)) return fail("INVALID_WECHAT_CODE", 400);
+  if (rateLimited(request, "wechat-miniprogram-login", code, 8, 60000)) return fail("WECHAT_LOGIN_FAILED", 401);
+  const endpoint = new URL("https://api.weixin.qq.com/sns/jscode2session");
+  endpoint.searchParams.set("appid", process.env.WECHAT_MINIPROGRAM_APP_ID);
+  endpoint.searchParams.set("secret", process.env.WECHAT_MINIPROGRAM_APP_SECRET);
+  endpoint.searchParams.set("js_code", code);
+  endpoint.searchParams.set("grant_type", "authorization_code");
+  let payload;
+  try {
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(10000) });
+    payload = await response.json();
+    if (!response.ok || payload.errcode || !payload.openid) throw new Error("WECHAT_CODE_EXCHANGE_FAILED");
+  } catch {
+    securityEvent(request, "auth.wechat_miniprogram", "provider_failed");
+    return fail("WECHAT_LOGIN_FAILED", 502);
+  }
+  const providerId = String(payload.openid);
+  let mapping = db.prepare(`
+    SELECT p.user_id AS userId, u.status FROM provider_accounts p
+    JOIN users u ON u.id = p.user_id
+    WHERE p.provider = 'wechat_miniprogram' AND p.provider_account_id = ?
+  `).get(providerId);
+  if (mapping?.status && mapping.status !== "active") return fail("ACCOUNT_SUSPENDED", 403);
+  let userId = mapping?.userId;
+  const timestamp = Date.now();
+  if (!userId) {
+    userId = randomUUID();
+    const identityHash = hashToken(providerId);
+    const internalEmail = `wechat-${identityHash.slice(0, 32)}@wechat.oneshowtools.invalid`;
+    const passwordHash = await hashPassword(randomBytes(32).toString("base64url"));
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`
+        INSERT INTO users (id, name, email, password_hash, locale, email_verified, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+      `).run(userId, String(data.name || "微信用户").trim().slice(0, 80) || "微信用户", internalEmail,
+        passwordHash, data.locale === "en" ? "en" : "zh-CN", timestamp, timestamp);
+      db.prepare(`
+        INSERT INTO provider_accounts
+        (id, user_id, provider, provider_account_id, provider_email, created_at)
+        VALUES (?, ?, 'wechat_miniprogram', ?, '', ?)
+      `).run(randomUUID(), userId, providerId, timestamp);
+      db.prepare(`
+        INSERT INTO credit_ledger
+        (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
+        VALUES (?, ?, 'welcome', 200, '新用户欢迎积分', 'New account welcome credits', 'user', ?, ?)
+      `).run(randomUUID(), userId, userId, timestamp);
+      db.exec("COMMIT");
+      audit(userId, "user.register.wechat_miniprogram", "user", userId);
+    } catch (error) {
+      db.exec("ROLLBACK");
+      const raced = db.prepare(`SELECT user_id AS userId FROM provider_accounts
+        WHERE provider = 'wechat_miniprogram' AND provider_account_id = ?`).get(providerId);
+      if (!raced) throw error;
+      userId = raced.userId;
+    }
+  }
+  securityEvent(request, "auth.wechat_miniprogram", "success", userId);
+  return createLoginResponse(userId, request, mapping ? 200 : 201);
 }
 
 function validToken(rawToken, purpose) {
@@ -767,7 +841,7 @@ function listTasks(userId) {
 }
 
 function currentSession(request) {
-  const token = parseCookies(request.headers.get("cookie") || "").ost_session;
+  const token = requestSessionToken(request);
   if (!token) return null;
   return db.prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?").get(hashToken(token), Date.now()) || null;
 }
@@ -1155,6 +1229,7 @@ export async function handleApi(request) {
     accountDeletionEnabled: config.accountDeletionEnabled,
     emailEnabled: config.emailConfigured,
     smsAuthEnabled: config.smsAuthEnabled,
+    wechatMiniProgramEnabled: config.wechatMiniProgramEnabled,
     configurationReady: configurationErrors.length === 0,
     configurationErrors,
     oneShowModelEnabled: gatewayFlags().managedConfigured && gatewayFlags().managedExecutionEnabled,
@@ -1184,12 +1259,13 @@ export async function handleApi(request) {
   if (path === "/api/auth/login" && request.method === "POST") return login(request);
   if (path === "/api/auth/sms/send" && request.method === "POST") return sendSmsVerification(request);
   if (path === "/api/auth/sms/verify" && request.method === "POST") return verifySmsLogin(request);
+  if (path === "/api/auth/wechat-miniprogram" && request.method === "POST") return verifyWechatMiniProgramLogin(request);
   if (path === "/api/auth/resend-verification" && request.method === "POST") return resendVerification(request);
   if (path === "/api/auth/forgot-password" && request.method === "POST") return requestPasswordReset(request);
   if (path === "/api/auth/reset-password" && request.method === "POST") return resetPassword(request);
   if (path.startsWith("/api/auth/google/")) return fail("NOT_FOUND", 404);
   if (path === "/api/auth/logout" && request.method === "POST") {
-    const token = parseCookies(request.headers.get("cookie") || "").ost_session;
+    const token = requestSessionToken(request);
     if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashToken(token));
     return json({ ok: true }, 200, { "set-cookie": sessionCookie("", 0) });
   }

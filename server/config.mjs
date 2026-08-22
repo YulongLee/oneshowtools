@@ -58,6 +58,10 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
     smsProviderSupported,
     smsConfigured,
     smsAuthEnabled: enabled("SMS_AUTH_ENABLED", false, "OFFERSTEADY_AUTH_SMS_ENABLED") && smsConfigured,
+    wechatMiniProgramEnabled: Boolean(
+      process.env.WECHAT_MINIPROGRAM_APP_ID
+      && process.env.WECHAT_MINIPROGRAM_APP_SECRET,
+    ),
     billingEnabled: enabled("BILLING_ENABLED", false) && stripeConfigured,
     accountDeletionEnabled: enabled("ACCOUNT_DELETION_ENABLED", false),
     adminRbacEnabled: enabled("ADMIN_RBAC_ENABLED", true),

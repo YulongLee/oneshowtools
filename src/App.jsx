@@ -27,14 +27,14 @@ const iconMap = {
   Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal,
 };
 const commercialToolIconBySlug = {
-  "ai-music-studio": "/tool-icons-v2/ai-music-studio.png",
-  "ai-outfit-changer": "/tool-icons-v2/ai-outfit-changer.png",
-  "ai-product-photo": "/tool-icons-v2/ai-image-generation.png",
-  "ai-portrait-studio": "/tool-icons-v2/ai-image-generation.png",
-  "seo-workbench": "/tool-icons-v2/seo-analysis.png",
-  "ai-writer": "/tool-icons-v2/ai-writing.png",
-  "pdf-summary": "/tool-icons-v2/pdf-tools.png",
-  "pdf-merge": "/tool-icons-v2/pdf-tools.png",
+  "ai-music-studio": "/tool-icons-v2/optimized/ai-music-studio.png",
+  "ai-outfit-changer": "/tool-icons-v2/optimized/ai-outfit-changer.png",
+  "ai-product-photo": "/tool-icons-v2/optimized/ai-image-generation.png",
+  "ai-portrait-studio": "/tool-icons-v2/optimized/ai-image-generation.png",
+  "seo-workbench": "/tool-icons-v2/optimized/seo-analysis.png",
+  "ai-writer": "/tool-icons-v2/optimized/ai-writing.png",
+  "pdf-summary": "/tool-icons-v2/optimized/pdf-tools.png",
+  "pdf-merge": "/tool-icons-v2/optimized/pdf-tools.png",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
@@ -43,7 +43,13 @@ function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false,
   return <span
     className={`tool-icon ${compact ? "compact" : ""} ${tool?.category || ""} ${className}`.trim()}
     style={{ ...(tool?.iconColor ? { color: tool.iconColor } : {}), ...(tool?.iconBackground ? { background: tool.iconBackground } : {}) }}
-  >{iconUrl ? <img src={iconUrl} alt="" /> : <Icon size={size} weight={weight} />}</span>;
+  ><Icon className="tool-icon-fallback" size={size} weight={weight} />{iconUrl ? <img src={iconUrl} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}</span>;
+}
+function ToolPrice({ tool, locale = "zh-CN", withUnit = true }) {
+  const free = Number(tool?.creditCost || 0) === 0;
+  return free
+    ? <span className="tool-price free"><Gift size={14} weight="duotone" />{locale === "en" ? "Free" : "免费"}</span>
+    : <span className="tool-price"><Coins size={14} />{tool.creditCost}{withUnit ? (locale === "en" ? " Credits" : " 积分/次") : ""}</span>;
 }
 const aiImageToolSlugs = new Set(["ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo", "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer", "sliding-ancestor-generator"]);
 const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker", "image-ocr", "qr-code-reader", ...aiImageToolSlugs]);
@@ -1034,17 +1040,13 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
   };
   return <div className="page-stack dashboard-page">
     <section className="dashboard-hero">
-      <div className="dashboard-hero-copy"><p className="eyebrow">ONESHOWTOOLS AI WORKSPACE</p><h1>{greeting}，{userName}<Sparkle size={22} weight="fill" /></h1><p>{isEn ? "What would you like AI to help you accomplish today?" : "今天想让 AI 帮你完成什么？"}</p>
+      <div className="dashboard-hero-copy"><p className="dashboard-kicker"><Sparkle size={14} weight="fill" />{isEn ? "OneShowTools smart workspace" : "OneShowTools 智能工作台"}</p><h1>{greeting}，{userName}<Sparkle size={22} weight="fill" /></h1><p>{isEn ? "What would you like AI to help you accomplish today?" : "今天想让 AI 帮你完成什么？"}</p>
         <form className="dashboard-search" onSubmit={submitSearch}><MagnifyingGlass size={20} /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={t.search} /><button aria-label={t.searchAction}><ArrowRight size={20} /></button></form>
         <div className="dashboard-hot"><span>{t.popularTools}：</span>{recommended.slice(0, 6).map((tool) => <button key={tool.id} onClick={() => onRun(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
       </div>
       <div className="dashboard-hero-art" aria-hidden="true">
-        <span className="dashboard-orb-ring ring-one" /><span className="dashboard-orb-ring ring-two" />
-        <img src="/landing/oneshowtools-3d-orb.png" alt="" />
-        <span className="dashboard-float-icon icon-music"><MusicNotes size={21} weight="duotone" /></span>
-        <span className="dashboard-float-icon icon-image"><ImageSquare size={21} weight="duotone" /></span>
-        <span className="dashboard-float-icon icon-agent"><Robot size={21} weight="duotone" /></span>
-        <span className="dashboard-float-icon icon-write"><PenNib size={21} weight="duotone" /></span>
+        <div className="dashboard-brand-visual"><img src="/landing/oneshowtools-3d-orb-640.png" alt="" width="640" height="640" fetchPriority="high" decoding="async" /></div>
+        <div className={`dashboard-art-tools count-${Math.min(recommended.length, 4)}`}>{recommended.slice(0, 4).map((tool, index) => <div className={`dashboard-art-tool tool-${index + 1}`} key={tool.id}><ProductToolIcon tool={tool} size={20} compact /><span><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} Credits</small></span></div>)}</div>
       </div>
     </section>
 
@@ -1102,16 +1104,17 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
     const categoryMatches = category === "all" || selectedCategory.accepts.includes(tool.category);
     const queryMatches = !query || text.includes(query.toLowerCase());
     const filterMatches = filter === "all"
-      || (filter === "ready" && tool.runtimeStatus === "ready")
+      || (filter === "free" && Number(tool.creditCost || 0) === 0)
+      || (filter === "paid" && Number(tool.creditCost || 0) > 0)
       || (filter === "agent" && tool.category === "agent")
       || (filter === "local" && tool.runtimeKind !== "openai");
     return categoryMatches && queryMatches && filterMatches;
   });
   const visible = matching.slice(0, limit);
   const categoryCount = (item) => item.id === "all" ? tools.length : tools.filter((tool) => item.accepts.includes(tool.category)).length;
-  const preferredSlugs = ["ai-music-studio", "seo-agent", "ai-writer", "pdf-summary"];
+  const preferredSlugs = ["ai-music-studio", "ai-outfit-changer", "seo-agent", "ai-writer", "pdf-summary"];
   const featured = [...preferredSlugs.map((slug) => tools.find((tool) => tool.slug === slug)).filter(Boolean), ...tools]
-    .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index).slice(0, 4);
+    .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index).slice(0, 6);
   const recentTasks = tasks.slice(0, 5);
   const activeConnections = runtime?.connections?.filter((item) => item.status === "active").length || 0;
   const runtimeRows = [
@@ -1121,28 +1124,32 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
   ];
   const filters = [
     ["all", isEn ? "All tools" : "全部工具", SquaresFour],
-    ["ready", isEn ? "Ready" : "可直接使用", CheckCircle],
+    ["free", isEn ? "Free" : "免费", Gift],
+    ["paid", isEn ? "Paid" : "付费", Coins],
     ["agent", "AI Agent", Robot],
     ["local", isEn ? "Local tools" : "本地工具", ShieldCheck],
   ];
   useEffect(() => setLimit(12), [category, filter, query]);
-  return <div className="marketplace-page">
+  return <div className="marketplace-page marketplace-page-redesign">
     <div className="marketplace-primary">
       <section className="marketplace-hero">
         <div className="marketplace-hero-copy">
-          <p>{isEn ? `Hello, ${data?.user?.name || "Creator"}` : `你好，${data?.user?.name || "创作者"}`}</p>
-          <h1>{isEn ? "What will AI help you finish today?" : "今天想用 AI 完成什么？"}</h1>
-          <span>{isEn ? `Explore ${tools.length}+ practical tools for creation, growth and delivery.` : `探索 ${tools.length}+ 款覆盖创作、增长和交付的实用工具，让工作更简单。`}</span>
+          <p>ONSHOWTOOLS · AI WORKSPACE</p>
+          <h1>{isEn ? "AI Tool Marketplace" : "AI 工具市场"}</h1>
+          <span>{isEn ? `Explore ${tools.length}+ practical AI tools and get more done.` : `探索 ${tools.length}+ 款强大的 AI 工具，让 AI 帮你完成更多工作。`}</span>
           <div className="marketplace-search"><MagnifyingGlass size={21} /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={t.search} />{query ? <button aria-label={t.close} onClick={() => onQuery("")}><X size={16} /></button> : <button className="marketplace-search-submit" aria-label={isEn ? "Search tools" : "搜索工具"}><ArrowRight size={20} /></button>}</div>
-          <div className="marketplace-hot-chips">{featured.map((tool) => <button key={tool.id} onClick={() => onRun(tool)}>{locale === "en" ? tool.nameEn : tool.nameZh}</button>)}</div>
         </div>
         <img src="/dashboard/oneshowtools-ai-toolkit-900.png" alt="" aria-hidden="true" />
       </section>
 
+      <nav className="marketplace-category-nav" aria-label={isEn ? "Tool categories" : "工具分类"}>{marketplaceCategories.filter((item) => item.id === "all" || categoryCount(item) > 0).map((item) => { const CategoryIcon = item.icon; return <button className={category === item.id ? "active" : ""} key={item.id} onClick={() => setCategory(item.id)}><CategoryIcon size={16} />{t[item.id]}<small>{categoryCount(item)}</small></button>; })}</nav>
+
       <section className="marketplace-featured surface">
-        <header><div><Fire size={20} weight="fill" /><h2>{isEn ? "Today’s picks" : "今日精选"}</h2><span>{isEn ? "Useful tools ready to run" : "精选优质工具，提升工作效率"}</span></div><button onClick={() => { setCategory("all"); setFilter("all"); }}>{isEn ? "View all" : "查看全部"}<ArrowRight size={14} /></button></header>
-        <div>{featured.map((tool, index) => <button className={`featured-tool tone-${index + 1}`} key={tool.id} onClick={() => onRun(tool)}><span className="featured-copy"><small>{index === 0 ? "NEW" : index === 1 ? "AGENT" : t.ready}</small><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><em>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</em><b>{isEn ? "Try now" : "立即体验"}</b></span><span className="featured-icon"><ProductToolIcon tool={tool} size={52} /></span></button>)}</div>
+        <header><div><Sparkle size={20} weight="fill" /><h2>{isEn ? "Featured picks" : "精选推荐"}</h2><span>{isEn ? "High-quality tools selected for you" : "精选优质 AI 工具，让你的工作效率翻倍"}</span></div><button onClick={() => { setCategory("all"); setFilter("all"); }}>{isEn ? "View all" : "查看全部精选"}<ArrowRight size={14} /></button></header>
+        <div>{featured.slice(0, 2).map((tool, index) => <button className={`featured-tool tone-${index + 1}`} key={tool.id} onClick={() => onRun(tool)}><span className="featured-copy"><small><Fire size={12} weight="fill" />{isEn ? "POPULAR" : "热门"}</small><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><em>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</em><span className="featured-tags"><i>{t[tool.category] || tool.category}</i><ToolPrice tool={tool} locale={locale} /></span><b>{isEn ? "Use now" : "立即使用"}<ArrowRight size={14} /></b></span><span className="featured-icon"><ProductToolIcon tool={tool} size={84} /></span></button>)}</div>
       </section>
+
+      <section className="marketplace-hot-tools surface"><header><div><Fire size={20} weight="fill" /><h2>{isEn ? "Popular tools" : "热门工具"}</h2><span>{isEn ? "Tools people are using now" : "大家都在用的 AI 工具"}</span></div><button onClick={() => { setCategory("all"); setFilter("all"); }}>{isEn ? "View all" : "查看全部热门"}<ArrowRight size={14} /></button></header><div>{featured.map((tool) => <article key={tool.id}><div><ProductToolIcon tool={tool} size={24} /><button className={`tool-favorite ${favorites.includes(tool.id) ? "active" : ""}`} onClick={() => onToggleFavorite(tool.id)} aria-label={isEn ? "Toggle favorite" : "切换收藏"}><Star size={15} weight={favorites.includes(tool.id) ? "fill" : "regular"} /></button></div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><footer><ToolPrice tool={tool} locale={locale} /><button onClick={() => onRun(tool)} aria-label={isEn ? "Use tool" : "使用工具"}><ArrowRight size={15} /></button></footer></article>)}</div></section>
 
       <section className="marketplace-catalog surface">
         <div className="marketplace-filterbar">{filters.map(([id, label, Icon]) => <button className={filter === id ? "active" : ""} key={id} onClick={() => setFilter(id)}><Icon size={16} />{label}</button>)}<span><Funnel size={15} />{matching.length} {t.toolsFound}</span></div>
@@ -1153,7 +1160,7 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
           </aside>
           <div className="marketplace-card-area">
             <header><div><span>{t.marketplaceResults}</span><h2>{t[selectedCategory.id]}</h2></div><small>{matching.length} {t.toolsFound}</small></header>
-            {visible.length ? <div className="marketplace-tool-grid">{visible.map((tool) => { const ready = tool.runtimeStatus === "ready"; const favorite = favorites.includes(tool.id); return <article className="marketplace-tool-card" key={tool.id}><div className="tool-card-head"><ProductToolIcon tool={tool} size={22} /><div><button className={`tool-favorite ${favorite ? "active" : ""}`} aria-label={isEn ? "Toggle favorite" : "切换收藏"} onClick={() => onToggleFavorite(tool.id)}><Star size={15} weight={favorite ? "fill" : "regular"} /></button>{ready ? <span className="tool-ready"><CheckCircle size={13} weight="fill" />{t.ready}</span> : <StatusPill status={tool.runtimeStatus} locale={locale} />}</div></div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="tool-card-tags"><span>{isEn ? "Tool" : "工具"}</span><span>{t[tool.category] || tool.category}</span></div><footer><strong><Coins size={14} />{tool.creditCost} {t.creditsUnit}</strong><button onClick={() => onRun(tool)}>{isEn ? "Use" : "使用"}</button></footer></article>; })}</div> : <EmptyState icon={selectedCategory.icon} title={query ? t.noResults : t.comingSoon} body={query ? undefined : t.comingSoonHint} action={!query && <button className="secondary-button" onClick={() => setCategory("all")}>{t.all}</button>} />}
+            {visible.length ? <div className="marketplace-tool-grid">{visible.map((tool) => { const ready = tool.runtimeStatus === "ready"; const favorite = favorites.includes(tool.id); return <article className="marketplace-tool-card" key={tool.id}><div className="tool-card-head"><ProductToolIcon tool={tool} size={22} /><div><button className={`tool-favorite ${favorite ? "active" : ""}`} aria-label={isEn ? "Toggle favorite" : "切换收藏"} onClick={() => onToggleFavorite(tool.id)}><Star size={15} weight={favorite ? "fill" : "regular"} /></button>{ready ? <span className="tool-ready"><CheckCircle size={13} weight="fill" />{t.ready}</span> : <StatusPill status={tool.runtimeStatus} locale={locale} />}</div></div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="tool-card-tags"><span>{isEn ? "Tool" : "工具"}</span><span>{t[tool.category] || tool.category}</span></div><footer><ToolPrice tool={tool} locale={locale} /><button onClick={() => onRun(tool)}>{isEn ? "Use" : "使用"}</button></footer></article>; })}</div> : <EmptyState icon={selectedCategory.icon} title={query ? t.noResults : t.comingSoon} body={query ? undefined : t.comingSoonHint} action={!query && <button className="secondary-button" onClick={() => setCategory("all")}>{t.all}</button>} />}
             {matching.length > visible.length && <button className="marketplace-load-more" onClick={() => setLimit((value) => value + 12)}>{isEn ? "Load more tools" : "加载更多工具"}<CaretDown size={15} /></button>}
           </div>
         </div>
@@ -1832,12 +1839,12 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
   const heroToolCatalog = useMemo(() => {
     const bySlug = (slug) => tools.find((tool) => tool.slug === slug);
     return [
-      { tool: bySlug("ai-music-studio"), label: isEn ? "AI Music Studio" : "AI 音乐工作室", detail: isEn ? "Create original songs" : "生成原创歌曲", Icon: Headphones, tone: "music", asset: "/tool-icons-v2/ai-music-studio.png" },
-      { tool: bySlug("ai-outfit-changer"), label: isEn ? "AI Outfit Changer" : "AI 一键换装", detail: isEn ? "Try on any style" : "轻松更换造型", Icon: UserFocus, tone: "outfit", asset: "/tool-icons-v2/ai-outfit-changer.png" },
-      { tool: bySlug("ai-product-photo") || bySlug("ai-portrait-studio"), label: isEn ? "AI Image" : "图片生成", detail: isEn ? "Create visual assets" : "生成创意图片", Icon: ImageSquare, tone: "image", asset: "/tool-icons-v2/ai-image-generation.png" },
-      { tool: bySlug("seo-workbench"), label: isEn ? "SEO Analysis" : "SEO 分析", detail: isEn ? "Find growth opportunities" : "发现增长机会", Icon: ChartLineUp, tone: "seo", asset: "/tool-icons-v2/seo-analysis.png" },
-      { tool: bySlug("ai-writer"), label: isEn ? "AI Writing" : "AI 写作", detail: isEn ? "Draft polished content" : "生成优质内容", Icon: PenNib, tone: "writing", asset: "/tool-icons-v2/ai-writing.png" },
-      { tool: bySlug("pdf-summary") || bySlug("pdf-merge"), label: isEn ? "PDF Tools" : "PDF 工具", detail: isEn ? "Read and transform PDFs" : "阅读与处理 PDF", Icon: FilePdf, tone: "pdf", asset: "/tool-icons-v2/pdf-tools.png" },
+      { tool: bySlug("ai-music-studio"), label: isEn ? "AI Music Studio" : "AI 音乐工作室", detail: isEn ? "Create original songs" : "生成原创歌曲", Icon: Headphones, tone: "music", asset: "/tool-icons-v2/optimized/ai-music-studio.png" },
+      { tool: bySlug("ai-outfit-changer"), label: isEn ? "AI Outfit Changer" : "AI 一键换装", detail: isEn ? "Try on any style" : "轻松更换造型", Icon: UserFocus, tone: "outfit", asset: "/tool-icons-v2/optimized/ai-outfit-changer.png" },
+      { tool: bySlug("ai-product-photo") || bySlug("ai-portrait-studio"), label: isEn ? "AI Image" : "图片生成", detail: isEn ? "Create visual assets" : "生成创意图片", Icon: ImageSquare, tone: "image", asset: "/tool-icons-v2/optimized/ai-image-generation.png" },
+      { tool: bySlug("seo-workbench"), label: isEn ? "SEO Analysis" : "SEO 分析", detail: isEn ? "Find growth opportunities" : "发现增长机会", Icon: ChartLineUp, tone: "seo", asset: "/tool-icons-v2/optimized/seo-analysis.png" },
+      { tool: bySlug("ai-writer"), label: isEn ? "AI Writing" : "AI 写作", detail: isEn ? "Draft polished content" : "生成优质内容", Icon: PenNib, tone: "writing", asset: "/tool-icons-v2/optimized/ai-writing.png" },
+      { tool: bySlug("pdf-summary") || bySlug("pdf-merge"), label: isEn ? "PDF Tools" : "PDF 工具", detail: isEn ? "Read and transform PDFs" : "阅读与处理 PDF", Icon: FilePdf, tone: "pdf", asset: "/tool-icons-v2/optimized/pdf-tools.png" },
       { tool: tools.find((tool) => tool.category === "agent"), label: "AI Agent", detail: isEn ? "Complete multi-step work" : "完成多步骤任务", Icon: Robot, tone: "agent" },
       { tool: tools.find((tool) => tool.category === "data"), label: isEn ? "Data Tools" : "数据工具", detail: isEn ? "Turn data into answers" : "让数据变成答案", Icon: ChartBar, tone: "data" },
       { tool: tools.find((tool) => tool.category === "audio"), label: isEn ? "Audio Tools" : "音频工具", detail: isEn ? "Edit and transform audio" : "编辑与转换音频", Icon: Microphone, tone: "audio" },

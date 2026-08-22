@@ -98,6 +98,36 @@ npm run build
 npm test
 ```
 
+## Mobile App and WeChat Mini Program
+
+The web application remains in `src/` and keeps its secure cookie session. Two
+isolated clients now consume the same production API without changing the web
+contract:
+
+- `apps/mobile` is an Expo application for iOS and Android. It stores its
+  revocable bearer session in the operating system secure store and provides
+  real dashboard, catalog, task, file, music, outfit-changing, and food-analysis
+  flows.
+- `apps/miniprogram` is a Taro WeChat Mini Program. It supports server-side
+  WeChat code exchange, SMS/email fallback login, the shared account dashboard,
+  tool execution, tasks, and files.
+- `packages/platform-client` is the shared, versioned native API contract.
+
+Install and verify each client independently so web deployment remains
+unchanged:
+
+```bash
+npm --prefix apps/mobile install
+npm --prefix apps/miniprogram install
+npm run build:clients
+```
+
+Before a real release, set the App API base URL, replace the Mini Program test
+AppID, configure `WECHAT_MINIPROGRAM_APP_ID` and
+`WECHAT_MINIPROGRAM_APP_SECRET` only on the server, and add the API host to the
+Mini Program request/upload/download domain allowlist. See
+`docs/mobile-and-miniprogram.md` for the complete release checklist.
+
 The automated lifecycle test covers registration, session cookies, welcome
 credits, task persistence, runtime waiting/refund behavior, file
 upload/download/deletion, copy polishing, and image compression.

@@ -1,0 +1,22 @@
+{
+  "name": "@oneshowtools/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "check": "expo export --platform web --output-dir dist-check"
+  },
+  "dependencies": {
+    "@oneshowtools/platform-client": "file:../../packages/platform-client",
+    "expo": "~57.0.15",
+    "expo-image-picker": "~57.0.12",
+    "expo-secure-store": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-web": "^0.21.2"
+  }
+}

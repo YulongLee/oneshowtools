@@ -4,7 +4,7 @@ import {
   File, Gauge, Gear, Globe, IdentificationCard, Key, ListChecks, LockKey,
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
-  BookOpenText,
+  BookOpenText, Gift,
   Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes, ImageSquare, Clock, Robot,
 } from "@phosphor-icons/react";
 
@@ -70,6 +70,9 @@ const copy = {
     configureBranding: "配置产品图标", brandingTitle: "产品品牌外观", brandingHint: "上传独立产品图标并配置图标底色。PNG、JPG 或 WebP，最大 2MB。",
     iconUpload: "上传产品图标", iconColor: "强调色", iconBackground: "图标背景色", brandingReason: "本次变更原因",
     saveBranding: "保存品牌外观", resetBranding: "恢复默认图标", brandingSaved: "产品图标配置已保存",
+    configurePricing: "配置计费", pricingTitle: "应用计费设置", pricingHint: "免费应用不会扣减用户积分；积分收费应用按每次成功执行扣费。",
+    pricingMode: "计费方式", freeTool: "免费应用", paidTool: "积分收费", creditsPerRun: "每次执行积分",
+    pricingReason: "本次调整原因", savePricing: "保存计费设置", pricingSaved: "应用计费设置已保存",
     orders: "订单", subscriptions: "订阅", invoices: "发票", refunds: "退款",
     disputes: "争议", exceptions: "对账异常", approvals: "待审批", approve: "批准",
     jobs: "作业队列", alerts: "运营告警", retry: "重试", policies: "政策版本",
@@ -157,6 +160,9 @@ const copy = {
     configureBranding: "Configure icon", brandingTitle: "Product branding", brandingHint: "Upload a product icon and choose its accent and background colors. PNG, JPG or WebP, up to 2 MB.",
     iconUpload: "Upload product icon", iconColor: "Accent color", iconBackground: "Icon background", brandingReason: "Reason for change",
     saveBranding: "Save branding", resetBranding: "Restore default icon", brandingSaved: "Product branding saved",
+    configurePricing: "Configure pricing", pricingTitle: "App pricing", pricingHint: "Free apps do not deduct credits. Paid apps charge after each successful run.",
+    pricingMode: "Pricing mode", freeTool: "Free app", paidTool: "Credit charge", creditsPerRun: "Credits per run",
+    pricingReason: "Reason for change", savePricing: "Save pricing", pricingSaved: "App pricing saved",
     orders: "Orders", subscriptions: "Subscriptions", invoices: "Invoices", refunds: "Refunds",
     disputes: "Disputes", exceptions: "Exceptions", approvals: "Approvals", approve: "Approve",
     jobs: "Jobs", alerts: "Alerts", retry: "Retry", policies: "Policies", deletions: "Deletion queue",
@@ -975,13 +981,15 @@ function CommerceView({ data, locale, onApprove, canManage, onProviderTest, onPr
         {!sections[tab]?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>}</section></div>;
 }
 
-function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding }) {
+function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing }) {
   const t = copy[locale];
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [brandingTool, setBrandingTool] = useState(null);
   const [branding, setBranding] = useState({ icon: null, iconColor: "#2768EB", iconBackground: "#EDF4FF", reason: "" });
   const [previewUrl, setPreviewUrl] = useState("");
+  const [pricingTool, setPricingTool] = useState(null);
+  const [pricing, setPricing] = useState({ mode: "paid", creditCost: 1, reason: "" });
   const [saving, setSaving] = useState(false);
   const tools = data?.tools || [];
   const onlineCount = tools.filter((tool) => tool.active).length;
@@ -1017,6 +1025,20 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding }) {
     try { if (await onBranding(brandingTool.id, form)) setBrandingTool(null); }
     finally { setSaving(false); }
   };
+  const openPricing = (tool) => {
+    const creditCost = Number(tool.creditCost || 0);
+    setPricingTool(tool);
+    setPricing({ mode: creditCost === 0 ? "free" : "paid", creditCost: Math.max(1, creditCost), reason: "" });
+  };
+  const savePricing = async (event) => {
+    event.preventDefault();
+    if (!pricing.reason.trim()) return;
+    setSaving(true);
+    try {
+      const creditCost = pricing.mode === "free" ? 0 : Math.max(1, Number(pricing.creditCost || 1));
+      if (await onPricing(pricingTool.id, { creditCost, reason: pricing.reason.trim() })) setPricingTool(null);
+    } finally { setSaving(false); }
+  };
   return <div className="admin-tool-publication-page">
     <section className="admin-tool-publication-head">
       <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
@@ -1028,8 +1050,8 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding }) {
     </section>
     <div className="admin-tool-admin-grid">{visibleTools.map((tool) => <article className={`admin-tool-admin-card ${tool.active ? "is-online" : "is-offline"}`} key={tool.id}>
       <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${tool.active ? "published" : "retired"}`}><span />{tool.active ? t.online : t.offline}</i></header>
-      <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong>{tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className={tool.active ? "danger" : "primary"} onClick={() => onLifecycle(tool.id, tool.active ? "retired" : "published")}>{tool.active ? t.takeOffline : t.putOnline}</button></div></footer>
+      <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong className={Number(tool.creditCost || 0) === 0 ? "is-free" : ""}>{Number(tool.creditCost || 0) === 0 ? t.freeTool : tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className={tool.active ? "danger" : "primary"} onClick={() => onLifecycle(tool.id, tool.active ? "retired" : "published")}>{tool.active ? t.takeOffline : t.putOnline}</button></div></footer>
     </article>)}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
     {brandingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBrandingTool(null); }}><form className="admin-branding-dialog" onSubmit={saveBranding}>
       <header><div><small>PRODUCT IDENTITY</small><h2>{t.brandingTitle}</h2><p>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</p></div><button type="button" onClick={() => setBrandingTool(null)} aria-label={t.close}><X size={20} /></button></header>
@@ -1038,6 +1060,14 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding }) {
       <div className="admin-branding-colors"><label>{t.iconColor}<span><input type="color" value={branding.iconColor} onChange={(event) => setBranding({ ...branding, iconColor: event.target.value.toUpperCase() })} /><code>{branding.iconColor}</code></span></label><label>{t.iconBackground}<span><input type="color" value={branding.iconBackground} onChange={(event) => setBranding({ ...branding, iconBackground: event.target.value.toUpperCase() })} /><code>{branding.iconBackground}</code></span></label></div>
       <label>{t.brandingReason}<input value={branding.reason} onChange={(event) => setBranding({ ...branding, reason: event.target.value })} required maxLength="500" /></label>
       <footer><button type="button" className="danger" disabled={saving || (!brandingTool.iconUrl && !brandingTool.iconColor)} onClick={async () => { if (!branding.reason.trim()) return; setSaving(true); try { if (await onResetBranding(brandingTool.id, branding.reason.trim())) setBrandingTool(null); } finally { setSaving(false); } }}>{t.resetBranding}</button><button className="admin-primary" disabled={saving || !branding.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.saveBranding}</button></footer>
+    </form></div>}
+    {pricingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPricingTool(null); }}><form className="admin-branding-dialog admin-pricing-dialog" onSubmit={savePricing}>
+      <header><div><small>COMMERCIAL SETTINGS</small><h2>{t.pricingTitle}</h2><p>{locale === "en" ? pricingTool.nameEn : pricingTool.nameZh}</p></div><button type="button" onClick={() => setPricingTool(null)} aria-label={t.close}><X size={20} /></button></header>
+      <p className="admin-pricing-hint">{t.pricingHint}</p>
+      <fieldset><legend>{t.pricingMode}</legend><div className="admin-pricing-options"><button type="button" className={pricing.mode === "free" ? "active free" : ""} onClick={() => setPricing({ ...pricing, mode: "free" })}><Gift size={21} weight="duotone" /><span><strong>{t.freeTool}</strong><small>0 Credits</small></span><CheckCircle size={17} weight={pricing.mode === "free" ? "fill" : "regular"} /></button><button type="button" className={pricing.mode === "paid" ? "active" : ""} onClick={() => setPricing({ ...pricing, mode: "paid" })}><Coins size={21} weight="duotone" /><span><strong>{t.paidTool}</strong><small>{t.creditsPerRun}</small></span><CheckCircle size={17} weight={pricing.mode === "paid" ? "fill" : "regular"} /></button></div></fieldset>
+      <label>{t.creditsPerRun}<div className="admin-credit-input"><Coins size={18} /><input type="number" min="1" max="100000" value={pricing.creditCost} disabled={pricing.mode === "free"} onChange={(event) => setPricing({ ...pricing, creditCost: event.target.value })} /><span>Credits</span></div></label>
+      <label>{t.pricingReason}<input value={pricing.reason} onChange={(event) => setPricing({ ...pricing, reason: event.target.value })} required maxLength="500" /></label>
+      <footer><button type="button" onClick={() => setPricingTool(null)}>{t.close}</button><button className="admin-primary" disabled={saving || !pricing.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.savePricing}</button></footer>
     </form></div>}
   </div>;
 }
@@ -1211,6 +1241,10 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/tools/${id}/branding`, json("DELETE", { reason })); await loadView(); showToast(t.brandingSaved); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const saveToolPricing = async (id, draft) => {
+    try { await api(`/api/admin/v1/tools/${id}`, json("PATCH", draft)); await loadView(); showToast(t.pricingSaved); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const createAdmin = async (draft) => {
     if (!draft.email?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
@@ -1366,7 +1400,7 @@ export function AdminApp() {
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} />,
-    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} />,
+    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
     audit: <AuditView data={data.audit} locale={locale} onPage={setPage} />,
