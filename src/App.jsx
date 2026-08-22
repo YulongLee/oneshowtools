@@ -10,6 +10,7 @@ import {
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
+  Bell, Star,
 } from "@phosphor-icons/react";
 import { SeoAgentWorkspace } from "./SeoAgentWorkspace.jsx";
 import { MusicStudio } from "./MusicStudio.jsx";
@@ -17,6 +18,7 @@ import { LyricsGenerator } from "./LyricsGenerator.jsx";
 import { SupportWidget } from "./SupportWidget.jsx";
 import { SlidingAncestorStudio } from "./SlidingAncestorStudio.jsx";
 import { FoodNutritionAnalyzer } from "./FoodNutritionAnalyzer.jsx";
+import "./workbench.css";
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -158,7 +160,7 @@ const marketplaceCategories = [
 
 const dictionary = {
   "zh-CN": {
-    nav: { dashboard: "仪表盘", marketplace: "工具市场", runtime: "AI Runtime", credits: "积分", billing: "计费", tasks: "任务中心", files: "文件中心", account: "用户系统" },
+    nav: { dashboard: "工作台", marketplace: "AI 工具市场", recent: "最近使用", favorites: "我的收藏", agent: "AI Agent", runtime: "AI Runtime", tasks: "任务中心", files: "文件中心", projects: "项目中心", plans: "积分与套餐", billing: "计费中心", settings: "设置中心", credits: "积分", account: "用户系统" },
     search: "搜索工具或输入你想完成的任务", searchAction: "搜索", popularTools: "常用工具", today: "今天想完成什么？", todaySub: "搜索你需要的能力，快速找到合适的 AI 工具。",
     login: "登录", signup: "注册", logout: "退出登录", language: "EN", overview: "平台概览", recentTasks: "最近任务", openMarketplace: "打开工具市场",
     creditsBalance: "可用积分", taskCount: "任务总数", fileCount: "文件数量", completed: "已完成", noTasks: "还没有任务", noTasksHint: "从工具市场选择一个工具，创建你的第一个任务。",
@@ -195,7 +197,7 @@ const dictionary = {
     runtimeReady: "模型服务运行正常", managedDescription: "无需配置 API Key，登录后即可在支持的工具中使用。", connectionCount: "个人连接", enabledTools: "可用工具", addFirstConnection: "添加第一个连接", connectionsHint: "接入你自己的模型账户，并自由设置工具的运行来源。", toolRouting: "工具运行方式", toolRoutingHint: "每个工具都明确显示当前处理方式。", close: "关闭",
   },
   en: {
-    nav: { dashboard: "Dashboard", marketplace: "Tool Marketplace", runtime: "AI Runtime", credits: "Credits", billing: "Billing", tasks: "Task Center", files: "File Center", account: "Account" },
+    nav: { dashboard: "Workspace", marketplace: "AI Marketplace", recent: "Recently used", favorites: "Favorites", agent: "AI Agent", runtime: "AI Runtime", tasks: "Task Center", files: "File Center", projects: "Project Center", plans: "Credits & Plans", billing: "Billing", settings: "Settings", credits: "Credits", account: "Account" },
     search: "Search tools or describe what you want to do", searchAction: "Search", popularTools: "Popular tools", today: "What would you like to accomplish?", todaySub: "Search by capability and quickly find the right AI tool.",
     login: "Sign in", signup: "Sign up", logout: "Sign out", language: "中文", overview: "Platform overview", recentTasks: "Recent tasks", openMarketplace: "Open marketplace",
     creditsBalance: "Available credits", taskCount: "Total tasks", fileCount: "Files", completed: "Completed", noTasks: "No tasks yet", noTasksHint: "Choose a tool in the marketplace to create your first task.",
@@ -999,7 +1001,7 @@ function TaskRow({ task, locale, onCancel }) {
   return <div className="task-row"><span className="tool-icon compact"><Icon size={20} /></span><div className="task-main"><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{formatDate(task.createdAt, locale)}</small></div><span className="task-cost">−{task.creditCost}</span><StatusPill status={task.status} locale={locale} />{onCancel && ["queued", "waiting_for_runtime"].includes(task.status) && <button className="icon-button" onClick={(event) => { event.stopPropagation(); onCancel(task.id); }}><X size={18} /></button>}</div>;
 }
 
-function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun }) {
+function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, projects = [] }) {
   const t = dictionary[locale];
   const [homeQuery, setHomeQuery] = useState("");
   if (!data) return <Loading locale={locale} />;
@@ -1015,46 +1017,80 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun }
     [t.fileCount, data.metrics.files, FolderOpen, "orange", isEn ? "Private files" : "账户私有文件"],
     [t.currentPlan, currentPlan, Crown, "violet", data.subscription?.currentPeriodEnd ? formatDate(data.subscription.currentPeriodEnd, locale) : (isEn ? "Upgrade anytime" : "随时可以升级")],
   ];
-  const readyTools = tools.filter((tool) => tool.runtimeStatus === "ready");
+  // `tools` is already the administrator-curated published catalog. Keep every
+  // published tool discoverable here, even when a provider needs configuration.
+  const readyTools = tools;
   const preferredSlugs = ["ai-writer", "seo-workbench", "ai-music-studio", "lyrics-generator", "image-compressor", "pdf-summary", "background-remover", "content-repurposer"];
   const recommended = [...preferredSlugs.map((slug) => readyTools.find((tool) => tool.slug === slug)).filter(Boolean), ...readyTools]
     .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index).slice(0, 8);
-  const quickTools = recommended.slice(0, 4);
-  const categoryItems = marketplaceCategories.filter((item) => item.id !== "all")
-    .map((item) => ({ ...item, count: tools.filter((tool) => item.accepts.includes(tool.category)).length }))
-    .filter((item) => item.count > 0).slice(0, 9);
-  const activeConnections = runtime?.connections?.filter((item) => item.status === "active").length || 0;
+  const recentTools = data.recentTasks.reduce((items, task) => {
+    if (!items.some((item) => item.toolId === task.toolId)) items.push(task);
+    return items;
+  }, []).slice(0, 3);
+  const activity = data.recentTasks.slice(0, 3);
   const submitSearch = (event) => {
     event.preventDefault();
     onSearch(homeQuery.trim());
   };
   return <div className="page-stack dashboard-page">
     <section className="dashboard-hero">
-      <div className="dashboard-hero-copy"><p className="eyebrow">ONESH​OWTOOLS WORKSPACE</p><h1>{greeting}，{userName}<Sparkle size={22} weight="fill" /></h1><p>{t.today}</p>
+      <div className="dashboard-hero-copy"><p className="eyebrow">ONESHOWTOOLS AI WORKSPACE</p><h1>{greeting}，{userName}<Sparkle size={22} weight="fill" /></h1><p>{isEn ? "What would you like AI to help you accomplish today?" : "今天想让 AI 帮你完成什么？"}</p>
         <form className="dashboard-search" onSubmit={submitSearch}><MagnifyingGlass size={20} /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={t.search} /><button aria-label={t.searchAction}><ArrowRight size={20} /></button></form>
         <div className="dashboard-hot"><span>{t.popularTools}：</span>{recommended.slice(0, 6).map((tool) => <button key={tool.id} onClick={() => onRun(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
       </div>
-      <div className="dashboard-hero-art" aria-hidden="true"><img src="/dashboard/oneshowtools-ai-toolkit-900.png" alt="" /></div>
+      <div className="dashboard-hero-art" aria-hidden="true">
+        <span className="dashboard-orb-ring ring-one" /><span className="dashboard-orb-ring ring-two" />
+        <img src="/landing/oneshowtools-3d-orb.png" alt="" />
+        <span className="dashboard-float-icon icon-music"><MusicNotes size={21} weight="duotone" /></span>
+        <span className="dashboard-float-icon icon-image"><ImageSquare size={21} weight="duotone" /></span>
+        <span className="dashboard-float-icon icon-agent"><Robot size={21} weight="duotone" /></span>
+        <span className="dashboard-float-icon icon-write"><PenNib size={21} weight="duotone" /></span>
+      </div>
     </section>
 
     <section className="dashboard-metric-grid">{metrics.map(([label, value, Icon, tone, note]) => <article className="dashboard-metric-card" key={label}><span className={`metric-icon ${tone}`}><Icon size={22} weight="duotone" /></span><div><small>{label}</small><strong>{typeof value === "number" ? value.toLocaleString() : value}</strong><p>{note}</p></div><span className={`dashboard-metric-accent ${tone}`} /></article>)}</section>
 
-    <section className="dashboard-content-grid">
-      <article className="surface dashboard-quick"><header><div><span>QUICK ACCESS</span><h2>{isEn ? "Quick access" : "快捷入口"}</h2></div><button onClick={() => onNavigate("marketplace")}><Plus size={15} />{isEn ? "More" : "更多工具"}</button></header><div>{quickTools.map((tool) => <button key={tool.id} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={19} compact /><div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} {t.creditsUnit}</small></div><ArrowRight size={16} /></button>)}</div></article>
-
-      <article className="surface dashboard-recommended"><header><div><span>RECOMMENDED</span><h2>{isEn ? "Recommended for you" : "为你推荐"}</h2></div><button onClick={() => onNavigate("marketplace")}>{isEn ? "View all" : "查看全部"}<ArrowRight size={15} /></button></header><div>{recommended.map((tool) => <button key={tool.id} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={21} /><h3>{isEn ? tool.nameEn : tool.nameZh}</h3><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={13} />{tool.creditCost}</span><span><CheckCircle size={13} weight="fill" />{t.ready}</span></footer></button>)}</div></article>
-
-      <aside className="dashboard-side-stack">
-        <article className="surface dashboard-runtime"><header><h2>{isEn ? "AI Runtime status" : "AI Runtime 状态"}</h2><span className={runtime?.managed?.status === "ready" ? "online" : "offline"}>{runtime?.managed?.status === "ready" ? t.online : t.notConfigured}</span></header><dl><div><dt><RocketLaunch size={18} />{isEn ? "Managed model" : "平台模型"}</dt><dd>{runtime?.managed?.status === "ready" ? t.ready : t.config}</dd></div><div><dt><PlugsConnected size={18} />{isEn ? "Personal models" : "个人模型"}</dt><dd>{activeConnections}</dd></div><div><dt><ListChecks size={18} />{isEn ? "Running tasks" : "执行中任务"}</dt><dd>{data.metrics.running}</dd></div></dl><button onClick={() => onNavigate("runtime")}>{isEn ? "Open runtime" : "进入运行中心"}<ArrowRight size={15} /></button></article>
-        <article className="surface dashboard-recent"><header><h2>{t.recentTasks}</h2><button onClick={() => onNavigate("tasks")}>{isEn ? "All" : "全部"}<ArrowRight size={14} /></button></header>{data.recentTasks.length ? <div>{data.recentTasks.slice(0, 4).map((task) => <TaskRow task={task} locale={locale} key={task.id} />)}</div> : <p>{t.noTasksHint}</p>}</article>
-      </aside>
+    <section className="dashboard-primary-grid">
+      <article className="surface dashboard-recent-tools"><header><h2>{isEn ? "Recently used" : "最近使用"}</h2><button onClick={() => onNavigate("recent")}>{isEn ? "All" : "全部"}<ArrowRight size={14} /></button></header>{recentTools.length ? <div>{recentTools.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button key={task.id} onClick={() => tool && onRun(tool)}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)} · {formatDate(task.updatedAt || task.createdAt, locale)}</small></span><ArrowRight size={14} /></button>; })}</div> : <p>{t.noTasksHint}</p>}</article>
+      <article className="surface dashboard-recommendations"><header><h2>{isEn ? "Recommended for you" : "为你推荐"}</h2><button onClick={() => onNavigate("marketplace")}>{isEn ? "More tools" : "更多工具"}<ArrowRight size={14} /></button></header><div>{recommended.slice(0, 4).map((tool, index) => <button className={`recommend-card tone-${index + 1}`} key={tool.id} onClick={() => onRun(tool)}><div className="recommend-visual"><ProductToolIcon tool={tool} size={28} /></div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><span>{isEn ? "Use now" : "立即使用"}<ArrowRight size={13} /></span></button>)}</div></article>
     </section>
 
-    <section className="surface dashboard-explore"><header><span>EXPLORE</span><h2>{isEn ? "Explore more possibilities" : "探索更多可能"}</h2><p>{isEn ? "Discover tools and agents by capability" : "按能力发现更多 AI 工具和智能体"}</p></header><div>{categoryItems.map((item) => { const CategoryIcon = item.icon; return <button key={item.id} onClick={() => onNavigate("marketplace")}><span><CategoryIcon size={20} /></span><strong>{t[item.id]}</strong><small>{item.count}</small></button>; })}</div></section>
+    <section className="dashboard-secondary-grid">
+      <article className="surface dashboard-work-summary"><header><h2>{isEn ? "Your work" : "你的工作"}</h2></header><div>{[
+        [isEn ? "Running tasks" : "进行中任务", data.metrics.running, ListChecks, "blue", "tasks"],
+        [isEn ? "Files" : "文件数量", data.metrics.files, FolderOpen, "orange", "files"],
+        ["AI Agent", data.recentTasks.filter((task) => task.toolSlug?.includes("agent")).length, Robot, "violet", "agent"],
+        [isEn ? "Projects" : "最近项目", projects.length, Database, "green", "projects"],
+      ].map(([label, value, Icon, tone, route]) => <button key={label} onClick={() => onNavigate(route)}><span className={`metric-icon ${tone}`}><Icon size={22} weight="duotone" /></span><small>{label}</small><strong>{value.toLocaleString()}</strong><ArrowRight size={14} /></button>)}</div></article>
+      <article className="surface dashboard-activity"><header><h2>{isEn ? "Recent activity" : "最近动态"}</h2><button onClick={() => onNavigate("tasks")}>{isEn ? "All activity" : "全部动态"}<ArrowRight size={14} /></button></header>{activity.length ? <div>{activity.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button key={task.id} onClick={() => tool && onRun(tool)}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh} · {statusLabel(task.status, locale)}</strong><small>{task.outputFileName || task.id}</small></span><time>{formatDate(task.updatedAt || task.createdAt, locale)}</time><i className={`dot ${task.status}`} /></button>; })}</div> : <p>{t.noTasksHint}</p>}</article>
+    </section>
   </div>;
 }
 
-function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, tasks = [], onNavigate }) {
+function ToolCollectionPage({ mode, tools, tasks, favorites, locale, onRun, onToggleFavorite, onNavigate }) {
+  const isEn = locale === "en";
+  const taskToolIds = [...new Set(tasks.map((task) => task.toolId))];
+  const list = mode === "recent"
+    ? taskToolIds.map((id) => tools.find((tool) => tool.id === id)).filter(Boolean)
+    : mode === "favorites"
+      ? tools.filter((tool) => favorites.includes(tool.id))
+      : tools.filter((tool) => tool.category === "agent" || tool.slug?.includes("agent"));
+  const copy = mode === "recent"
+    ? [isEn ? "Recently used" : "最近使用", isEn ? "Pick up where you left off from your real task history." : "根据你的真实任务记录，继续上一次的工作。", Clock]
+    : mode === "favorites"
+      ? [isEn ? "My favorites" : "我的收藏", isEn ? "Keep the tools you use most within easy reach." : "集中管理常用工具，随时快速开始。", Star]
+      : ["AI Agent", isEn ? "Agents turn multi-step work into trackable tasks." : "把复杂的多步骤工作交给智能体持续执行。", Robot];
+  const EmptyIcon = copy[2];
+  return <div className="collection-page page-stack"><header className="collection-heading"><span><EmptyIcon size={24} weight="duotone" /></span><div><h1>{copy[0]}</h1><p>{copy[1]}</p></div></header>{list.length ? <section className="collection-grid">{list.map((tool) => <article className="surface collection-tool" key={tool.id}><div><ProductToolIcon tool={tool} size={24} /><button aria-label={isEn ? "Toggle favorite" : "切换收藏"} className={favorites.includes(tool.id) ? "active" : ""} onClick={() => onToggleFavorite(tool.id)}><Star size={17} weight={favorites.includes(tool.id) ? "fill" : "regular"} /></button></div><h2>{isEn ? tool.nameEn : tool.nameZh}</h2><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><footer><span><Coins size={14} />{tool.creditCost}</span><button onClick={() => onRun(tool)}>{isEn ? "Use" : "使用"}<ArrowRight size={14} /></button></footer></article>)}</section> : <EmptyState icon={EmptyIcon} title={mode === "favorites" ? (isEn ? "No favorites yet" : "还没有收藏工具") : (isEn ? "No activity yet" : "暂无使用记录")} body={mode === "favorites" ? (isEn ? "Favorite a tool in the marketplace and it will appear here." : "在工具市场收藏常用工具后，会集中显示在这里。") : undefined} action={<button className="primary-button" onClick={() => onNavigate("marketplace")}>{isEn ? "Browse tools" : "浏览工具"}</button>} />}</div>;
+}
+
+function ProjectCenter({ projects, locale, onNavigate, onRun, tools }) {
+  const isEn = locale === "en";
+  const seoAgent = tools.find((tool) => tool.slug === "seo-agent");
+  return <div className="project-center page-stack"><header className="collection-heading"><span><Database size={24} weight="duotone" /></span><div><h1>{isEn ? "Project Center" : "项目中心"}</h1><p>{isEn ? "Manage ongoing AI projects and keep their work, tasks, and results together." : "统一管理持续运行的项目、任务和结果。"}</p></div>{seoAgent && <button className="primary-button" onClick={() => onRun(seoAgent)}><Plus size={15} />{isEn ? "New SEO project" : "新建 SEO 项目"}</button>}</header>{projects.length ? <section className="project-grid">{projects.map((project) => <button className="surface project-card" key={project.id} onClick={() => seoAgent ? onRun(seoAgent) : onNavigate("agent")}><span className="metric-icon green"><ChartLineUp size={22} weight="duotone" /></span><div><strong>{project.name}</strong><small>{project.siteOrigin}</small><p>{isEn ? "Last updated" : "最近更新"} · {formatDate(project.updatedAt, locale)}</p></div><ArrowRight size={18} /></button>)}</section> : <EmptyState icon={Database} title={isEn ? "No projects yet" : "还没有项目"} body={isEn ? "Create a website project in OneShowSEO. Other agent project types will appear here as they are added." : "可以先在 OneShowSEO 创建网站项目，后续其他 Agent 项目也会统一汇总到这里。"} action={seoAgent && <button className="primary-button" onClick={() => onRun(seoAgent)}>{isEn ? "Create project" : "创建项目"}</button>} />}</div>;
+}
+
+function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, tasks = [], onNavigate, favorites = [], onToggleFavorite = () => {} }) {
   const t = dictionary[locale];
   const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState("all");
@@ -1117,7 +1153,7 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
           </aside>
           <div className="marketplace-card-area">
             <header><div><span>{t.marketplaceResults}</span><h2>{t[selectedCategory.id]}</h2></div><small>{matching.length} {t.toolsFound}</small></header>
-            {visible.length ? <div className="marketplace-tool-grid">{visible.map((tool) => { const ready = tool.runtimeStatus === "ready"; return <article className="marketplace-tool-card" key={tool.id}><div className="tool-card-head"><ProductToolIcon tool={tool} size={22} />{ready ? <span className="tool-ready"><CheckCircle size={13} weight="fill" />{t.ready}</span> : <StatusPill status={tool.runtimeStatus} locale={locale} />}</div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="tool-card-tags"><span>{isEn ? "Tool" : "工具"}</span><span>{t[tool.category] || tool.category}</span></div><footer><strong><Coins size={14} />{tool.creditCost} {t.creditsUnit}</strong><button onClick={() => onRun(tool)}>{isEn ? "Use" : "使用"}</button></footer></article>; })}</div> : <EmptyState icon={selectedCategory.icon} title={query ? t.noResults : t.comingSoon} body={query ? undefined : t.comingSoonHint} action={!query && <button className="secondary-button" onClick={() => setCategory("all")}>{t.all}</button>} />}
+            {visible.length ? <div className="marketplace-tool-grid">{visible.map((tool) => { const ready = tool.runtimeStatus === "ready"; const favorite = favorites.includes(tool.id); return <article className="marketplace-tool-card" key={tool.id}><div className="tool-card-head"><ProductToolIcon tool={tool} size={22} /><div><button className={`tool-favorite ${favorite ? "active" : ""}`} aria-label={isEn ? "Toggle favorite" : "切换收藏"} onClick={() => onToggleFavorite(tool.id)}><Star size={15} weight={favorite ? "fill" : "regular"} /></button>{ready ? <span className="tool-ready"><CheckCircle size={13} weight="fill" />{t.ready}</span> : <StatusPill status={tool.runtimeStatus} locale={locale} />}</div></div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="tool-card-tags"><span>{isEn ? "Tool" : "工具"}</span><span>{t[tool.category] || tool.category}</span></div><footer><strong><Coins size={14} />{tool.creditCost} {t.creditsUnit}</strong><button onClick={() => onRun(tool)}>{isEn ? "Use" : "使用"}</button></footer></article>; })}</div> : <EmptyState icon={selectedCategory.icon} title={query ? t.noResults : t.comingSoon} body={query ? undefined : t.comingSoonHint} action={!query && <button className="secondary-button" onClick={() => setCategory("all")}>{t.all}</button>} />}
             {matching.length > visible.length && <button className="marketplace-load-more" onClick={() => setLimit((value) => value + 12)}>{isEn ? "Load more tools" : "加载更多工具"}<CaretDown size={15} /></button>}
           </div>
         </div>
@@ -1933,7 +1969,7 @@ export function App() {
   const [view, setView] = useState(() => {
     if (location.pathname.startsWith("/tools/")) return "tool";
     const requestedView = new URLSearchParams(location.search).get("view");
-    return ["dashboard", "marketplace", "runtime", "credits", "billing", "tasks", "files", "account"].includes(requestedView) ? requestedView : "dashboard";
+    return ["dashboard", "marketplace", "recent", "favorites", "agent", "runtime", "credits", "plans", "billing", "tasks", "files", "projects", "settings", "account"].includes(requestedView) ? requestedView : "dashboard";
   });
   const [session, setSession] = useState(undefined);
   const [health, setHealth] = useState({});
@@ -1942,7 +1978,8 @@ export function App() {
   const [plans, setPlans] = useState([]);
   const [writingCatalog, setWritingCatalog] = useState(null);
   const [seoCatalog, setSeoCatalog] = useState(null);
-  const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [], fileQuota: { used: 0, limit: 100, remaining: 100 } });
+  const [privateData, setPrivateData] = useState({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [], projects: [], fileQuota: { used: 0, limit: 100, remaining: 100 } });
+  const [favorites, setFavorites] = useState([]);
   const [query, setQuery] = useState("");
   const [authOpen, setAuthOpen] = useState(() => Boolean(new URLSearchParams(location.search).get("resetToken")));
   const [routeSlug, setRouteSlug] = useState(() => location.pathname.match(/^\/tools\/([^/]+)$/)?.[1] || null);
@@ -1960,15 +1997,19 @@ export function App() {
   }, []);
   const loadPrivate = useCallback(async () => {
     if (!session) return;
-    const [dashboard, runtime, credits, billing, tasks, files] = await Promise.all([
-      api("/api/dashboard"), api("/api/runtime/status"), api("/api/credits"), api("/api/billing/status"), api("/api/tasks"), api("/api/files"),
+    const [dashboard, runtime, credits, billing, tasks, files, projectData] = await Promise.all([
+      api("/api/dashboard"), api("/api/runtime/status"), api("/api/credits"), api("/api/billing/status"), api("/api/tasks"), api("/api/files"), api("/api/seo-agent").catch(() => ({ projects: [] })),
     ]);
-    setPrivateData({ dashboard, runtime, credits, billing, tasks: tasks.tasks, files: files.files, fileQuota: files.quota || { used: files.files.length, limit: 100, remaining: Math.max(0, 100 - files.files.length) } });
+    setPrivateData({ dashboard, runtime, credits, billing, tasks: tasks.tasks, files: files.files, projects: projectData.projects || [], fileQuota: files.quota || { used: files.files.length, limit: 100, remaining: Math.max(0, 100 - files.files.length) } });
   }, [session]);
 
   useEffect(() => { loadPublic(); }, [loadPublic]);
   useEffect(() => { if (session) loadPrivate().catch(() => setToast(t.error)); }, [session, loadPrivate, t.error]);
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem("ost_locale", locale); document.title = "OneShowTools Platform"; }, [locale]);
+  useEffect(() => {
+    if (!session) { setFavorites([]); return; }
+    try { setFavorites(JSON.parse(localStorage.getItem(`ost_favorites_${session.id}`) || "[]")); } catch { setFavorites([]); }
+  }, [session]);
   useEffect(() => {
     const authStatus = new URLSearchParams(location.search).get("auth");
     if (!authStatus) return;
@@ -2017,7 +2058,12 @@ export function App() {
     return () => clearTimeout(timer);
   }, [query, session, tools, view]);
 
-  const logout = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); setSession(null); setView("dashboard"); setPrivateData({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [] }); };
+  const logout = async () => { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); setSession(null); setView("dashboard"); setPrivateData({ dashboard: null, runtime: null, credits: null, billing: null, tasks: [], files: [], projects: [] }); };
+  const toggleFavorite = (toolId) => setFavorites((current) => {
+    const next = current.includes(toolId) ? current.filter((id) => id !== toolId) : [...current, toolId];
+    if (session?.id) localStorage.setItem(`ost_favorites_${session.id}`, JSON.stringify(next));
+    return next;
+  });
   const openTool = (tool) => {
     if (session) api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_open", toolSlug: tool.slug, category: tool.category, query: query.trim() || null })).catch(() => {});
     history.pushState({}, "", `/tools/${tool.slug}`);
@@ -2090,24 +2136,36 @@ export function App() {
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
   if (!session) return <>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</>;
 
-  const navItems = [["dashboard", House], ["marketplace", SquaresFour], ["runtime", RocketLaunch], ["credits", Coins], ["billing", CreditCard], ["tasks", ListChecks], ["files", FolderOpen], ["account", User]];
+  const navGroups = [
+    { items: [["dashboard", House], ["marketplace", SquaresFour], ["recent", Clock], ["favorites", Star]] },
+    { label: locale === "en" ? "AI CAPABILITIES" : "AI 能力", items: [["agent", Robot, "Beta"], ["runtime", RocketLaunch]] },
+    { label: locale === "en" ? "MY WORK" : "我的工作", items: [["tasks", ListChecks, privateData.tasks.length], ["files", FolderOpen, privateData.files.length], ["projects", Database]] },
+    { label: locale === "en" ? "ACCOUNT" : "账户", items: [["plans", Coins], ["billing", CreditCard], ["settings", GearSix]] },
+  ];
   const content = {
-    dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} />,
-    marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} />,
+    dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} projects={privateData.projects} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} />,
+    marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} favorites={favorites} onToggleFavorite={toggleFavorite} />,
+    recent: <ToolCollectionPage mode="recent" tools={tools} tasks={privateData.tasks} favorites={favorites} locale={locale} onRun={openTool} onToggleFavorite={toggleFavorite} onNavigate={setView} />,
+    favorites: <ToolCollectionPage mode="favorites" tools={tools} tasks={privateData.tasks} favorites={favorites} locale={locale} onRun={openTool} onToggleFavorite={toggleFavorite} onNavigate={setView} />,
+    agent: <ToolCollectionPage mode="agent" tools={tools} tasks={privateData.tasks} favorites={favorites} locale={locale} onRun={openTool} onToggleFavorite={toggleFavorite} onNavigate={setView} />,
     runtime: <Runtime data={privateData.runtime} dashboard={privateData.dashboard} tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onNotice={setToast} onNavigate={setView} />,
     credits: <Credits data={privateData.credits} user={session} billing={privateData.billing} tasks={privateData.tasks} locale={locale} onNavigate={setView} />,
     billing: <Billing plans={plans} status={privateData.billing} credits={privateData.credits} user={session} tasks={privateData.tasks} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} onNavigate={setView} />,
     tasks: <Tasks tasks={privateData.tasks} user={session} credits={privateData.credits} billing={privateData.billing} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} onOpenTask={openTask} onNavigate={setView} />,
     files: <Files files={privateData.files} quota={privateData.fileQuota} user={session} billing={privateData.billing} locale={locale} onUpload={upload} onDelete={deleteFile} onDeleteMany={deleteFiles} onNavigate={setView} />,
+    projects: <ProjectCenter projects={privateData.projects} locale={locale} onNavigate={setView} onRun={openTool} tools={tools} />,
+    plans: <Billing plans={plans} status={privateData.billing} credits={privateData.credits} user={session} tasks={privateData.tasks} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} onNavigate={setView} />,
+    settings: <Account user={session} health={health} credits={privateData.credits} billing={privateData.billing} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} onNavigate={setView} />,
     account: <Account user={session} health={health} credits={privateData.credits} billing={privateData.billing} locale={locale} onLogout={logout} onUserChange={setSession} onLocaleChange={setLocale} onNotice={setToast} onNavigate={setView} />,
-    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} task={routeTask} historyTasks={privateData.tasks.filter((task) => task.toolId === routeTool.id)} locale={locale} authenticated runtime={privateData.runtime} account={{ session, credits: privateData.credits }} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} />,
+    tool: routeTool ? <ToolPage tool={routeTool} catalog={activeCatalog} task={routeTask} historyTasks={privateData.tasks.filter((task) => task.toolId === routeTool.id)} locale={locale} authenticated runtime={privateData.runtime} account={{ session, credits: privateData.credits }} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onModelChange={async (toolId, modelConnectionId) => { await api(`/api/tools/${toolId}/model`, jsonOptions("PATCH", { modelConnectionId })); await loadPrivate(); setToast(t.modelRouteSaved); }} onCompleted={async () => { api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_complete", toolSlug: routeTool.slug, category: routeTool.category })).catch(() => {}); setToast(t.taskCreated); await loadPrivate(); }} /> : <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} favorites={favorites} onToggleFavorite={toggleFavorite} />,
   }[view];
 
   const isWriter = ["ai-writer", "lyrics-generator", "seo-workbench", "seo-agent"].includes(routeTool?.slug) || Boolean(seoSpecialistFor(seoCatalog, routeTool?.slug));
   const isToolWorkspace = Boolean(routeTool);
-  const usesFullWorkspace = view === "marketplace" || view === "runtime" || view === "credits" || view === "billing" || isToolWorkspace;
-  return <div className="platform-shell"><aside className="sidebar"><Brand /><nav>{navItems.map(([key, Icon]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={20} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span></button>)}</nav><SupportWidget locale={locale} /><div className="sidebar-footer"><div className="mini-profile"><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{session.email}</small></div></div></div></aside>
-    <div className="main-column"><header className="platform-header"><button className="global-search" onClick={() => navigateView("marketplace")}><MagnifyingGlass size={19} /><span>{t.search}</span><kbd>⌘ K</kbd></button><div className="header-actions"><button className="locale-button" onClick={() => setLocale(locale === "en" ? "zh-CN" : "en")}><Translate size={17} />{t.language}</button><button className="profile-button" onClick={() => navigateView("account")}><span>{session.name.slice(0, 1).toUpperCase()}</span></button></div></header>
+  const usesFullWorkspace = ["dashboard", "marketplace", "recent", "favorites", "agent", "runtime", "credits", "plans", "billing", "projects"].includes(view) || isToolWorkspace;
+  const planLabel = privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free;
+  return <div className="platform-shell"><aside className="sidebar"><Brand /><nav className="sidebar-nav-groups">{navGroups.map((group, index) => <section key={group.label || index}>{group.label && <small>{group.label}</small>}{group.items.map(([key, Icon, badge]) => <button className={view === key ? "active" : ""} onClick={() => navigateView(key)} key={key}><Icon size={19} weight={view === key ? "fill" : "regular"} /><span>{t.nav[key]}</span>{badge !== undefined && <em>{badge}</em>}</button>)}</section>)}</nav><div className="sidebar-upgrade"><Crown size={18} weight="fill" /><strong>{locale === "en" ? "Upgrade your plan" : "升级到专业版"}</strong><small>{locale === "en" ? "Unlock more AI tools and capabilities" : "解锁更多 AI 工具与高级能力"}</small><button onClick={() => navigateView("plans")}>{locale === "en" ? "Upgrade" : "立即升级"}<ArrowRight size={14} /></button></div><SupportWidget locale={locale} /><div className="sidebar-footer"><button className="mini-profile" onClick={() => navigateView("settings")}><span>{session.name.slice(0, 1).toUpperCase()}</span><div><strong>{session.name}</strong><small>{privateData.credits?.balance?.toLocaleString() ?? "—"} {locale === "en" ? "credits" : "积分"}</small></div><ArrowRight size={15} /></button></div></aside>
+    <div className="main-column"><header className="platform-header"><button className="global-search" onClick={() => navigateView("marketplace")}><MagnifyingGlass size={19} /><span>{t.search}</span><kbd>⌘ K</kbd></button><div className="header-actions"><button className="header-icon-button" aria-label={locale === "en" ? "Plans" : "套餐"} onClick={() => navigateView("plans")}><Gift size={20} /></button><button className="header-icon-button notification" aria-label={locale === "en" ? "Tasks" : "任务"} onClick={() => navigateView("tasks")}><Bell size={20} />{privateData.dashboard?.metrics?.running > 0 && <i>{Math.min(privateData.dashboard.metrics.running, 99)}</i>}</button><button className="header-credit-pill" onClick={() => navigateView("plans")}><Coins size={18} weight="fill" /><strong>{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong><span>{locale === "en" ? "credits" : "积分"}</span></button><button className="header-plan-pill" onClick={() => navigateView("plans")}><Crown size={20} weight="fill" /><span><strong>{planLabel}</strong><small>{locale === "en" ? "View plans" : "升级套餐"}</small></span></button></div></header>
       <div className={`workspace-layout ${usesFullWorkspace ? "marketplace-layout" : ""}`}><main className={`workspace-main ${view === "marketplace" ? "marketplace-workspace" : view === "runtime" ? "runtime-workspace" : view === "credits" ? "credits-workspace" : view === "billing" ? "billing-workspace" : isWriter ? "writer-workspace" : isToolWorkspace ? "tool-workspace" : ""}`}>{content}</main>{!usesFullWorkspace && <aside className="context-panel"><div className="account-summary"><span className="avatar small">{session.name.slice(0, 1).toUpperCase()}</span><h3>{session.name}</h3><p>{session.email}</p></div><div className="context-stat"><span>{t.creditsBalance}</span><strong><Coins size={18} />{privateData.credits?.balance?.toLocaleString() ?? "—"}</strong></div><div className="context-stat"><span>{t.currentPlan}</span><strong><CreditCard size={18} />{privateData.billing?.subscription ? (locale === "en" ? privateData.billing.subscription.nameEn : privateData.billing.subscription.nameZh) : t.free}</strong></div><div className="context-divider" /><SectionTitle title={t.recentTasks} />{privateData.tasks.slice(0, 4).map((task) => <div className="mini-task" key={task.id}><span className={`dot ${task.status}`} /><div><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)}</small></div></div>)}{!privateData.tasks.length && <p className="context-empty">{t.recentEmpty}</p>}<button className="secondary-button full context-action" onClick={() => setView("tasks")}>{t.nav.tasks}<ArrowRight size={16} /></button></aside>}</div>
     </div>{toast && <div className="toast"><CheckCircle size={19} weight="fill" />{toast}</div>}</div>;
 }
