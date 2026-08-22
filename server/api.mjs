@@ -840,6 +840,49 @@ function listTasks(userId) {
   }));
 }
 
+function listFavorites(userId) {
+  // Polymorphic favorites cannot use a database foreign key. Prune records whose
+  // owner-scoped target was removed so counts and folders never show ghost items.
+  db.prepare(`DELETE FROM user_favorites
+    WHERE user_id = ? AND item_type = 'tool'
+      AND NOT EXISTS (SELECT 1 FROM tools WHERE tools.id = user_favorites.item_id AND tools.active = 1)`)
+    .run(userId);
+  db.prepare(`DELETE FROM user_favorites
+    WHERE user_id = ? AND item_type = 'prompt'
+      AND NOT EXISTS (SELECT 1 FROM tasks WHERE tasks.id = user_favorites.item_id AND tasks.user_id = ?)`)
+    .run(userId, userId);
+  db.prepare(`DELETE FROM user_favorites
+    WHERE user_id = ? AND item_type IN ('file', 'material')
+      AND NOT EXISTS (SELECT 1 FROM files WHERE files.id = user_favorites.item_id AND files.user_id = ?)`)
+    .run(userId, userId);
+  const favorites = db.prepare(`
+    SELECT id, item_type AS itemType, item_id AS itemId, collection_id AS collectionId,
+      created_at AS createdAt, updated_at AS updatedAt
+    FROM user_favorites WHERE user_id = ? ORDER BY created_at DESC
+  `).all(userId);
+  const collections = db.prepare(`
+    SELECT c.id, c.name, c.created_at AS createdAt, c.updated_at AS updatedAt,
+      COUNT(f.id) AS itemCount
+    FROM favorite_collections c
+    LEFT JOIN user_favorites f ON f.collection_id = c.id
+    WHERE c.user_id = ? GROUP BY c.id ORDER BY c.updated_at DESC
+  `).all(userId).map((item) => ({ ...item, itemCount: Number(item.itemCount || 0) }));
+  const counts = { tool: 0, file: 0, prompt: 0, material: 0 };
+  favorites.forEach((item) => { counts[item.itemType] = (counts[item.itemType] || 0) + 1; });
+  return { favorites, collections, counts };
+}
+
+function favoriteTargetExists(userId, itemType, itemId) {
+  if (itemType === "tool") return Boolean(db.prepare("SELECT id FROM tools WHERE id = ? AND active = 1").get(itemId));
+  if (itemType === "prompt") return Boolean(db.prepare("SELECT id FROM tasks WHERE id = ? AND user_id = ?").get(itemId, userId));
+  if (itemType === "file" || itemType === "material") return Boolean(db.prepare("SELECT id FROM files WHERE id = ? AND user_id = ?").get(itemId, userId));
+  return false;
+}
+
+function favoriteCollectionExists(userId, collectionId) {
+  return !collectionId || Boolean(db.prepare("SELECT id FROM favorite_collections WHERE id = ? AND user_id = ?").get(collectionId, userId));
+}
+
 function currentSession(request) {
   const token = requestSessionToken(request);
   if (!token) return null;
@@ -1462,6 +1505,62 @@ export async function handleApi(request) {
   }
   if (path === "/api/tasks" && request.method === "GET") return json({ tasks: listTasks(user.id) });
   if (path === "/api/tasks" && request.method === "POST") return createTask(request, user);
+  if (path === "/api/favorites" && request.method === "GET") return json(listFavorites(user.id));
+  if (path === "/api/favorites" && request.method === "POST") {
+    const data = await body(request);
+    const itemType = String(data.itemType || "");
+    const itemId = String(data.itemId || "");
+    const collectionId = data.collectionId ? String(data.collectionId) : null;
+    if (!favoriteTargetExists(user.id, itemType, itemId)) return fail("FAVORITE_TARGET_NOT_FOUND", 404);
+    if (!favoriteCollectionExists(user.id, collectionId)) return fail("FAVORITE_COLLECTION_NOT_FOUND", 404);
+    const timestamp = Date.now();
+    const existing = db.prepare("SELECT id FROM user_favorites WHERE user_id = ? AND item_type = ? AND item_id = ?").get(user.id, itemType, itemId);
+    if (existing) {
+      db.prepare("UPDATE user_favorites SET collection_id = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+        .run(collectionId, timestamp, existing.id, user.id);
+    } else {
+      db.prepare("INSERT INTO user_favorites (id,user_id,item_type,item_id,collection_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?)")
+        .run(randomUUID(), user.id, itemType, itemId, collectionId, timestamp, timestamp);
+    }
+    audit(user.id, "favorite.save", itemType, itemId, { collectionId });
+    return json(listFavorites(user.id), existing ? 200 : 201);
+  }
+  const favoriteMatch = path.match(/^\/api\/favorites\/([^/]+)$/);
+  if (favoriteMatch && request.method === "PATCH") {
+    const data = await body(request);
+    const collectionId = data.collectionId ? String(data.collectionId) : null;
+    if (!favoriteCollectionExists(user.id, collectionId)) return fail("FAVORITE_COLLECTION_NOT_FOUND", 404);
+    const result = db.prepare("UPDATE user_favorites SET collection_id = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+      .run(collectionId, Date.now(), favoriteMatch[1], user.id);
+    if (!result.changes) return fail("FAVORITE_NOT_FOUND", 404);
+    return json(listFavorites(user.id));
+  }
+  if (favoriteMatch && request.method === "DELETE") {
+    const favorite = db.prepare("SELECT item_type AS itemType, item_id AS itemId FROM user_favorites WHERE id = ? AND user_id = ?")
+      .get(favoriteMatch[1], user.id);
+    if (!favorite) return fail("FAVORITE_NOT_FOUND", 404);
+    db.prepare("DELETE FROM user_favorites WHERE id = ? AND user_id = ?").run(favoriteMatch[1], user.id);
+    audit(user.id, "favorite.remove", favorite.itemType, favorite.itemId);
+    return json(listFavorites(user.id));
+  }
+  if (path === "/api/favorite-collections" && request.method === "POST") {
+    const data = await body(request);
+    const name = String(data.name || "").trim().slice(0, 40);
+    if (!name) return fail("FAVORITE_COLLECTION_NAME_REQUIRED", 400);
+    const timestamp = Date.now();
+    try {
+      db.prepare("INSERT INTO favorite_collections (id,user_id,name,created_at,updated_at) VALUES (?,?,?,?,?)")
+        .run(randomUUID(), user.id, name, timestamp, timestamp);
+    } catch { return fail("FAVORITE_COLLECTION_EXISTS", 409); }
+    audit(user.id, "favorite_collection.create", "user", user.id, { name });
+    return json(listFavorites(user.id), 201);
+  }
+  const favoriteCollectionMatch = path.match(/^\/api\/favorite-collections\/([^/]+)$/);
+  if (favoriteCollectionMatch && request.method === "DELETE") {
+    const result = db.prepare("DELETE FROM favorite_collections WHERE id = ? AND user_id = ?").run(favoriteCollectionMatch[1], user.id);
+    if (!result.changes) return fail("FAVORITE_COLLECTION_NOT_FOUND", 404);
+    return json(listFavorites(user.id));
+  }
   if (path === "/api/model-connections/validate" && request.method === "POST") {
     if (rateLimited(request, "model-connection-validate", user.id, 8, 60000)) {
       return fail("MODEL_TEST_RATE_LIMITED", 429);

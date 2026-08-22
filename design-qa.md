@@ -1,32 +1,14 @@
-# OneShowTools — Homepage Alignment QA
+# 设置中心设计 QA
 
-## Evidence
-
-- Visual reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-cc88dafb-fd57-49e8-a873-91eb1ea9db66.png` (2048 × 746).
-- Implementation capture: `/tmp/oneshowtools-home-align-qa/implementation-desktop-final.png` (1600 × 1100, 1× browser capture).
-- Tested state: guest homepage with “热门 AI 工具”, product stories, proof metrics, and the following capability section visible.
-- Primary desktop viewport: 1600 × 1100. Secondary responsive viewport: 390 × 844.
-
-## Visual comparison
-
-- Replaced the hot-tools section's reserved title column with a full-width content rail, removing the horizontal offset between the tool cards and product-story cards below.
-- Introduced one shared homepage content-width token for the hot-tools section, product stories, and proof bar.
-- The three sections now share identical desktop boundaries: left `60.8 px`, right `1539.2 px`, width `1478.4 px`.
-- Card spacing is normalized to `12 px`, and all six popular-tool cards distribute evenly across the available width.
-- On mobile, all three sections share left `10 px`, right `380 px`, width `370 px`, with no viewport overflow.
-- The hot-tools heading remains readable on narrow screens and the tool cards stack into one column.
-
-## Interaction and engineering verification
-
-- Tool cards retain the existing launch behavior and configured tool metadata.
-- Desktop and mobile browser inspection reported no console errors.
-- Horizontal overflow check passed at both tested widths (`scrollWidth = clientWidth`).
-- Production build, database consistency check, and full automated test suite passed.
-
-## Severity review
-
-- P0: none.
-- P1: none.
-- P2: none after the shared-rail and mobile-heading fixes.
+- 参考：用户提供的 OneShowTools 设置中心效果图。
+- 页面：`/?view=settings`。
+- 保留并复用真实账户资料、密码、邮箱、会话、数据导出和注销 API；未使用模拟账户数据。
+- 新增账户偏好、通知与界面设置，本地持久化用户选择。
+- 桌面端完成参考图对照，信息层级、双栏布局、账户卡片和安全概览一致。
+- 交互检查通过：账户、安全、通知、偏好、会话与隐私页签均可切换。
+- 响应式检查通过：390px 宽度无横向溢出，表单与导航保持可用。
+- `npm run build` 通过。
+- `npm test` 通过，152 项测试全部通过。
+- `git diff --check` 通过。
 
 final result: passed
