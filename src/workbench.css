@@ -280,8 +280,10 @@
 .favorite-folders { padding: 3px 18px 20px; }
 .favorite-folders h2 { margin: 10px 0 12px; color: #28374e; font-size: 12px; }
 .favorite-folders > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
-.favorite-folders article { min-height: 72px; padding: 13px; border: 1px solid #e3e8f1; border-radius: 10px; display: flex; align-items: center; gap: 10px; color: #6654df; }
-.favorite-folders article span { display: grid; gap: 3px; }.favorite-folders article strong { color: #334056; font-size: 10px; }.favorite-folders article small { color: #8a97aa; font-size: 8px; }
+.favorite-folders button { min-height: 72px; padding: 13px; border: 1px solid #e3e8f1; border-radius: 10px; display: flex; align-items: center; gap: 10px; color: #6654df; background: #fff; text-align: left; cursor: pointer; transition: border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.favorite-folders button:hover { transform: translateY(-1px); border-color: #c7d5f5; box-shadow: 0 10px 22px rgba(50,77,139,.08); }
+.favorite-folders button > svg:last-child { margin-left: auto; color: #8291aa; }
+.favorite-folders button span { display: grid; gap: 3px; }.favorite-folders button strong { color: #334056; font-size: 10px; }.favorite-folders button small { color: #8a97aa; font-size: 8px; }
 .favorites-library > aside { padding: 14px; background: #fbfcfe; }
 .favorite-search { width: 100%; }
 .favorites-library > aside section { margin-top: 20px; }
