@@ -304,6 +304,9 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0028_domestic_payment_providers.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0029_favorites_library.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0030_workspace_projects_and_preferences.sql"), "utf8"));
+  const taskColumns = new Set(db.prepare("PRAGMA table_info(tasks)").all().map((item) => item.name));
+  if (!taskColumns.has("deleted_at")) db.exec("ALTER TABLE tasks ADD COLUMN deleted_at INTEGER");
+  db.exec("CREATE INDEX IF NOT EXISTS tasks_user_visible_created_idx ON tasks(user_id, deleted_at, created_at DESC)");
   const planColumns = new Set(db.prepare("PRAGMA table_info(plans)").all().map((item) => item.name));
   if (!planColumns.has("file_limit")) db.exec("ALTER TABLE plans ADD COLUMN file_limit INTEGER NOT NULL DEFAULT 100");
   db.exec(`

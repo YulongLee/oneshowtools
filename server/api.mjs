@@ -705,7 +705,7 @@ function dashboard(userId) {
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
       SUM(CASE WHEN status IN ('queued','running') THEN 1 ELSE 0 END) AS running,
       SUM(CASE WHEN status = 'waiting_for_runtime' THEN 1 ELSE 0 END) AS waiting
-    FROM tasks WHERE user_id = ?
+    FROM tasks WHERE user_id = ? AND deleted_at IS NULL
   `).get(userId);
   const fileCount = Number(db.prepare("SELECT COUNT(*) AS count FROM files WHERE user_id = ?").get(userId).count);
   const subscription = effectiveMembership(userId);
@@ -713,7 +713,7 @@ function dashboard(userId) {
     SELECT t.id, t.status, t.credit_cost AS creditCost, t.created_at AS createdAt, t.updated_at AS updatedAt,
       x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon
     FROM tasks t JOIN tools x ON x.id = t.tool_id
-    WHERE t.user_id = ? ORDER BY t.created_at DESC LIMIT 5
+    WHERE t.user_id = ? AND t.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 5
   `).all(userId);
   return {
     user: cleanUser(user),
@@ -763,6 +763,22 @@ async function uploadFile(request, user) {
   return json({ file: db.prepare(`
     SELECT id, name, mime_type AS mimeType, size_bytes AS sizeBytes, created_at AS createdAt FROM files WHERE id = ?
   `).get(id) }, 201);
+}
+
+function removeFileRecord(userId, fileId) {
+  // Favorites are polymorphic and intentionally have no foreign key, so they
+  // need to be pruned together with the file record. Delete the owned file
+  // first; only a successful ownership-checked delete may prune its favorite.
+  const result = db.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(fileId, userId);
+  if (result.changes) db.prepare("DELETE FROM user_favorites WHERE user_id = ? AND item_type = 'file' AND item_id = ?").run(userId, fileId);
+  return result;
+}
+
+function fileDeleteFailure(error) {
+  return {
+    code: error?.code || "FILE_DELETE_FAILED",
+    status: Number(error?.status || 500),
+  };
 }
 
 async function createTask(request, user) {
@@ -829,7 +845,7 @@ function listTasks(userId) {
       (SELECT f.size_bytes FROM task_files tf JOIN files f ON f.id = tf.file_id
         WHERE tf.task_id = t.id ORDER BY f.created_at DESC LIMIT 1) AS resultSizeBytes
     FROM tasks t JOIN tools x ON x.id = t.tool_id
-    WHERE t.user_id = ? ORDER BY t.created_at DESC LIMIT 100
+    WHERE t.user_id = ? AND t.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 100
   `).all(userId).map((task) => ({
     ...task,
     input: JSON.parse(task.inputJson || "{}"),
@@ -850,6 +866,28 @@ function listTasks(userId) {
   }));
 }
 
+const activeTaskStatuses = new Set(["queued", "waiting_for_runtime", "running"]);
+
+function softDeleteTask(user, id) {
+  const task = db.prepare("SELECT id, status FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL").get(id, user.id);
+  if (!task) return { error: "TASK_NOT_FOUND", status: 404 };
+  if (activeTaskStatuses.has(task.status)) return { error: "TASK_DELETE_ACTIVE", status: 409 };
+  const timestamp = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
+      .run(timestamp, timestamp, id, user.id);
+    db.prepare("DELETE FROM user_favorites WHERE user_id = ? AND item_type = 'prompt' AND item_id = ?").run(user.id, id);
+    db.prepare("DELETE FROM project_items WHERE user_id = ? AND item_type = 'task' AND item_id = ?").run(user.id, id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  audit(user.id, "task.delete", "task", id, { mode: "soft_delete", previousStatus: task.status });
+  return { id };
+}
+
 function listFavorites(userId) {
   // Polymorphic favorites cannot use a database foreign key. Prune records whose
   // owner-scoped target was removed so counts and folders never show ghost items.
@@ -859,7 +897,7 @@ function listFavorites(userId) {
     .run(userId);
   db.prepare(`DELETE FROM user_favorites
     WHERE user_id = ? AND item_type = 'prompt'
-      AND NOT EXISTS (SELECT 1 FROM tasks WHERE tasks.id = user_favorites.item_id AND tasks.user_id = ?)`)
+      AND NOT EXISTS (SELECT 1 FROM tasks WHERE tasks.id = user_favorites.item_id AND tasks.user_id = ? AND tasks.deleted_at IS NULL)`)
     .run(userId, userId);
   db.prepare(`DELETE FROM user_favorites
     WHERE user_id = ? AND item_type IN ('file', 'material')
@@ -884,7 +922,7 @@ function listFavorites(userId) {
 
 function favoriteTargetExists(userId, itemType, itemId) {
   if (itemType === "tool") return Boolean(db.prepare("SELECT id FROM tools WHERE id = ? AND active = 1").get(itemId));
-  if (itemType === "prompt") return Boolean(db.prepare("SELECT id FROM tasks WHERE id = ? AND user_id = ?").get(itemId, userId));
+  if (itemType === "prompt") return Boolean(db.prepare("SELECT id FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL").get(itemId, userId));
   if (itemType === "file" || itemType === "material") return Boolean(db.prepare("SELECT id FROM files WHERE id = ? AND user_id = ?").get(itemId, userId));
   return false;
 }
@@ -1003,7 +1041,7 @@ function createExport(user) {
         reference_type AS referenceType, reference_id AS referenceId, created_at AS createdAt
       FROM credit_ledger WHERE user_id = ? ORDER BY created_at
     `).all(user.id),
-    tasks: db.prepare("SELECT id, tool_id AS toolId, status, credit_cost AS creditCost, created_at AS createdAt FROM tasks WHERE user_id = ? ORDER BY created_at").all(user.id),
+    tasks: db.prepare("SELECT id, tool_id AS toolId, status, credit_cost AS creditCost, created_at AS createdAt FROM tasks WHERE user_id = ? AND deleted_at IS NULL ORDER BY created_at").all(user.id),
     files: db.prepare("SELECT id, name, mime_type AS mimeType, size_bytes AS sizeBytes, created_at AS createdAt FROM files WHERE user_id = ? ORDER BY created_at").all(user.id),
   };
   db.prepare(`
@@ -1733,10 +1771,27 @@ export async function handleApi(request) {
       return fail(error.code || error.message || "TOOL_ACTION_FAILED", error.status || 500);
     }
   }
+  if (path === "/api/tasks/bulk-delete" && request.method === "POST") {
+    const data = await body(request);
+    const ids = [...new Set((Array.isArray(data.ids) ? data.ids : []).map(String))].slice(0, 100);
+    if (!ids.length) return fail("TASK_IDS_REQUIRED", 400);
+    const deletedIds = [];
+    const failed = [];
+    for (const id of ids) {
+      const result = softDeleteTask(user, id);
+      if (result.error) failed.push({ id, code: result.error });
+      else deletedIds.push(id);
+    }
+    return json({ deletedIds, failed });
+  }
   const taskDetailMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
   if (taskDetailMatch && request.method === "GET") {
     const task = listTasks(user.id).find((item) => item.id === taskDetailMatch[1]);
     return task ? json({ task }) : fail("TASK_NOT_FOUND", 404);
+  }
+  if (taskDetailMatch && request.method === "DELETE") {
+    const result = softDeleteTask(user, taskDetailMatch[1]);
+    return result.error ? fail(result.error, result.status) : json({ ok: true, id: result.id });
   }
   const toolModelMatch = path.match(/^\/api\/tools\/([^/]+)\/model$/);
   if (toolModelMatch && request.method === "PATCH") {
@@ -1755,7 +1810,7 @@ export async function handleApi(request) {
     const id = path.split("/")[3];
     const result = db.prepare(`
       UPDATE tasks SET status = 'cancelled', updated_at = ?, completed_at = ?
-      WHERE id = ? AND user_id = ? AND status IN ('queued','waiting_for_runtime')
+      WHERE id = ? AND user_id = ? AND deleted_at IS NULL AND status IN ('queued','waiting_for_runtime')
     `).run(Date.now(), Date.now(), id, user.id);
     if (!result.changes) return fail("TASK_NOT_CANCELLABLE", 409);
     cancelExecutionJob(id);
@@ -1791,13 +1846,15 @@ export async function handleApi(request) {
       WHERE f.user_id = ? AND f.id IN (${placeholders})`).all(user.id, ...ids);
     const deletedIds = [];
     const failedIds = [];
+    const failures = [];
     for (const file of files) {
       try {
         await deleteStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name });
-        const result = db.prepare("DELETE FROM files WHERE id = ? AND user_id = ?").run(file.id, user.id);
+        const result = removeFileRecord(user.id, file.id);
         if (result.changes) deletedIds.push(file.id);
-      } catch {
+      } catch (error) {
         failedIds.push(file.id);
+        failures.push({ id: file.id, code: fileDeleteFailure(error).code });
       }
     }
     audit(user.id, "file.bulk_delete", "user", user.id, {
@@ -1810,6 +1867,7 @@ export async function handleApi(request) {
       ok: failedIds.length === 0,
       deletedIds,
       failedIds,
+      failures,
       skippedCount: ids.length - files.length,
     });
   }
@@ -1843,8 +1901,13 @@ export async function handleApi(request) {
     const file = db.prepare(`SELECT f.*, COALESCE(s.provider, 'local') AS storage_provider, s.object_key
       FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ? AND f.user_id = ?`).get(id, user.id);
     if (!file) return fail("FILE_NOT_FOUND", 404);
-    await deleteStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name });
-    db.prepare("DELETE FROM files WHERE id = ?").run(id);
+    try {
+      await deleteStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name });
+      removeFileRecord(user.id, id);
+    } catch (error) {
+      const failure = fileDeleteFailure(error);
+      return fail(failure.code, failure.status);
+    }
     audit(user.id, "file.delete", "file", id);
     return json({ ok: true });
   }

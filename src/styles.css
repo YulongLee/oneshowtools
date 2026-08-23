@@ -3605,6 +3605,8 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .tasks-heading-actions { display: flex; align-items: center; gap: 9px; }
 .tasks-heading-actions > button { min-height: 38px; padding: 0 14px; border-radius: 8px; font-size: 10px; }
 .tasks-heading-actions > button:disabled { opacity: .48; }
+.tasks-heading-actions > button.danger:not(:disabled) { border-color: #f0c7ca; color: #bd3f4d; background: #fff8f8; }
+.tasks-heading-actions > button.danger:not(:disabled):hover { border-color: #eaa7ae; background: #fff0f1; }
 .tasks-status-tabs { min-height: 47px; display: flex; align-items: flex-end; gap: 28px; }
 .tasks-status-tabs button { position: relative; min-height: 42px; padding: 0; border: 0; color: #6d7a90; background: transparent; font-size: 10px; }
 .tasks-status-tabs button.active { color: #2267ed; font-weight: 750; }

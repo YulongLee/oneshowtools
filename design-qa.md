@@ -1,4 +1,6 @@
-# 设置中心设计 QA
+# Design QA
+
+## 设置中心
 
 - 参考：用户提供的 OneShowTools 设置中心效果图。
 - 页面：`/?view=settings`。
@@ -11,4 +13,18 @@
 - `npm test` 通过，152 项测试全部通过。
 - `git diff --check` 通过。
 
-final result: passed
+## 工作台顶部
+
+- Status: Passed
+- Reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-8c9664c0-1baf-45ad-9f4e-b10520dcf556.png`
+- Implementation screenshot: `design-dashboard-hero.png`
+- Visual comparison: `/tmp/oneshowtools-dashboard-hero-compare.png`
+
+## Checkpoints
+
+- Layout: wide rounded lavender hero, left task entry and right 3D platform visual match the reference hierarchy.
+- Content: personalized greeting, task prompt, search entry, and six quick actions are present.
+- Asset quality: the hero uses a project-bound WebP asset with the OneShowTools mark and five distinct capability bubbles.
+- Responsive behavior: verified at the default desktop viewport, 768 px, and 390 px without horizontal overflow.
+- Accessibility: the decorative artwork is hidden from assistive technology and the search action retains its accessible label.
+- Regression: production build and all 155 automated tests pass.

@@ -63,6 +63,20 @@ test("bulk deletion rejects malformed or excessive selections", async () => {
   assert.equal(excessive.status, 400);
 });
 
+test("file deletion also removes its polymorphic favorite without affecting the account", async () => {
+  const fileId = randomUUID();
+  const favoriteId = randomUUID();
+  db.prepare("INSERT INTO files (id, user_id, name, storage_name, mime_type, size_bytes, created_at) VALUES (?, ?, ?, ?, 'text/plain', 1, ?)")
+    .run(fileId, userId, "favorite.txt", `bulk/${fileId}.txt`, timestamp);
+  db.prepare("INSERT INTO user_favorites (id,user_id,item_type,item_id,collection_id,created_at,updated_at) VALUES (?,?,\'file\',?,NULL,?,?)")
+    .run(favoriteId, userId, fileId, timestamp, timestamp);
+
+  const response = await handleApi(authenticated(`/api/files/${fileId}`, { method: "DELETE" }));
+  assert.equal(response.status, 200);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM files WHERE id = ?").get(fileId).count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM user_favorites WHERE id = ?").get(favoriteId).count, 0);
+});
+
 test.after(async () => {
   db.close();
   await rm(dataDirectory, { recursive: true, force: true });

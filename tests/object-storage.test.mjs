@@ -16,6 +16,7 @@ const {
   objectStorageConfiguration,
   putStoredFile,
   readStoredFile,
+  safePersistedObjectKey,
   saveObjectStorageConfiguration,
   testObjectStorageConfiguration,
 } = await import(`../server/object-storage.mjs?storage=${Date.now()}`);
@@ -57,6 +58,17 @@ test("local compatibility storage writes, reads, and removes only the requested 
   await assert.rejects(() => readStoredFile({ ...stored, env: {} }), /ENOENT/);
 });
 
+test("persisted OSS keys remain valid after an administrator changes the configured prefix", () => {
+  const storageName = `${randomUUID()}.png`;
+  assert.equal(
+    safePersistedObjectKey(`legacy-prefix/users/legacy-user/${storageName}`, storageName),
+    `legacy-prefix/users/legacy-user/${storageName}`,
+  );
+  assert.throws(() => safePersistedObjectKey(`legacy-prefix/other-service/${storageName}`, storageName), /OSS_OBJECT_SCOPE_INVALID/);
+  assert.throws(() => safePersistedObjectKey(`legacy-prefix/users/legacy-user/../${storageName}`, storageName), /OSS_OBJECT_SCOPE_INVALID/);
+  assert.throws(() => safePersistedObjectKey(`legacy-prefix/users/legacy-user/different.png`, storageName), /OSS_OBJECT_SCOPE_INVALID/);
+});
+
 test("administrator storage configuration is tested, encrypted, redacted, and becomes the runtime source", async () => {
   const draft = {
     bucket: "projects-yulong",
@@ -80,6 +92,22 @@ test("administrator storage configuration is tested, encrypted, redacted, and be
   assert.equal(runtime.source, "admin");
   assert.equal(runtime.accessKeyId, draft.accessKeyId);
   assert.equal(objectStorageConfiguration().lastTestStatus, "healthy");
+});
+
+test("administrator storage test fails when the credential cannot delete its probe object", async () => {
+  const draft = {
+    bucket: "projects-yulong", endpoint: "https://oss-cn-shanghai.aliyuncs.com", region: "cn-shanghai",
+    prefix: "oneshowtools", accessKeyId: "delete-test-id", accessKeySecret: "delete-test-secret", status: "active",
+  };
+  let probe = Buffer.alloc(0);
+  await assert.rejects(
+    () => testObjectStorageConfiguration(draft, () => ({
+      async put(_key, content) { probe = Buffer.from(content); return { etag: "test-etag" }; },
+      async get() { return { content: probe }; },
+      async delete() { throw Object.assign(new Error("denied"), { status: 403, code: "AccessDenied" }); },
+    })),
+    /OSS_CONNECTION_TEST_FAILED/,
+  );
 });
 
 test.after(() => rm(dataDirectory, { recursive: true, force: true }));

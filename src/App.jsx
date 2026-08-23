@@ -10,7 +10,7 @@ import {
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
-  Bell, Star,
+  Bell, Star, HandWaving,
 } from "@phosphor-icons/react";
 import { SupportWidget } from "./SupportWidget.jsx";
 import "./workbench.css";
@@ -1013,8 +1013,6 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
   const [homeQuery, setHomeQuery] = useState("");
   if (!data) return <Loading locale={locale} />;
   const isEn = locale === "en";
-  const hour = new Date().getHours();
-  const greeting = isEn ? (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening") : (hour < 12 ? "上午好" : hour < 18 ? "下午好" : "晚上好");
   const userName = data.user?.name || (isEn ? "Creator" : "创作者");
   const currentPlan = data.subscription ? (isEn ? data.subscription.nameEn : data.subscription.nameZh) : t.free;
   const metrics = [
@@ -1035,19 +1033,26 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
     return items;
   }, []).slice(0, 3);
   const activity = data.recentTasks.slice(0, 3);
+  const quickActions = [
+    ["ai-music-studio", isEn ? "Generate music" : "生成音乐", isEn ? "Generate comfortable piano music" : "生成一首舒缓的钢琴纯音乐"],
+    ["ai-outfit-changer", isEn ? "Change outfit" : "一键换装", isEn ? "Change my portrait into a professional outfit" : "把我的人像换成职业正装"],
+    ["ai-product-photo", isEn ? "Generate image" : "生成图片", isEn ? "Generate a polished product image" : "生成一张精美的产品图片"],
+    ["seo-workbench", isEn ? "Analyze SEO" : "分析 SEO", isEn ? "Analyze my website SEO" : "分析我的网站 SEO"],
+    ["ai-writer", isEn ? "Write a post" : "写小红书文案", isEn ? "Write a social media post" : "帮我写一篇小红书文案"],
+    ["pdf-summary", isEn ? "Summarize PDF" : "总结 PDF", isEn ? "Summarize a PDF document" : "总结一份 PDF 文档"],
+  ].map(([slug, label, query]) => ({ slug, label, query, tool: readyTools.find((item) => item.slug === slug) }));
   const submitSearch = (event) => {
     event.preventDefault();
     onSearch(homeQuery.trim());
   };
   return <div className="page-stack dashboard-page">
     <section className="dashboard-hero">
-      <div className="dashboard-hero-copy"><p className="dashboard-kicker"><Sparkle size={14} weight="fill" />{isEn ? "OneShowTools smart workspace" : "OneShowTools 智能工作台"}</p><h1>{greeting}，{userName}<Sparkle size={22} weight="fill" /></h1><p>{isEn ? "What would you like AI to help you accomplish today?" : "今天想让 AI 帮你完成什么？"}</p>
-        <form className="dashboard-search" onSubmit={submitSearch}><MagnifyingGlass size={20} /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={t.search} /><button aria-label={t.searchAction}><ArrowRight size={20} /></button></form>
-        <div className="dashboard-hot"><span>{t.popularTools}：</span>{recommended.slice(0, 6).map((tool) => <button key={tool.id} onClick={() => onRun(tool)}>{isEn ? tool.nameEn : tool.nameZh}</button>)}</div>
+      <div className="dashboard-hero-copy"><h1>{isEn ? "Hello" : "你好"}，{userName}<HandWaving size={24} weight="duotone" aria-hidden="true" /></h1><p>{isEn ? "What would you like AI to help you accomplish today?" : "今天想让 AI 帮你完成什么？"}</p>
+        <form className="dashboard-search" onSubmit={submitSearch}><Sparkle size={18} weight="fill" /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={isEn ? "Describe what you need, for example: create relaxing piano music..." : "描述你的需求，例如：生成一首舒缓的钢琴纯音乐..."} /><button aria-label={t.searchAction}><ArrowRight size={20} /></button></form>
+        <div className="dashboard-hot">{quickActions.map((action) => <button key={action.slug} onClick={() => action.tool ? onRun(action.tool) : onSearch(action.query)}>{action.label}</button>)}</div>
       </div>
       <div className="dashboard-hero-art" aria-hidden="true">
-        <div className="dashboard-brand-visual"><img src="/landing/oneshowtools-3d-orb-640.webp" alt="" width="640" height="640" fetchPriority="high" decoding="async" /></div>
-        <div className={`dashboard-art-tools count-${Math.min(recommended.length, 4)}`}>{recommended.slice(0, 4).map((tool, index) => <div className={`dashboard-art-tool tool-${index + 1}`} key={tool.id}><ProductToolIcon tool={tool} size={20} compact /><span><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{tool.creditCost} Credits</small></span></div>)}</div>
+        <img src="/dashboard/dashboard-workbench-hero-v2.webp" alt="" width="960" height="521" fetchPriority="high" decoding="async" />
       </div>
     </section>
 
@@ -1752,7 +1757,7 @@ function TaskUsageDonut({ items }) {
   return <canvas ref={canvasRef} role="img" aria-label="Task usage distribution" />;
 }
 
-function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onOpenTask, onNavigate }) {
+function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onDeleteMany, onOpenTask, onNavigate }) {
   const t = { ...dictionary[locale], topup: locale === "en" ? "Top up credits" : "充值积分", viewAll: locale === "en" ? "View all" : "查看全部" };
   const isEn = locale === "en";
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1762,9 +1767,9 @@ function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onO
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [page, setPage] = useState(1);
   const copy = isEn ? {
-    subtitle: "View and manage all your AI tasks", all: "All tasks", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", total: "All tasks", taskInfo: "Task", tool: "Tool", status: "Status", progress: "Progress", created: "Created", action: "Action", allTools: "All tools", allStatus: "All statuses", allTime: "All time", days7: "Last 7 days", days30: "Last 30 days", usage: "Task statistics", common: "Common tools", manageTools: "Manage tools", recent: "Recent tasks", noTasks: "No tasks match these filters.", prompt: "Input", page: "Page", viewAll: "View all", create: "New task", batch: "Bulk actions", cancelSelected: "Cancel selected", search: "Search tasks or tools", clear: "Clear filters", list: "Task list", tasksUnit: "tasks", selectAll: "Select visible tasks", download: "Download result", open: "View task", refresh: "Refresh", totalTasks: "Total tasks", share: "Share",
+    subtitle: "View and manage all your AI tasks", all: "All tasks", running: "Running", completed: "Completed", failed: "Failed", cancelled: "Cancelled", total: "All tasks", taskInfo: "Task", tool: "Tool", status: "Status", progress: "Progress", created: "Created", action: "Action", allTools: "All tools", allStatus: "All statuses", allTime: "All time", days7: "Last 7 days", days30: "Last 30 days", usage: "Task statistics", common: "Common tools", manageTools: "Manage tools", recent: "Recent tasks", noTasks: "No tasks match these filters.", prompt: "Input", page: "Page", viewAll: "View all", create: "New task", batch: "Bulk actions", cancelSelected: "Cancel selected", deleteSelected: "Delete selected", deleteTask: "Delete task", deleteConfirm: "Remove the selected task records? Generated files and credit history will be kept.", search: "Search tasks or tools", clear: "Clear filters", list: "Task list", tasksUnit: "tasks", selectAll: "Select visible tasks", download: "Download result", open: "View task", refresh: "Refresh", totalTasks: "Total tasks", share: "Share",
   } : {
-    subtitle: "查看和管理你的所有 AI 任务", all: "全部任务", running: "运行中", completed: "已完成", failed: "失败", cancelled: "已取消", total: "全部任务", taskInfo: "任务信息", tool: "工具", status: "状态", progress: "进度", created: "创建时间", action: "操作", allTools: "全部工具", allStatus: "全部状态", allTime: "全部时间", days7: "最近 7 天", days30: "最近 30 天", usage: "任务统计", common: "常用工具", manageTools: "管理工具", recent: "最近任务", noTasks: "当前筛选条件下没有任务。", prompt: "输入", page: "页", viewAll: "查看全部", create: "新建任务", batch: "批量操作", cancelSelected: "取消所选任务", search: "搜索任务名称或工具", clear: "清空筛选", list: "任务列表", tasksUnit: "个任务", selectAll: "全选当前页", download: "下载结果", open: "查看任务", refresh: "刷新状态", totalTasks: "总任务", share: "占",
+    subtitle: "查看和管理你的所有 AI 任务", all: "全部任务", running: "运行中", completed: "已完成", failed: "失败", cancelled: "已取消", total: "全部任务", taskInfo: "任务信息", tool: "工具", status: "状态", progress: "进度", created: "创建时间", action: "操作", allTools: "全部工具", allStatus: "全部状态", allTime: "全部时间", days7: "最近 7 天", days30: "最近 30 天", usage: "任务统计", common: "常用工具", manageTools: "管理工具", recent: "最近任务", noTasks: "当前筛选条件下没有任务。", prompt: "输入", page: "页", viewAll: "查看全部", create: "新建任务", batch: "批量操作", cancelSelected: "取消所选任务", deleteSelected: "删除所选任务", deleteTask: "删除任务", deleteConfirm: "确定删除所选任务记录吗？生成文件和积分流水会继续保留。", search: "搜索任务名称或工具", clear: "清空筛选", list: "任务列表", tasksUnit: "个任务", selectAll: "全选当前页", download: "下载结果", open: "查看任务", refresh: "刷新状态", totalTasks: "总任务", share: "占",
   };
   const normalizedStatus = (status) => ["queued","waiting_for_runtime","running"].includes(status) ? "running" : status;
   const counts = tasks.reduce((result,task) => { const key=normalizedStatus(task.status); result[key]=(result[key]||0)+1; return result; },{});
@@ -1806,6 +1811,12 @@ function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onO
     setSelectedIds(new Set());
   };
   const cancellableSelectedCount = tasks.filter((task)=>selectedIds.has(task.id)&&["queued","waiting_for_runtime"].includes(task.status)).length;
+  const deletableSelectedIds = tasks.filter((task)=>selectedIds.has(task.id)&&["completed","failed","cancelled"].includes(task.status)).map((task)=>task.id);
+  const deleteSelected = async () => {
+    if (!deletableSelectedIds.length || !window.confirm(copy.deleteConfirm)) return;
+    const result = await onDeleteMany(deletableSelectedIds);
+    if (result?.deletedIds?.length) setSelectedIds((current)=>new Set([...current].filter((id)=>!result.deletedIds.includes(id))));
+  };
   const progressFor = (task) => {
     if (task.status === "completed") return 100;
     if (!["queued","waiting_for_runtime","running"].includes(task.status)) return null;
@@ -1816,7 +1827,7 @@ function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onO
   };
   const percentage = (value) => tasks.length ? Math.round(value / tasks.length * 100) : 0;
   const metricItems = [[copy.total,tasks.length,ListChecks,"all",copy.totalTasks],[copy.running,counts.running||0,SpinnerGap,"running",`${copy.share} ${percentage(counts.running||0)}%`],[copy.completed,counts.completed||0,CheckCircle,"completed",`${copy.share} ${percentage(counts.completed||0)}%`],[copy.failed,counts.failed||0,XCircle,"failed",`${copy.share} ${percentage(counts.failed||0)}%`],[copy.cancelled,counts.cancelled||0,Clock,"cancelled",`${copy.share} ${percentage(counts.cancelled||0)}%`]];
-  return <div className="tasks-dashboard-layout"><main className="tasks-page"><section className="tasks-heading"><div><h1>{t.nav.tasks}</h1><p>{copy.subtitle}</p></div><div className="tasks-heading-actions"><button className="primary-button" onClick={()=>onNavigate?.("marketplace")}><Plus size={17}/>{copy.create}</button><button className="secondary-button" disabled={!cancellableSelectedCount} onClick={cancelSelected}><CheckSquare size={16}/>{cancellableSelectedCount?`${copy.cancelSelected} (${cancellableSelectedCount})`:copy.batch}</button></div></section>
+  return <div className="tasks-dashboard-layout"><main className="tasks-page"><section className="tasks-heading"><div><h1>{t.nav.tasks}</h1><p>{copy.subtitle}</p></div><div className="tasks-heading-actions"><button className="primary-button" onClick={()=>onNavigate?.("marketplace")}><Plus size={17}/>{copy.create}</button><button className="secondary-button" disabled={!cancellableSelectedCount} onClick={cancelSelected}><CheckSquare size={16}/>{cancellableSelectedCount?`${copy.cancelSelected} (${cancellableSelectedCount})`:copy.batch}</button><button className="secondary-button danger" disabled={!deletableSelectedIds.length} onClick={deleteSelected}><Trash size={16}/>{deletableSelectedIds.length?`${copy.deleteSelected} (${deletableSelectedIds.length})`:copy.deleteSelected}</button></div></section>
     <nav className="tasks-status-tabs">{[["all",copy.all],["running",copy.running],["completed",copy.completed],["failed",copy.failed],["cancelled",copy.cancelled]].map(([id,label]) => <button className={statusFilter===id?"active":""} key={id} onClick={()=>{setStatusFilter(id);setPage(1);}}>{label}</button>)}</nav>
     <section className="surface tasks-console"><div className="tasks-filter-bar"><label className="tasks-search"><MagnifyingGlass size={15}/><input value={query} onChange={(event)=>{setQuery(event.target.value);setPage(1);}} placeholder={copy.search}/></label><label><select value={toolFilter} onChange={selectFilter(setToolFilter)}><option value="all">{copy.allTools}</option>{tools.map((tool)=><option key={tool.id} value={tool.id}>{tool.name}</option>)}</select><CaretDown size={14}/></label><label><select value={statusFilter} onChange={selectFilter(setStatusFilter)}><option value="all">{copy.allStatus}</option><option value="running">{copy.running}</option><option value="completed">{copy.completed}</option><option value="failed">{copy.failed}</option><option value="cancelled">{copy.cancelled}</option></select><CaretDown size={14}/></label><label><CalendarBlank size={14}/><select value={period} onChange={selectFilter(setPeriod)}><option value="all">{copy.allTime}</option><option value="7">{copy.days7}</option><option value="30">{copy.days30}</option></select></label><button onClick={clearFilters}>{copy.clear}</button></div>
       <section className="tasks-metrics">{metricItems.map(([label,value,Icon,tone,detail]) => <article key={label}><div><small>{label}</small><strong>{Number(value).toLocaleString()}</strong><span>{detail}</span></div><i className={tone}><Icon size={20} weight="duotone" /></i></article>)}</section>
@@ -2516,17 +2527,47 @@ export function App() {
     const form = new FormData(); form.append("file", file);
     try { await api("/api/files", { method: "POST", body: form }); await loadPrivate(["dashboard", "files"]); } catch (caught) { setToast(caught.message === "USER_FILE_LIMIT_REACHED" ? t.fileLimit : t.error); }
   };
-  const deleteFile = async (id) => { await api(`/api/files/${id}`, { method: "DELETE" }).catch(() => setToast(t.error)); await loadPrivate(["dashboard", "files", "favorites"]); };
+  const fileDeleteError = (code) => {
+    const storageFailure = ["OSS_DELETE_FAILED", "OSS_DELETE_FORBIDDEN", "OSS_OBJECT_SCOPE_INVALID", "OSS_STORAGE_NOT_CONFIGURED"].includes(code);
+    if (locale === "en") return storageFailure ? "The storage service could not delete this file. Please retry or submit a support ticket with the error code." : "The file could not be deleted. Please retry.";
+    return storageFailure ? `存储服务未能删除该文件，请重试；若仍失败，请提交工单并附上错误码：${code}` : "文件删除失败，请稍后重试。";
+  };
+  const deleteFile = async (id) => {
+    try {
+      await api(`/api/files/${id}`, { method: "DELETE" });
+      await loadPrivate(["dashboard", "files", "favorites"]);
+      setToast(locale === "en" ? "File deleted." : "文件已删除。");
+      return true;
+    } catch (caught) {
+      setToast(fileDeleteError(caught.message));
+      return false;
+    }
+  };
   const deleteFiles = async (ids) => {
     try {
       const result = await api("/api/files/bulk-delete", jsonOptions("POST", { ids }));
       await loadPrivate(["dashboard", "files", "favorites"]);
-      if (result.failedIds?.length) setToast(locale === "en" ? `${result.failedIds.length} files could not be deleted.` : `${result.failedIds.length} 个文件删除失败，请稍后重试。`);
+      if (result.failedIds?.length) {
+        const code = result.failures?.[0]?.code || "FILE_DELETE_FAILED";
+        setToast(locale === "en" ? `${result.failedIds.length} files could not be deleted (${code}).` : `${result.failedIds.length} 个文件删除失败（错误码：${code}）。`);
+      }
       else setToast(locale === "en" ? `${result.deletedIds.length} files deleted.` : `已删除 ${result.deletedIds.length} 个文件。`);
       return result;
     } catch {
       setToast(t.error);
       return { deletedIds: [], failedIds: ids };
+    }
+  };
+  const deleteTasks = async (ids) => {
+    try {
+      const result = await api("/api/tasks/bulk-delete", jsonOptions("POST", { ids }));
+      await loadPrivate(["dashboard", "tasks", "projects", "favorites"]);
+      if (result.failed?.length) setToast(locale === "en" ? `${result.failed.length} active tasks were not deleted.` : `${result.failed.length} 个运行中任务未删除，请先取消任务。`);
+      else setToast(locale === "en" ? `${result.deletedIds.length} task records deleted.` : `已删除 ${result.deletedIds.length} 条任务记录。`);
+      return result;
+    } catch {
+      setToast(t.error);
+      return { deletedIds: [], failed: ids.map((id)=>({ id, code: "REQUEST_FAILED" })) };
     }
   };
   const cancelTask = async (id) => { await api(`/api/tasks/${id}/cancel`, { method: "POST" }).catch(() => setToast(t.error)); await loadPrivate(["dashboard", "credits", "tasks"]); };
@@ -2571,7 +2612,7 @@ export function App() {
     runtime: <Runtime data={privateData.runtime} dashboard={privateData.dashboard} tasks={privateData.tasks} locale={locale} onRefresh={loadPrivate} onNotice={setToast} onNavigate={setView} />,
     credits: <Credits data={privateData.credits} user={session} billing={privateData.billing} tasks={privateData.tasks} locale={locale} onNavigate={setView} />,
     billing: <Billing plans={plans} status={privateData.billing} credits={privateData.credits} user={session} tasks={privateData.tasks} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} onNavigate={navigateView} />,
-    tasks: <Tasks tasks={privateData.tasks} user={session} credits={privateData.credits} billing={privateData.billing} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} onOpenTask={openTask} onNavigate={setView} />,
+    tasks: <Tasks tasks={privateData.tasks} user={session} credits={privateData.credits} billing={privateData.billing} locale={locale} onRefresh={loadPrivate} onCancel={cancelTask} onDeleteMany={deleteTasks} onOpenTask={openTask} onNavigate={setView} />,
     files: <Files files={privateData.files} quota={privateData.fileQuota} user={session} billing={privateData.billing} favorites={privateData.favorites} locale={locale} onUpload={upload} onDelete={deleteFile} onDeleteMany={deleteFiles} onToggleFavorite={toggleLibraryFavorite} onNavigate={setView} />,
     projects: <ProjectCenter projects={privateData.projects} locale={locale} onNavigate={setView} onRefresh={loadPrivate} onNotice={setToast} />,
     plans: <Billing plans={plans} status={privateData.billing} credits={privateData.credits} user={session} tasks={privateData.tasks} locale={locale} onCheckout={checkout} onPortal={openBillingPortal} onNavigate={navigateView} />,

@@ -124,6 +124,26 @@ function safeObjectKey(key, env = process.env) {
   return normalized;
 }
 
+// Existing objects keep the prefix that was active when they were uploaded.
+// Reading/deleting them must therefore validate the persisted owner-scoped key,
+// rather than comparing it with today's configurable prefix.
+export function safePersistedObjectKey(key, storageName = "") {
+  const normalized = String(key || "").replace(/^\/+/, "");
+  const segments = normalized.split("/");
+  const namespaceIndex = segments.findIndex((segment) => segment === "users" || segment === "platform");
+  const expectedName = String(storageName || "");
+  if (
+    !normalized
+    || normalized.includes("..")
+    || normalized.includes("\\")
+    || /[\u0000-\u001f\u007f]/.test(normalized)
+    || namespaceIndex < 1
+    || segments.some((segment) => !segment)
+    || (expectedName && segments.at(-1) !== expectedName)
+  ) throw storageError("OSS_OBJECT_SCOPE_INVALID", 400);
+  return normalized;
+}
+
 function storageName(fileId, fileName) {
   const extension = extname(basename(fileName || "")).slice(0, 12).replace(/[^.A-Za-z0-9_-]/g, "");
   return `${fileId}${extension}`;
@@ -210,6 +230,10 @@ export async function testObjectStorageConfiguration(data, clientFactory) {
     const downloaded = await instance.get(objectKey);
     const received = Buffer.isBuffer(downloaded?.content) ? downloaded.content : Buffer.from(downloaded?.content || "");
     if (!received.equals(content)) throw storageError("OSS_TEST_CONTENT_MISMATCH", 502);
+    // A storage connection is not healthy for File Center unless it can also
+    // remove objects. Previously delete failures were silently ignored here.
+    await instance.delete(objectKey);
+    written = false;
     return { status: "healthy", latencyMs: Date.now() - started, testedAt: Date.now() };
   } catch (error) {
     if (error?.code?.startsWith?.("OSS_")) throw error;
@@ -319,7 +343,7 @@ export async function putStoredFile({ userId, fileId, fileName, mimeType, buffer
 export async function readStoredFile({ provider: storageProvider, objectKey, storageName, env = process.env }) {
   if (storageProvider !== "oss") return readFile(resolve(uploadDirectory, storageName));
   try {
-    const result = await client(env).get(safeObjectKey(objectKey, env));
+    const result = await client(env).get(safePersistedObjectKey(objectKey, storageName));
     return Buffer.isBuffer(result.content) ? result.content : Buffer.from(result.content);
   } catch (error) {
     if (error?.status === 404 || error?.code === "NoSuchKey") throw storageError("FILE_OBJECT_NOT_FOUND", 404);
@@ -333,9 +357,12 @@ export async function deleteStoredFile({ provider: storageProvider, objectKey, s
     return;
   }
   try {
-    await client(env).delete(safeObjectKey(objectKey, env));
+    await client(env).delete(safePersistedObjectKey(objectKey, storageName));
   } catch (error) {
     if (error?.status === 404 || error?.code === "NoSuchKey") return;
+    if ([401, 403].includes(Number(error?.status || error?.statusCode)) || error?.code === "AccessDenied") {
+      throw storageError("OSS_DELETE_FORBIDDEN", 502);
+    }
     throw storageError("OSS_DELETE_FAILED", 502);
   }
 }

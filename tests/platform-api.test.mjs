@@ -64,6 +64,9 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   const tasks = await (await handleApi(authenticated("/api/tasks", cookie))).json();
   assert.equal(tasks.tasks.length, 1);
   assert.equal(tasks.tasks[0].status, "waiting_for_runtime");
+  const activeDeletion = await handleApi(authenticated(`/api/tasks/${tasks.tasks[0].id}`, cookie, { method: "DELETE" }));
+  assert.equal(activeDeletion.status, 409);
+  assert.equal((await activeDeletion.json()).error.code, "TASK_DELETE_ACTIVE");
 
   const credits = await (await handleApi(authenticated("/api/credits", cookie))).json();
   assert.equal(credits.balance, 200);
@@ -78,6 +81,12 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   const polishResult = await polish.json();
   assert.equal(polishResult.task.status, "completed");
   assert.equal(polishResult.output.text, "This is a test.");
+  const completedDeletion = await handleApi(authenticated(`/api/tasks/${polishResult.task.id}`, cookie, { method: "DELETE" }));
+  assert.equal(completedDeletion.status, 200);
+  const hiddenTask = await handleApi(authenticated(`/api/tasks/${polishResult.task.id}`, cookie));
+  assert.equal(hiddenTask.status, 404);
+  assert.ok(db.prepare("SELECT deleted_at FROM tasks WHERE id = ?").get(polishResult.task.id).deleted_at);
+  assert.ok(db.prepare("SELECT id FROM credit_ledger WHERE reference_type = 'task' AND reference_id = ?").get(polishResult.task.id));
 
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
   const compressionForm = new FormData();
@@ -107,6 +116,16 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   assert.equal(thumbnail.status, 200);
   assert.equal(thumbnail.headers.get("content-type"), "image/webp");
   assert.equal(Buffer.from(await thumbnail.arrayBuffer()).subarray(0, 4).toString("ascii"), "RIFF");
+  const bulkDeletion = await handleApi(authenticated("/api/tasks/bulk-delete", cookie, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ids: [compressionResult.task.id, ogResult.task.id] }),
+  }));
+  assert.equal(bulkDeletion.status, 200);
+  assert.deepEqual((await bulkDeletion.json()).deletedIds.sort(), [compressionResult.task.id, ogResult.task.id].sort());
+  const visibleTasks = await (await handleApi(authenticated("/api/tasks", cookie))).json();
+  assert.equal(visibleTasks.tasks.some((task) => [compressionResult.task.id, ogResult.task.id].includes(task.id)), false);
+  assert.equal((await handleApi(authenticated(`/api/files/${ogResult.file.id}/download`, cookie))).status, 200);
 
   const form = new FormData();
   form.append("file", new File(["real file content"], "platform.txt", { type: "text/plain" }));
