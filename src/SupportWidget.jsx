@@ -121,7 +121,7 @@ export function SupportWidget({ locale = "zh-CN" }) {
 
   return <>
     <button className="support-robot-entry" onClick={() => setOpen(true)} aria-label={t.label} title={t.label}>
-      <span><Robot size={26} weight="duotone" /></span><div><strong>{t.label}</strong><small><i />{locale === "en" ? "Online" : "在线"}</small></div>
+      <span><Robot size={26} weight="duotone" /></span><div><strong>{t.label}</strong><small><i />{locale === "en" ? "AI support" : "AI 客服"}</small></div>
     </button>
     {open && <div className="support-panel-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}>
       <section className="support-panel" role="dialog" aria-modal="true" aria-label={t.label}>

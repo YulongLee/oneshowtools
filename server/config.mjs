@@ -63,7 +63,7 @@ export function getServerConfig(requestUrl = process.env.APP_URL || "http://loca
       && process.env.WECHAT_MINIPROGRAM_APP_SECRET,
     ),
     billingEnabled: enabled("BILLING_ENABLED", false) && stripeConfigured,
-    accountDeletionEnabled: enabled("ACCOUNT_DELETION_ENABLED", false),
+    accountDeletionEnabled: enabled("ACCOUNT_DELETION_ENABLED", true),
     adminRbacEnabled: enabled("ADMIN_RBAC_ENABLED", true),
     adminMfaEnforced: enabled("ADMIN_MFA_ENFORCED", false),
     adminCustomerOperationsEnabled: enabled("ADMIN_CUSTOMER_OPERATIONS_ENABLED", true),

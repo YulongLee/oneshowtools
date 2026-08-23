@@ -303,6 +303,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0027_tool_branding.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0028_domestic_payment_providers.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0029_favorites_library.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0030_workspace_projects_and_preferences.sql"), "utf8"));
   const planColumns = new Set(db.prepare("PRAGMA table_info(plans)").all().map((item) => item.name));
   if (!planColumns.has("file_limit")) db.exec("ALTER TABLE plans ADD COLUMN file_limit INTEGER NOT NULL DEFAULT 100");
   db.exec(`

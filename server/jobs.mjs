@@ -4,6 +4,7 @@ import { executeTask, failTaskExecution } from "./runtime.mjs";
 import { collectSystemMetrics } from "./observability.mjs";
 import { generateMarketIntelligenceReport, shouldRunDailyMarketReport } from "./market-intelligence.mjs";
 import { runDueSeoAgentScans } from "./seo-agent.mjs";
+import { deleteStoredFile } from "./object-storage.mjs";
 
 const workerId = `worker-${process.pid}-${randomUUID().slice(0, 8)}`;
 let timer;
@@ -11,6 +12,35 @@ let working = false;
 let metricsTimer;
 let intelligenceTimer;
 let seoAgentTimer;
+let deletionTimer;
+
+export async function processDueAccountDeletions(limit = 5) {
+  const due = db.prepare(`SELECT id, user_id AS userId FROM deletion_requests
+    WHERE status = 'pending' AND execute_after <= ? ORDER BY execute_after ASC LIMIT ?`).all(Date.now(), limit);
+  let completed = 0;
+  for (const request of due) {
+    const files = db.prepare(`SELECT f.storage_name AS storageName,
+      COALESCE(s.provider, 'local') AS provider, s.object_key AS objectKey
+      FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id
+      WHERE f.user_id = ?`).all(request.userId);
+    let transactionStarted = false;
+    try {
+      for (const file of files) await deleteStoredFile(file);
+      db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+      db.prepare("UPDATE deletion_requests SET status = 'executing' WHERE id = ? AND status = 'pending'").run(request.id);
+      db.prepare("DELETE FROM users WHERE id = ?").run(request.userId);
+      db.exec("COMMIT");
+      transactionStarted = false;
+      completed += 1;
+    } catch {
+      if (transactionStarted) {
+        try { db.exec("ROLLBACK"); } catch { /* the transaction may already be closed */ }
+      }
+    }
+  }
+  return completed;
+}
 
 export function enqueueTask(taskId, timestamp = Date.now()) {
   db.prepare(`
@@ -146,6 +176,9 @@ export function startWorker() {
     seoAgentTimer.unref?.();
     checkSeoAgents();
   }
+  deletionTimer = setInterval(() => processDueAccountDeletions().catch(() => {}), Number(process.env.ACCOUNT_DELETION_POLL_MS || 3600000));
+  deletionTimer.unref?.();
+  processDueAccountDeletions().catch(() => {});
 }
 
 export function stopWorker() {
@@ -157,4 +190,6 @@ export function stopWorker() {
   intelligenceTimer = undefined;
   if (seoAgentTimer) clearInterval(seoAgentTimer);
   seoAgentTimer = undefined;
+  if (deletionTimer) clearInterval(deletionTimer);
+  deletionTimer = undefined;
 }

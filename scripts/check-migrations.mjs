@@ -19,6 +19,7 @@ const toolPublicationMigration = await readFile(new URL("../db/migrations/0025_t
 const toolBrandingMigration = await readFile(new URL("../db/migrations/0027_tool_branding.sql", import.meta.url), "utf8");
 const domesticPaymentsMigration = await readFile(new URL("../db/migrations/0028_domestic_payment_providers.sql", import.meta.url), "utf8");
 const favoritesLibraryMigration = await readFile(new URL("../db/migrations/0029_favorites_library.sql", import.meta.url), "utf8");
+const workspaceMigration = await readFile(new URL("../db/migrations/0030_workspace_projects_and_preferences.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -113,6 +114,11 @@ if (!domesticPaymentsMigration.includes("CREATE TABLE IF NOT EXISTS payment_prov
 for (const table of ["favorite_collections", "user_favorites"]) {
   if (!favoritesLibraryMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
     throw new Error(`Favorites library migration is missing table: ${table}`);
+  }
+}
+for (const table of ["workspace_projects", "project_items", "user_preferences"]) {
+  if (!workspaceMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`Workspace migration is missing table: ${table}`);
   }
 }
 

@@ -1004,6 +1004,82 @@ function createExport(user) {
   return json({ export: { id, status: "completed", expiresAt: Date.now() + 86400000 } }, 201);
 }
 
+const preferenceDefaults = {
+  timezone: "Asia/Shanghai", dateFormat: "YYYY-MM-DD", pageSize: "20",
+  notifications: true, productUpdates: true,
+};
+
+function accountPreferences(userId) {
+  const row = db.prepare("SELECT preferences_json AS preferencesJson FROM user_preferences WHERE user_id = ?").get(userId);
+  try { return { ...preferenceDefaults, ...(row ? JSON.parse(row.preferencesJson) : {}) }; }
+  catch { return { ...preferenceDefaults }; }
+}
+
+async function updateAccountPreferences(request, user) {
+  const input = await body(request);
+  const next = {
+    timezone: ["Asia/Shanghai", "UTC", "America/Los_Angeles"].includes(input.timezone) ? input.timezone : preferenceDefaults.timezone,
+    dateFormat: ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"].includes(input.dateFormat) ? input.dateFormat : preferenceDefaults.dateFormat,
+    pageSize: ["10", "20", "50"].includes(String(input.pageSize)) ? String(input.pageSize) : preferenceDefaults.pageSize,
+    notifications: input.notifications !== false,
+    productUpdates: input.productUpdates !== false,
+  };
+  db.prepare(`INSERT INTO user_preferences (user_id, preferences_json, updated_at) VALUES (?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET preferences_json = excluded.preferences_json, updated_at = excluded.updated_at`)
+    .run(user.id, JSON.stringify(next), Date.now());
+  audit(user.id, "account.preferences.update", "user", user.id);
+  return json({ preferences: next });
+}
+
+function projectPayload(row) {
+  return {
+    id: row.id, name: row.name, description: row.description, status: row.status,
+    taskCount: Number(row.taskCount || 0), fileCount: Number(row.fileCount || 0),
+    createdAt: row.createdAt, updatedAt: row.updatedAt,
+  };
+}
+
+function listWorkspaceProjects(userId) {
+  return db.prepare(`SELECT p.id, p.name, p.description, p.status,
+    p.created_at AS createdAt, p.updated_at AS updatedAt,
+    SUM(CASE WHEN i.item_type = 'task' THEN 1 ELSE 0 END) AS taskCount,
+    SUM(CASE WHEN i.item_type = 'file' THEN 1 ELSE 0 END) AS fileCount
+    FROM workspace_projects p LEFT JOIN project_items i ON i.project_id = p.id
+    WHERE p.user_id = ? GROUP BY p.id ORDER BY p.updated_at DESC`).all(userId).map(projectPayload);
+}
+
+async function createWorkspaceProject(request, user) {
+  const input = await body(request);
+  const name = String(input.name || "").trim().slice(0, 80);
+  if (!name) return fail("PROJECT_NAME_REQUIRED", 400);
+  const id = randomUUID(); const now = Date.now();
+  db.prepare("INSERT INTO workspace_projects (id,user_id,name,description,status,created_at,updated_at) VALUES (?,?,?,?, 'active',?,?)")
+    .run(id, user.id, name, String(input.description || "").trim().slice(0, 500), now, now);
+  audit(user.id, "project.create", "project", id);
+  return json({ project: projectPayload(db.prepare("SELECT id,name,description,status,created_at AS createdAt,updated_at AS updatedAt FROM workspace_projects WHERE id = ?").get(id)) }, 201);
+}
+
+async function updateWorkspaceProject(request, user, id) {
+  const existing = db.prepare("SELECT * FROM workspace_projects WHERE id = ? AND user_id = ?").get(id, user.id);
+  if (!existing) return fail("PROJECT_NOT_FOUND", 404);
+  const input = await body(request);
+  const name = input.name === undefined ? existing.name : String(input.name || "").trim().slice(0, 80);
+  const status = input.status === undefined ? existing.status : String(input.status);
+  if (!name) return fail("PROJECT_NAME_REQUIRED", 400);
+  if (!["active", "completed", "archived"].includes(status)) return fail("PROJECT_STATUS_INVALID", 400);
+  db.prepare("UPDATE workspace_projects SET name=?,description=?,status=?,updated_at=? WHERE id=? AND user_id=?")
+    .run(name, input.description === undefined ? existing.description : String(input.description || "").trim().slice(0, 500), status, Date.now(), id, user.id);
+  audit(user.id, "project.update", "project", id);
+  return json({ project: listWorkspaceProjects(user.id).find((item) => item.id === id) });
+}
+
+function deleteWorkspaceProject(user, id) {
+  const result = db.prepare("DELETE FROM workspace_projects WHERE id = ? AND user_id = ?").run(id, user.id);
+  if (!result.changes) return fail("PROJECT_NOT_FOUND", 404);
+  audit(user.id, "project.delete", "project", id);
+  return json({ ok: true });
+}
+
 async function requestDeletion(request, user) {
   const config = getServerConfig(request.url);
   if (!config.accountDeletionEnabled) return fail("ACCOUNT_DELETION_UNAVAILABLE", 503);
@@ -1472,6 +1548,8 @@ export async function handleApi(request) {
     return recorded ? json({ ok: true }, 202) : fail("INVALID_MARKETPLACE_EVENT");
   }
   if (path === "/api/account/profile" && request.method === "PATCH") return updateProfile(request, user);
+  if (path === "/api/account/preferences" && request.method === "GET") return json({ preferences: accountPreferences(user.id) });
+  if (path === "/api/account/preferences" && request.method === "PATCH") return updateAccountPreferences(request, user);
   if (path === "/api/account/password" && request.method === "POST") return changePassword(request, user);
   if (path === "/api/account/email" && request.method === "POST") return requestEmailChange(request, user);
   if (path === "/api/account/sessions" && request.method === "GET") return listSessions(request, user);
@@ -1504,6 +1582,11 @@ export async function handleApi(request) {
     return json({ ok: true });
   }
   if (path === "/api/tasks" && request.method === "GET") return json({ tasks: listTasks(user.id) });
+  if (path === "/api/projects" && request.method === "GET") return json({ projects: listWorkspaceProjects(user.id) });
+  if (path === "/api/projects" && request.method === "POST") return createWorkspaceProject(request, user);
+  const workspaceProjectMatch = path.match(/^\/api\/projects\/([^/]+)$/);
+  if (workspaceProjectMatch && request.method === "PATCH") return updateWorkspaceProject(request, user, workspaceProjectMatch[1]);
+  if (workspaceProjectMatch && request.method === "DELETE") return deleteWorkspaceProject(user, workspaceProjectMatch[1]);
   if (path === "/api/tasks" && request.method === "POST") return createTask(request, user);
   if (path === "/api/favorites" && request.method === "GET") return json(listFavorites(user.id));
   if (path === "/api/favorites" && request.method === "POST") {
