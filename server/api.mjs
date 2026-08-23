@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { basename } from "node:path";
+import sharp from "sharp";
 import { audit, db } from "./database.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
 import { assertUserFileCapacity, userFileQuota } from "./file-quota.mjs";
@@ -68,6 +69,15 @@ const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(d
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
 });
 const fail = (code, status = 400) => json({ error: { code } }, status);
+const imageCache = new Map();
+function cacheImage(key, buffer) {
+  if (imageCache.size >= 64) imageCache.delete(imageCache.keys().next().value);
+  imageCache.set(key, buffer);
+  return buffer;
+}
+async function optimizedImage(buffer, { width = 256, quality = 80 } = {}) {
+  return sharp(buffer, { failOn: "none" }).rotate().resize(width, width, { fit: "inside", withoutEnlargement: true }).webp({ quality, alphaQuality: 86, effort: 4 }).toBuffer();
+}
 
 function internalServiceAuthorized(request) {
   const expected = String(process.env.ONESHOW_INTERNAL_SERVICE_TOKEN || "");
@@ -1404,13 +1414,14 @@ export async function handleApi(request) {
     `).get(slug);
     if (!branding) return fail("TOOL_ICON_NOT_FOUND", 404);
     try {
-      const stored = await readStoredFile(branding);
+      const cacheKey = `tool:${slug}:${branding.etag || branding.objectKey}`;
+      let stored = imageCache.get(cacheKey);
+      if (!stored) stored = cacheImage(cacheKey, await optimizedImage(await readStoredFile(branding)));
       return new Response(stored, {
         status: 200,
         headers: {
-          "content-type": branding.mimeType || "application/octet-stream",
-          "cache-control": "public, max-age=86400, immutable",
-          ...(branding.etag ? { etag: branding.etag } : {}),
+          "content-type": "image/webp",
+          "cache-control": "public, max-age=31536000, immutable",
         },
       });
     } catch {
@@ -1418,7 +1429,7 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/tools" && request.method === "GET") {
-    return json({ tools: storefrontTools() });
+    return json({ tools: storefrontTools() }, 200, { "cache-control": "public, max-age=60, stale-while-revalidate=300" });
   }
   if (path === "/api/writing/catalog" && request.method === "GET") {
     return toolIsPublished("ai-writer") ? json(writingCatalog()) : unpublishedToolResponse();
@@ -1432,7 +1443,7 @@ export async function handleApi(request) {
   if (path === "/api/plans" && request.method === "GET") {
     const plans = db.prepare("SELECT * FROM plans WHERE active = 1").all().map(billingPlanPayload)
       .sort((left, right) => left.sortOrder - right.sortOrder);
-    return json({ plans });
+    return json({ plans }, 200, { "cache-control": "public, max-age=60, stale-while-revalidate=300" });
   }
   if (path.startsWith("/api/admin/v1/")) return handleAdminV1(request, path);
   if (path.startsWith("/api/admin/")) return handleAdmin(request, path);
@@ -1752,6 +1763,10 @@ export async function handleApi(request) {
     return json({ ok: true });
   }
   if (path === "/api/files" && request.method === "GET") {
+    const requestUrl = new URL(request.url);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(requestUrl.searchParams.get("limit") || "100", 10) || 100));
+    const offset = Math.max(0, Number.parseInt(requestUrl.searchParams.get("offset") || "0", 10) || 0);
+    const total = Number(db.prepare("SELECT COUNT(*) AS count FROM files WHERE user_id = ?").get(user.id).count);
     return json({ files: db.prepare(`
       SELECT f.id, f.name, f.mime_type AS mimeType, f.size_bytes AS sizeBytes, f.created_at AS createdAt,
         COALESCE(s.provider, 'local') AS storageProvider,
@@ -1760,8 +1775,8 @@ export async function handleApi(request) {
         COALESCE((SELECT x.name_en FROM task_files tf JOIN tasks t ON t.id = tf.task_id JOIN tools x ON x.id = t.tool_id
           WHERE tf.file_id = f.id ORDER BY t.created_at DESC LIMIT 1), '') AS sourceNameEn
       FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id
-      WHERE f.user_id = ? ORDER BY f.created_at DESC
-    `).all(user.id), quota: userFileQuota(user.id) });
+      WHERE f.user_id = ? ORDER BY f.created_at DESC LIMIT ? OFFSET ?
+    `).all(user.id, limit, offset), total, limit, offset, quota: userFileQuota(user.id) });
   }
   if (path === "/api/files" && request.method === "POST") return uploadFile(request, user);
   if (path === "/api/files/bulk-delete" && request.method === "POST") {
@@ -1809,6 +1824,19 @@ export async function handleApi(request) {
         "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
       },
     });
+  }
+  if (path.match(/^\/api\/files\/[^/]+\/thumbnail$/) && request.method === "GET") {
+    const id = path.split("/")[3];
+    const file = db.prepare(`SELECT f.*, COALESCE(s.provider, 'local') AS storage_provider, s.object_key, s.etag
+      FROM files f LEFT JOIN file_storage_objects s ON s.file_id = f.id WHERE f.id = ? AND f.user_id = ?`).get(id, user.id);
+    if (!file) return fail("FILE_NOT_FOUND", 404);
+    if (!String(file.mime_type || "").startsWith("image/")) return fail("FILE_THUMBNAIL_UNSUPPORTED", 415);
+    const cacheKey = `file:${id}:${file.etag || file.created_at}`;
+    try {
+      let thumbnail = imageCache.get(cacheKey);
+      if (!thumbnail) thumbnail = cacheImage(cacheKey, await optimizedImage(await readStoredFile({ provider: file.storage_provider, objectKey: file.object_key, storageName: file.storage_name }), { width: 480, quality: 76 }));
+      return new Response(thumbnail, { headers: { "content-type": "image/webp", "cache-control": "private, max-age=86400" } });
+    } catch { return fail("FILE_THUMBNAIL_FAILED", 422); }
   }
   if (path.match(/^\/api\/files\/[^/]+$/) && request.method === "DELETE") {
     const id = path.split("/")[3];

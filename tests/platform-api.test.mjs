@@ -103,6 +103,10 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   assert.equal(ogResult.task.status, "completed");
   assert.equal(ogResult.file.mimeType, "image/png");
   assert.deepEqual([ogResult.output.width, ogResult.output.height], [1200, 630]);
+  const thumbnail = await handleApi(authenticated(`/api/files/${ogResult.file.id}/thumbnail`, cookie));
+  assert.equal(thumbnail.status, 200);
+  assert.equal(thumbnail.headers.get("content-type"), "image/webp");
+  assert.equal(Buffer.from(await thumbnail.arrayBuffer()).subarray(0, 4).toString("ascii"), "RIFF");
 
   const form = new FormData();
   form.append("file", new File(["real file content"], "platform.txt", { type: "text/plain" }));

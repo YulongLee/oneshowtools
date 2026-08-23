@@ -1,6 +1,7 @@
 import {
   createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual,
 } from "node:crypto";
+import sharp from "sharp";
 import { audit, db } from "./database.mjs";
 import { effectiveMembership, membershipPlans } from "./membership.mjs";
 import { createSessionToken, hashIdentifier, hashToken, requestClient } from "./security.mjs";
@@ -735,6 +736,17 @@ function validToolIcon(file) {
     && ["image/png", "image/jpeg", "image/webp"].includes(file.type);
 }
 
+async function optimizeToolIcon(file) {
+  const input = Buffer.from(await file.arrayBuffer());
+  const buffer = await sharp(input, { failOn: "error" })
+    .rotate()
+    .resize(256, 256, { fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 82, alphaQuality: 88, effort: 5 })
+    .toBuffer();
+  if (!buffer.length || buffer.length > 256 * 1024) throw Object.assign(new Error("INVALID_TOOL_ICON"), { code: "INVALID_TOOL_ICON" });
+  return { buffer, fileName: `${file.name.replace(/\.[^.]+$/, "") || "tool-icon"}.webp`, mimeType: "image/webp" };
+}
+
 function publicBranding(row, slug) {
   return {
     iconColor: row?.accent_color || "#2768EB",
@@ -763,10 +775,13 @@ async function toolCommands(request, path, context) {
     const icon = form.get("icon");
     if (icon instanceof File && icon.size && !validToolIcon(icon)) return fail("INVALID_TOOL_ICON", 413);
     let stored = null;
+    let optimizedIcon = null;
     if (icon instanceof File && icon.size) {
+      try { optimizedIcon = await optimizeToolIcon(icon); }
+      catch { return fail("INVALID_TOOL_ICON", 413); }
       stored = await putPlatformAsset({
-        scope: "tool-branding", assetId: `${tool.id}-${randomUUID()}`, fileName: icon.name,
-        mimeType: icon.type, buffer: Buffer.from(await icon.arrayBuffer()),
+        scope: "tool-branding", assetId: `${tool.id}-${randomUUID()}`, fileName: optimizedIcon.fileName,
+        mimeType: optimizedIcon.mimeType, buffer: optimizedIcon.buffer,
       });
     }
     const timestamp = now();
@@ -786,7 +801,7 @@ async function toolCommands(request, path, context) {
         updated_by = excluded.updated_by, updated_at = excluded.updated_at
     `).run(
       tool.id, stored?.provider || null, stored?.storageName || null, stored?.objectKey || null,
-      stored?.etag || null, stored ? icon.type : null, stored ? icon.size : null,
+      stored?.etag || null, stored ? optimizedIcon.mimeType : null, stored ? optimizedIcon.buffer.length : null,
       accentColor, backgroundColor, context.user.id, timestamp, timestamp,
     );
     if (stored && previous?.object_key && previous.object_key !== stored.objectKey) {

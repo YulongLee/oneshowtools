@@ -195,7 +195,7 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   brandingForm.set("reason", "Create a distinct commercial product identity");
   brandingForm.set("iconColor", "#123456");
   brandingForm.set("iconBackground", "#EEF2FF");
-  brandingForm.set("icon", new File([Buffer.from("89504e470d0a1a0a", "hex")], "product.png", { type: "image/png" }));
+  brandingForm.set("icon", new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWMwTvv/H4QZYAwAV1QKXcAZOnAAAAAASUVORK5CYII=", "base64")], "product.png", { type: "image/png" }));
   const branded = await handleApi(authenticated(`/api/admin/v1/tools/${publishedTool.id}/branding`, owner.cookie, {
     method: "PUT", body: brandingForm,
   }));
@@ -209,8 +209,8 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   assert.equal(publicTool.iconBackground, "#EEF2FF");
   const publicIcon = await handleApi(request(publicTool.iconUrl));
   assert.equal(publicIcon.status, 200);
-  assert.equal(publicIcon.headers.get("content-type"), "image/png");
-  assert.equal(Buffer.from(await publicIcon.arrayBuffer()).toString("hex"), "89504e470d0a1a0a");
+  assert.equal(publicIcon.headers.get("content-type"), "image/webp");
+  assert.equal(Buffer.from(await publicIcon.arrayBuffer()).subarray(0, 4).toString("ascii"), "RIFF");
   const unauthorizedBranding = new FormData();
   unauthorizedBranding.set("reason", "Unauthorized branding change");
   assert.equal((await handleApi(authenticated(`/api/admin/v1/tools/${publishedTool.id}/branding`, support.cookie, {
