@@ -37,6 +37,7 @@ test("commercial account lifecycle verifies ownership and resists enumeration", 
     email,
     password: "StrongPass123!",
     locale: "en",
+    legalAccepted: true, termsVersion: "2026-08-24", privacyVersion: "2026-08-24",
   }));
   assert.equal(registration.status, 202);
   assert.equal(registration.headers.get("set-cookie"), null);
@@ -46,6 +47,7 @@ test("commercial account lifecycle verifies ownership and resists enumeration", 
     email,
     password: "DifferentPass123!",
     locale: "zh-CN",
+    legalAccepted: true, termsVersion: "2026-08-24", privacyVersion: "2026-08-24",
   }));
   assert.equal(duplicate.status, registration.status);
   assert.deepEqual(await duplicate.json(), await registration.json());
@@ -101,6 +103,7 @@ test("commercial account lifecycle verifies ownership and resists enumeration", 
     email: otherEmail,
     password: "OtherStrongPass123!",
     locale: "en",
+    legalAccepted: true, termsVersion: "2026-08-24", privacyVersion: "2026-08-24",
   }));
   const otherVerificationToken = latestEmailToken("verify");
   await handleApi(request(`/api/auth/verify?token=${otherVerificationToken}`));

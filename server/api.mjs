@@ -344,6 +344,7 @@ async function register(request) {
   if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return fail("INVALID_EMAIL");
   if (password.length < 10 || password.length > 128) return fail("INVALID_PASSWORD");
   if (!name || name.length > 80) return fail("INVALID_NAME");
+  if (data.legalAccepted !== true || data.termsVersion !== "2026-08-24" || data.privacyVersion !== "2026-08-24") return fail("LEGAL_CONSENT_REQUIRED");
   if (rateLimited(request, "register", email)) {
     securityEvent(request, "auth.register", "rate_limited");
     return json({ ok: true, verificationRequired: true }, 202);
@@ -365,7 +366,9 @@ async function register(request) {
       timestamp,
     );
     user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
-    audit(id, "user.register", "user", id);
+    db.prepare("INSERT OR IGNORE INTO policy_acceptances (id, user_id, policy_type, policy_version, source, accepted_at) VALUES (?, ?, ?, ?, 'email_registration', ?)").run(randomUUID(), id, "terms", data.termsVersion, timestamp);
+    db.prepare("INSERT OR IGNORE INTO policy_acceptances (id, user_id, policy_type, policy_version, source, accepted_at) VALUES (?, ?, ?, ?, 'email_registration', ?)").run(randomUUID(), id, "privacy", data.privacyVersion, timestamp);
+    audit(id, "user.register", "user", id, { termsVersion: data.termsVersion, privacyVersion: data.privacyVersion });
   }
   if (!user.email_verified && user.status === "active") await issueAccountToken(request, user, "verify");
   securityEvent(request, "auth.register", "accepted", user.id);
@@ -509,6 +512,7 @@ async function verifySmsLogin(request) {
   let userId = identity?.user_id;
   const timestamp = Date.now();
   if (!userId) {
+    if (data.legalAccepted !== true || data.termsVersion !== "2026-08-24" || data.privacyVersion !== "2026-08-24") return fail("LEGAL_CONSENT_REQUIRED");
     const name = data.locale === "en" ? `User_${phone.last4}` : `用户_${phone.last4}`;
     userId = randomUUID();
     const internalEmail = `phone-${phoneHash.slice(0, 32)}@phone.oneshowtools.invalid`;
@@ -529,6 +533,8 @@ async function verifySmsLogin(request) {
         (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
         VALUES (?, ?, 'welcome', 200, '新用户欢迎积分', 'New account welcome credits', 'user', ?, ?)
       `).run(randomUUID(), userId, userId, timestamp);
+      db.prepare("INSERT OR IGNORE INTO policy_acceptances (id, user_id, policy_type, policy_version, source, accepted_at) VALUES (?, ?, ?, ?, 'sms_registration', ?)").run(randomUUID(), userId, "terms", data.termsVersion, timestamp);
+      db.prepare("INSERT OR IGNORE INTO policy_acceptances (id, user_id, policy_type, policy_version, source, accepted_at) VALUES (?, ?, ?, ?, 'sms_registration', ?)").run(randomUUID(), userId, "privacy", data.privacyVersion, timestamp);
       db.prepare("UPDATE sms_verification_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL").run(timestamp, verification.id);
       db.exec("COMMIT");
       audit(userId, "user.register.sms", "user", userId);

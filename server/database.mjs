@@ -42,6 +42,16 @@ export function initializeDatabase() {
       ip_hash TEXT NOT NULL DEFAULT ''
     );
 
+    CREATE TABLE IF NOT EXISTS policy_acceptances (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      policy_type TEXT NOT NULL,
+      policy_version TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'registration',
+      accepted_at INTEGER NOT NULL,
+      UNIQUE(user_id, policy_type, policy_version)
+    );
+
     CREATE TABLE IF NOT EXISTS auth_tokens (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

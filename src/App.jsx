@@ -13,6 +13,7 @@ import {
   Bell, Star, HandWaving,
 } from "@phosphor-icons/react";
 import { SupportWidget } from "./SupportWidget.jsx";
+import { LEGAL_VERSION } from "./LegalPage.jsx";
 import "./workbench.css";
 
 const SeoAgentWorkspace = lazy(() => import("./SeoAgentWorkspace.jsx").then((module) => ({ default: module.SeoAgentWorkspace })));
@@ -304,6 +305,7 @@ function AuthDialog({ locale, registrationEnabled, smsAuthEnabled, onClose, onAu
   const [countdown, setCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [legalAccepted, setLegalAccepted] = useState(false);
   useEffect(() => {
     if (!countdown) return undefined;
     const timer = setInterval(() => setCountdown((value) => Math.max(0, value - 1)), 1000);
@@ -316,11 +318,12 @@ function AuthDialog({ locale, registrationEnabled, smsAuthEnabled, onClose, onAu
     SMS_CODE_EXPIRED: t.smsExpired,
     SMS_RATE_LIMITED: t.smsRateLimited,
     SMS_AUTH_UNAVAILABLE: t.smsUnavailable,
+    LEGAL_CONSENT_REQUIRED: locale === "en" ? "Please accept the Terms and Privacy Policy." : "请先阅读并同意用户协议和隐私政策。",
   })[error.message] || (error.message === "EMAIL_UNVERIFIED" ? t.verificationPendingBody : t.invalid);
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setMessage("");
     try {
-      if (mode === "signup") { await api("/api/auth/register", jsonOptions("POST", { ...form, locale })); setMode("pending"); }
+      if (mode === "signup") { await api("/api/auth/register", jsonOptions("POST", { ...form, locale, legalAccepted, termsVersion: LEGAL_VERSION, privacyVersion: LEGAL_VERSION })); setMode("pending"); }
       else if (mode === "forgot") { await api("/api/auth/forgot-password", jsonOptions("POST", { email: form.email })); setMessage(t.recoveryBody); }
       else if (mode === "reset") { await api("/api/auth/reset-password", jsonOptions("POST", { token: resetToken, password: form.password })); history.replaceState({}, "", location.pathname); setMode("login"); setMessage(t.resetSuccess); }
       else { const result = await api("/api/auth/login", jsonOptions("POST", { ...form, locale })); onAuthenticated(result.user); onClose(); }
@@ -341,7 +344,7 @@ function AuthDialog({ locale, registrationEnabled, smsAuthEnabled, onClose, onAu
   };
   const verifySms = async (event) => {
     event.preventDefault(); setBusy(true); setMessage("");
-    try { const result = await api("/api/auth/sms/verify", jsonOptions("POST", { phone: smsForm.phone, code: smsForm.code, locale })); onAuthenticated(result.user); onClose(); }
+    try { const result = await api("/api/auth/sms/verify", jsonOptions("POST", { phone: smsForm.phone, code: smsForm.code, locale, legalAccepted, termsVersion: LEGAL_VERSION, privacyVersion: LEGAL_VERSION })); onAuthenticated(result.user); onClose(); }
     catch (error) { setMessage(authError(error)); }
     finally { setBusy(false); }
   };
@@ -350,16 +353,21 @@ function AuthDialog({ locale, registrationEnabled, smsAuthEnabled, onClose, onAu
     <button className="icon-button modal-close" onClick={onClose}><X size={20} /></button><Brand />
     <h2>{title}</h2><p className="modal-subtitle">{authMethod === "sms" ? t.smsAuthSub : mode === "pending" ? t.verificationPendingBody : mode === "forgot" ? t.recoveryBody : t.authSub}</p>
     {!["reset", "pending"].includes(mode) && <div className="auth-method-tabs" role="tablist"><button type="button" className={authMethod === "email" ? "active" : ""} onClick={() => { setAuthMethod("email"); setMessage(""); }}>{t.emailLogin}</button><button type="button" disabled={!smsAuthEnabled} className={authMethod === "sms" ? "active" : ""} onClick={() => { setAuthMethod("sms"); setMode("login"); setMessage(""); }}>{t.smsLogin}</button></div>}
-    {authMethod === "sms" ? <form onSubmit={verifySms} className="auth-form"><label>{t.phone}<div className="phone-input"><span>+86</span><input inputMode="numeric" autoComplete="tel" required maxLength={11} placeholder="138 0000 0000" value={smsForm.phone} onChange={(event) => setSmsForm({ ...smsForm, phone: event.target.value.replace(/\D/g, "").slice(0, 11) })} /></div></label><label>{t.smsCode}<div className="sms-code-input"><input inputMode="numeric" autoComplete="one-time-code" required maxLength={6} value={smsForm.code} onChange={(event) => setSmsForm({ ...smsForm, code: event.target.value.replace(/\D/g, "").slice(0, 6) })} /><button type="button" disabled={busy || countdown > 0 || smsForm.phone.length !== 11} onClick={sendSms}>{countdown > 0 ? `${countdown}${t.resendSmsIn}` : t.sendSmsCode}</button></div></label>{message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || !smsSent || smsForm.code.length !== 6}>{busy ? <SpinnerGap className="spin" size={20} /> : t.login}</button></form> : mode === "pending" ? <div className="auth-form"><button className="secondary-button full" disabled={busy || !form.email} onClick={resend}>{t.resendVerification}</button><button className="primary-button full" onClick={() => setMode("login")}>{t.login}</button>{message && <p className="form-note">{message}</p>}</div> : <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
+    {authMethod === "sms" ? <form onSubmit={verifySms} className="auth-form"><label>{t.phone}<div className="phone-input"><span>+86</span><input inputMode="numeric" autoComplete="tel" required maxLength={11} placeholder="138 0000 0000" value={smsForm.phone} onChange={(event) => setSmsForm({ ...smsForm, phone: event.target.value.replace(/\D/g, "").slice(0, 11) })} /></div></label><label>{t.smsCode}<div className="sms-code-input"><input inputMode="numeric" autoComplete="one-time-code" required maxLength={6} value={smsForm.code} onChange={(event) => setSmsForm({ ...smsForm, code: event.target.value.replace(/\D/g, "").slice(0, 6) })} /><button type="button" disabled={busy || countdown > 0 || smsForm.phone.length !== 11} onClick={sendSms}>{countdown > 0 ? `${countdown}${t.resendSmsIn}` : t.sendSmsCode}</button></div></label><LegalConsent locale={locale} checked={legalAccepted} onChange={setLegalAccepted} />{message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || !smsSent || smsForm.code.length !== 6 || !legalAccepted}>{busy ? <SpinnerGap className="spin" size={20} /> : t.login}</button></form> : mode === "pending" ? <div className="auth-form"><button className="secondary-button full" disabled={busy || !form.email} onClick={resend}>{t.resendVerification}</button><button className="primary-button full" onClick={() => setMode("login")}>{t.login}</button>{message && <p className="form-note">{message}</p>}</div> : <form onSubmit={submit} className="auth-form">{mode === "signup" && <label>{t.name}<input required maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
       {mode !== "reset" && <label>{t.email}<input type="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>}
       {!["forgot"].includes(mode) && <label>{mode === "reset" ? t.newPassword : t.password}<input type="password" required minLength={10} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><small>{t.passwordHint}</small></label>}
-      {message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || (mode === "signup" && !registrationEnabled)}>{busy ? <SpinnerGap className="spin" size={20} /> : mode === "signup" ? t.signup : mode === "forgot" ? t.sendRecovery : mode === "reset" ? t.changePassword : t.login}</button>
+      {mode === "signup" && <LegalConsent locale={locale} checked={legalAccepted} onChange={setLegalAccepted} />}
+      {message && <p className="form-note" role="status"><Warning size={17} />{message}</p>}<button className="primary-button full" disabled={busy || (mode === "signup" && (!registrationEnabled || !legalAccepted))}>{busy ? <SpinnerGap className="spin" size={20} /> : mode === "signup" ? t.signup : mode === "forgot" ? t.sendRecovery : mode === "reset" ? t.changePassword : t.login}</button>
       {mode === "login" && <button className="text-button" type="button" onClick={() => { setMode("forgot"); setMessage(""); }}>{t.forgotPassword}</button>}
       {mode === "signup" && !registrationEnabled && <p className="config-caption">{t.registrationUnavailable}</p>}
     </form>}
     {authMethod === "email" && ["login", "signup"].includes(mode) && <p className="auth-switch">{mode === "signup" ? t.hasAccount : t.noAccount}{(registrationEnabled || mode === "signup") && <button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setMessage(""); }}>{mode === "signup" ? t.login : t.signup}</button>}</p>}
     {authMethod === "email" && mode === "forgot" && <p className="auth-switch"><button onClick={() => { setMode("login"); setMessage(""); }}>{t.login}</button></p>}
   </section></div>;
+}
+
+function LegalConsent({ locale, checked, onChange }) {
+  return <label className="legal-consent"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{locale === "en" ? "I have read and agree to the " : "我已阅读并同意"}<a href="/legal/terms" target="_blank" rel="noreferrer">{locale === "en" ? "Terms" : "《用户协议》"}</a>{locale === "en" ? " and " : "与"}<a href="/legal/privacy" target="_blank" rel="noreferrer">{locale === "en" ? "Privacy Policy" : "《隐私政策》"}</a></span></label>;
 }
 
 function RunToolDialog({ tool, files, locale, onClose, onCreated }) {
@@ -2348,7 +2356,7 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
 
       <section id="pricing" className="landing-cta landing-cta-v2"><img src="/landing-v2/cta-ai-platform.webp" alt="" loading="lazy" decoding="async" /><div><h2>{copy.ctaTitle}</h2><p>{copy.ctaBody}</p><span><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button><a href="#tools">{copy.browse}</a></span></div></section>
     </main>
-    <footer className="landing-footer"><div className="footer-brand"><Brand /><p>{copy.footer}</p></div><div><strong>{copy.product}</strong><a href="#tools">{copy.nav[0]}</a><a href="#platform">AI Runtime</a><a href="#agents">AI Agent</a></div><div><strong>{copy.resources}</strong><a href="#how">{copy.nav[3]}</a><button onClick={onAuth}>{isEn ? "Account" : "账户中心"}</button></div><div><strong>{copy.company}</strong><a href="https://www.oneshowailab.com/" target="_blank" rel="noreferrer">OneShow AI Lab</a></div><div><strong>{copy.support}</strong><button onClick={onAuth}>{t.login}</button><button onClick={onLocale}>{t.language}</button></div><p>© 2026 OneShowTools. All rights reserved.</p></footer>
+    <footer className="landing-footer"><div className="footer-brand"><Brand /><p>{copy.footer}</p></div><div><strong>{copy.product}</strong><a href="#tools">{copy.nav[0]}</a><a href="#platform">AI Runtime</a><a href="#agents">AI Agent</a></div><div><strong>{copy.resources}</strong><a href="#how">{copy.nav[3]}</a><button onClick={onAuth}>{isEn ? "Account" : "账户中心"}</button></div><div><strong>{copy.company}</strong><a href="https://www.oneshowailab.com/" target="_blank" rel="noreferrer">OneShow AI Lab</a></div><div><strong>{copy.support}</strong><button onClick={onAuth}>{t.login}</button><button onClick={onLocale}>{t.language}</button><a href="/legal/terms">{isEn ? "Terms" : "用户协议"}</a><a href="/legal/privacy">{isEn ? "Privacy" : "隐私政策"}</a><a href="/legal/credits">{isEn ? "Credits & refunds" : "积分与退款"}</a></div><p>© 2026 OneShowTools. All rights reserved.</p></footer>
   </div>;
 }
 

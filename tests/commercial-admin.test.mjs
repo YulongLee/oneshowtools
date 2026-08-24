@@ -39,7 +39,7 @@ const latestToken = () => {
   return new URL(message.text.match(/https?:\/\/\S+/)[0]).searchParams.get("token");
 };
 const createVerifiedUser = async (email, name) => {
-  await handleApi(jsonRequest("/api/auth/register", { email, name, password: "StrongAdminPass123!", locale: "en" }));
+  await handleApi(jsonRequest("/api/auth/register", { email, name, password: "StrongAdminPass123!", locale: "en", legalAccepted: true, termsVersion: "2026-08-24", privacyVersion: "2026-08-24" }));
   await handleApi(request(`/api/auth/verify?token=${latestToken()}`));
   const login = await handleApi(jsonRequest("/api/auth/login", { email, password: "StrongAdminPass123!" }));
   return {

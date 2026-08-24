@@ -51,6 +51,7 @@ test("SMS login sends through Aliyun, creates one account, and consumes the code
 
   const verified = await handleApi(request("/api/auth/sms/verify", {
     phone: "+8613800138000", code: deliveredCode, locale: "zh-CN",
+    legalAccepted: true, termsVersion: "2026-08-24", privacyVersion: "2026-08-24",
   }));
   assert.equal(verified.status, 201);
   const payload = await verified.json();

@@ -14,6 +14,8 @@ export const API_PATHS = Object.freeze({
   tasks: "/api/tasks",
   files: "/api/files",
 });
+const CURRENT_LEGAL_VERSION = "2026-08-24";
+const withLegalAcceptance = (data) => ({ ...data, legalAccepted: true, termsVersion: CURRENT_LEGAL_VERSION, privacyVersion: CURRENT_LEGAL_VERSION });
 
 export class PlatformError extends Error {
   constructor(code, status, payload) {
@@ -68,9 +70,9 @@ export function createPlatformClient({ baseUrl, clientKind, fetchImpl = globalTh
     hasSession: () => Boolean(accessToken),
     request,
     login: (email, password) => request(API_PATHS.login, { method: "POST", body: { email, password } }).then(acceptLogin),
-    register: (data) => request(API_PATHS.register, { method: "POST", body: data }),
+    register: (data) => request(API_PATHS.register, { method: "POST", body: withLegalAcceptance(data) }),
     sendSms: (phone) => request(API_PATHS.smsSend, { method: "POST", body: { phone } }),
-    verifySms: (phone, code, name, locale = "zh-CN") => request(API_PATHS.smsVerify, { method: "POST", body: { phone, code, name, locale } }).then(acceptLogin),
+    verifySms: (phone, code, name, locale = "zh-CN") => request(API_PATHS.smsVerify, { method: "POST", body: withLegalAcceptance({ phone, code, name, locale }) }).then(acceptLogin),
     loginWithWechat: (code, name, locale = "zh-CN") => request(API_PATHS.wechatLogin, { method: "POST", body: { code, name, locale } }).then(acceptLogin),
     logout: async () => {
       try { await request(API_PATHS.logout, { method: "POST" }); }

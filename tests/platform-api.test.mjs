@@ -34,6 +34,7 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
       email: `platform-${Date.now()}@example.com`,
       password: "StrongPass123!",
       locale: "zh-CN",
+      legalAccepted: true, termsVersion: "2026-08-24", privacyVersion: "2026-08-24",
     }),
   }));
   assert.equal(register.status, 202);
