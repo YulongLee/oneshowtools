@@ -16,6 +16,7 @@ import { processUtilityTool, utilityToolSlugs } from "./utility-tools.mjs";
 import { mediaToolSlugs, processMediaTool } from "./media-tools.mjs";
 import { dataFileToolSlugs, processDataFileTool } from "./data-tools.mjs";
 import { analyzeFoodNutrition } from "./food-nutrition.mjs";
+import { processTierList } from "./tier-list-generator.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -277,6 +278,7 @@ export async function runToolAction(request, user, tool) {
   ).get(user.id).balance);
   if (available < tool.creditCost) throw toolError("INSUFFICIENT_CREDITS", 402);
   const alwaysCreatesFile = tool.slug === "background-remover" || tool.slug === "image-compressor"
+    || tool.slug === "hang-la-tier-list-generator"
     || imageToolSlugs.has(tool.slug) || aiImageToolSlugs.has(tool.slug) || pdfToolSlugSet.has(tool.slug)
     || mediaToolSlugs.has(tool.slug) || dataFileToolSlugs.has(tool.slug);
   if (alwaysCreatesFile) assertUserFileCapacity(user.id, tool.slug === "sliding-ancestor-generator" ? 10 : 1);
@@ -300,6 +302,16 @@ export async function runToolAction(request, user, tool) {
     if (tool.slug === "food-nutrition-analyzer") {
       processed = await analyzeFoodNutrition(form);
       input = processed.safeInput;
+    }
+    else if (tool.slug === "hang-la-tier-list-generator") {
+      processed = await processTierList(form);
+      input = {
+        title: processed.output.title,
+        layout: processed.output.layout,
+        template: processed.output.template,
+        tierCount: processed.output.tierCount,
+        itemCount: processed.output.itemCount,
+      };
     }
     else if (tool.slug === "background-remover") processed = await processBackground(file, form);
     else if (tool.slug === "image-compressor") processed = await processCompression(file, form);

@@ -21,6 +21,7 @@ const MusicStudio = lazy(() => import("./MusicStudio.jsx").then((module) => ({ d
 const LyricsGenerator = lazy(() => import("./LyricsGenerator.jsx").then((module) => ({ default: module.LyricsGenerator })));
 const SlidingAncestorStudio = lazy(() => import("./SlidingAncestorStudio.jsx").then((module) => ({ default: module.SlidingAncestorStudio })));
 const FoodNutritionAnalyzer = lazy(() => import("./FoodNutritionAnalyzer.jsx").then((module) => ({ default: module.FoodNutritionAnalyzer })));
+const TierListGenerator = lazy(() => import("./TierListGenerator.jsx").then((module) => ({ default: module.TierListGenerator })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -37,6 +38,7 @@ const commercialToolIconBySlug = {
   "ai-writer": "/tool-icons-v2/optimized/ai-writing.png",
   "pdf-summary": "/tool-icons-v2/optimized/pdf-tools.png",
   "pdf-merge": "/tool-icons-v2/optimized/pdf-tools.png",
+  "hang-la-tier-list-generator": "/tool-icons-v2/optimized/hang-la-tier-list-generator.png",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
@@ -810,6 +812,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 }
 
 function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "hang-la-tier-list-generator") return <TierListGenerator tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
