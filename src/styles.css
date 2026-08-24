@@ -794,6 +794,11 @@ kbd { border: 1px solid #d9e0e9; border-bottom-width: 2px; border-radius: 6px; p
 .runtime-tool-actions { display: flex; align-items: center; gap: 7px; }
 .runtime-tool-actions > button { min-height: 30px; padding: 0 9px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dce4ef; border-radius: 7px; color: #53637a; background: #fff; font-size: 9px; white-space: nowrap; }
 .runtime-tool-actions > button:hover { color: var(--blue); border-color: #a9c5ed; background: #f7faff; }
+.runtime-routing-note { padding: 10px 12px; display: flex; align-items: center; gap: 8px; border: 1px solid #dce9fb; border-radius: 9px; color: #58708f; background: #f7faff; font-size: 9px; line-height: 1.5; }
+.runtime-routing-note svg { flex: 0 0 auto; color: #2874dd; }
+.runtime-managed-route { padding: 5px 8px; display: inline-flex; align-items: center; gap: 5px; border-radius: 99px; color: #35735f; background: #eaf8f2; font-size: 9px; white-space: nowrap; }
+.runtime-routing-empty { min-height: 120px; display: grid; place-items: center; align-content: center; gap: 8px; color: #7b8ca3; text-align: center; }
+.runtime-routing-empty svg { color: #6e66ed; }
 .runtime-dialog-backdrop { position: fixed; inset: 0; z-index: 100; padding: 24px; display: grid; place-items: center; background: rgba(19,31,50,.42); backdrop-filter: blur(4px); animation: fadeIn .16s ease-out; }
 .runtime-dialog { width: min(600px,100%); padding: 0; overflow: hidden; border-color: #d6dfeb; box-shadow: 0 28px 70px rgba(19,39,70,.24); }
 .runtime-dialog > header { padding: 20px 21px; display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; border-bottom: 1px solid #edf0f5; background: #fbfcfe; }

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { PDFParse } from "pdf-parse";
 import { audit, db } from "./database.mjs";
-import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
+import { invokeModel, toolModelCapability, toolModelSelection } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
 import { assertUserFileCapacity } from "./file-quota.mjs";
 import { generateWriting } from "./writing-engine.mjs";
@@ -290,7 +290,7 @@ export async function runToolAction(request, user, tool) {
     const file = form.get("file");
     const uploadedFiles = form.getAll("files").filter((item) => item?.size);
     const requestedModelConnectionId = String(form.get("modelConnectionId") || "") || null;
-    const modelConnectionId = tool.runtimeKind === "openai"
+    const modelConnectionId = toolModelCapability(tool.runtimeKind).userConfigurable
       ? toolModelSelection(user.id, tool.id, requestedModelConnectionId)
       : null;
     input = { fileName: file?.name || null, fileSize: file?.size || 0, fileNames: uploadedFiles.map((item) => item.name), fileCount: uploadedFiles.length || (file?.size ? 1 : 0), modelConnectionId };
@@ -324,7 +324,7 @@ export async function runToolAction(request, user, tool) {
     else throw toolError("TOOL_ACTION_NOT_SUPPORTED", 404);
   } else {
     const payload = await request.json().catch(() => ({}));
-    const modelConnectionId = tool.runtimeKind === "openai"
+    const modelConnectionId = toolModelCapability(tool.runtimeKind).userConfigurable
       ? toolModelSelection(user.id, tool.id, payload.modelConnectionId)
       : null;
     payload.modelConnectionId = modelConnectionId;

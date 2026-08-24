@@ -9,6 +9,15 @@ import { promises as dns } from "node:dns";
 import { db } from "./database.mjs";
 
 export const MANAGED_MODEL_ALIAS = "OneShowModel";
+const userConfigurableRuntimeKinds = new Set(["openai", "builtin-seo"]);
+const modelRuntimeFamilies = Object.freeze({
+  openai: "text",
+  "builtin-seo": "text",
+  "builtin-music": "music",
+  "platform-image-edit": "image",
+  "platform-image-upscale": "image",
+  "platform-food-vision": "vision",
+});
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const userProtocols = new Set(["openai", "anthropic"]);
@@ -53,6 +62,15 @@ const endpointPolicies = Object.freeze({
 
 const gatewayError = (code, status = 502, retryable = false) =>
   Object.assign(new Error(code), { code, status, retryable });
+
+export function toolModelCapability(runtimeKind) {
+  const kind = String(runtimeKind || "");
+  return {
+    modelRequired: Boolean(modelRuntimeFamilies[kind]),
+    modelFamily: modelRuntimeFamilies[kind] || null,
+    userConfigurable: userConfigurableRuntimeKinds.has(kind),
+  };
+}
 
 function enabled(name, fallback = false) {
   const value = process.env[name];
@@ -825,7 +843,7 @@ export function listToolModelPreferences(userId) {
 export function setToolModelPreference(userId, toolId, modelConnectionId) {
   const tool = db.prepare("SELECT id, runtime_kind FROM tools WHERE id = ? AND active = 1").get(toolId);
   if (!tool) throw gatewayError("TOOL_NOT_FOUND", 404);
-  if (tool.runtime_kind !== "openai") throw gatewayError("TOOL_MODEL_NOT_CONFIGURABLE", 422);
+  if (!toolModelCapability(tool.runtime_kind).userConfigurable) throw gatewayError("TOOL_MODEL_NOT_CONFIGURABLE", 422);
   const selection = String(modelConnectionId || "managed");
   if (selection !== "managed") ownedConnection(userId, selection, true);
   db.prepare(`

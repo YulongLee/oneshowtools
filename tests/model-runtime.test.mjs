@@ -64,6 +64,7 @@ const {
   runtimeSummary,
   savePlatformModelConfiguration,
   setToolModelPreference,
+  toolModelCapability,
   toolModelSelection,
   updateModelConnection,
   validateModelConnection,
@@ -367,7 +368,7 @@ test("OneShow Home uses its own encrypted platform route and records the invocat
 });
 
 test("each model-backed tool stores an owner-scoped model preference", () => {
-  db.prepare("UPDATE tools SET active = 1 WHERE id IN ('tool_polish', 'tool_compress')").run();
+  db.prepare("UPDATE tools SET active = 1 WHERE id IN ('tool_polish', 'tool_sitemap_checker', 'tool_compress')").run();
   const ownerId = addUser("tool-model-owner@example.com");
   const otherId = addUser("tool-model-other@example.com");
   const connection = createModelConnection(ownerId, {
@@ -382,6 +383,19 @@ test("each model-backed tool stores an owner-scoped model preference", () => {
   assert.equal(toolModelSelection(ownerId, "tool_polish"), connection.id);
   assert.equal(listToolModelPreferences(ownerId).tool_polish, connection.id);
   assert.equal(toolModelSelection(otherId, "tool_polish"), "managed");
+  const seoPreference = setToolModelPreference(ownerId, "tool_sitemap_checker", connection.id);
+  assert.equal(seoPreference.modelConnectionId, connection.id);
+  assert.equal(toolModelSelection(ownerId, "tool_sitemap_checker"), connection.id);
+  assert.deepEqual(toolModelCapability("builtin-seo"), {
+    modelRequired: true,
+    modelFamily: "text",
+    userConfigurable: true,
+  });
+  assert.deepEqual(toolModelCapability("builtin-music"), {
+    modelRequired: true,
+    modelFamily: "music",
+    userConfigurable: false,
+  });
   assert.throws(
     () => setToolModelPreference(otherId, "tool_polish", connection.id),
     /MODEL_CONNECTION_NOT_FOUND/,

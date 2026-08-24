@@ -58,6 +58,7 @@ import {
   runtimeSummary,
   setToolModelPreference,
   testModelConnection,
+  toolModelCapability,
   toolModelSelection,
   updateModelConnection,
   validateModelConnection,
@@ -808,7 +809,7 @@ async function createTask(request, user) {
     `).run(id, user.id, tool.id, JSON.stringify({
       text: String(data.text || "").slice(0, 50000),
       locale: data.locale === "en" ? "en" : "zh-CN",
-      modelConnectionId: tool.runtimeKind === "openai"
+      modelConnectionId: toolModelCapability(tool.runtimeKind).userConfigurable
         ? toolModelSelection(user.id, tool.id, data.modelConnectionId)
         : null,
     }), tool.creditCost, timestamp, timestamp);
@@ -1951,11 +1952,15 @@ export async function handleApi(request) {
       ...runtimeSummary(user.id),
       tools: storefrontTools()
         .sort((left, right) => `${left.category}:${left.nameEn}`.localeCompare(`${right.category}:${right.nameEn}`))
-        .map((tool) => ({
-          ...tool,
-          modelConfigurable: tool.runtimeKind === "openai",
-          modelConnectionId: preferences[tool.id] || "managed",
-        })),
+        .map((tool) => {
+          const capability = toolModelCapability(tool.runtimeKind);
+          return {
+            ...tool,
+            ...capability,
+            modelConfigurable: capability.userConfigurable,
+            modelConnectionId: preferences[tool.id] || "managed",
+          };
+        }),
     });
   }
   return fail("NOT_FOUND", 404);
