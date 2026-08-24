@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowsClockwise, CheckCircle, CloudArrowUp, DownloadSimple, DotsThree,
-  Export, ImageSquare, Plus, Shuffle, Sparkle, SpinnerGap, Trash, Warning, X,
+  Export, Plus, Shuffle, Sparkle, SpinnerGap, Warning, X,
 } from "@phosphor-icons/react";
 import "./tier-list-generator.css";
 
@@ -51,12 +51,17 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
   const [result, setResult] = useState(null);
   const inputRef = useRef(null);
   const urlsRef = useRef(new Set());
+  const dragIdRef = useRef("");
 
   useEffect(() => () => { for (const url of urlsRef.current) URL.revokeObjectURL(url); }, []);
   useEffect(() => {
-    const clearPointerDrag = () => { setDragId(""); setDragOver(""); };
-    window.addEventListener("mouseup", clearPointerDrag);
-    return () => window.removeEventListener("mouseup", clearPointerDrag);
+    const clearReleasedDrag = () => {
+      dragIdRef.current = "";
+      setDragId("");
+      setDragOver("");
+    };
+    window.addEventListener("mouseup", clearReleasedDrag);
+    return () => window.removeEventListener("mouseup", clearReleasedDrag);
   }, []);
 
   const assignedIds = useMemo(() => new Set(tiers.flatMap((tier) => tier.itemIds)), [tiers]);
@@ -98,7 +103,8 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
 
   const dropOnTier = (event, tierId, beforeId = "") => {
     event.preventDefault();
-    const itemId = dragId || event.dataTransfer.getData("text/plain");
+    event.stopPropagation();
+    const itemId = event.dataTransfer.getData("text/plain") || dragId;
     if (itemId) moveToTier(itemId, tierId, beforeId);
     setDragId("");
     setDragOver("");
@@ -106,16 +112,38 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
 
   const dropOnTray = (event) => {
     event.preventDefault();
-    const itemId = dragId || event.dataTransfer.getData("text/plain");
+    event.stopPropagation();
+    const itemId = event.dataTransfer.getData("text/plain") || dragId;
     if (itemId) moveToTray(itemId);
     setDragId("");
     setDragOver("");
   };
 
+  const finishDrag = () => {
+    dragIdRef.current = "";
+    setDragId("");
+    setDragOver("");
+  };
+
+  const beginDrag = (itemId) => {
+    dragIdRef.current = itemId;
+    setDragId(itemId);
+  };
+
   const pointerDropOnTier = (event, tierId, beforeId = "") => {
-    if (!dragId) return;
+    const itemId = dragIdRef.current;
+    if (!itemId) return;
     event.stopPropagation();
-    moveToTier(dragId, tierId, beforeId);
+    moveToTier(itemId, tierId, beforeId);
+    finishDrag();
+  };
+
+  const pointerDropOnTray = (event) => {
+    const itemId = dragIdRef.current;
+    if (!itemId) return;
+    event.stopPropagation();
+    moveToTray(itemId);
+    finishDrag();
   };
 
   const updateTier = (id, patch) => setTiers((current) => current.map((tier) => tier.id === id ? { ...tier, ...patch } : tier));
@@ -207,15 +235,13 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
       </section>}
 
       {activeStep === "sort" && <section className="tier-panel tier-ranking tier-ranking-full">
-        <div className="tier-ranking-toolbar"><div><span className="tier-eyebrow">FULL PAGE SORTING</span><h2>{title || "夯拉排行榜"}</h2><p>按住图片直接拖动，可跨等级移动或调整同一等级中的顺序。</p></div><div className="tier-toolbar-actions"><button type="button" onClick={() => distribute(false)}><Sparkle size={16} />自动排序</button><button type="button" onClick={() => distribute(true)}><Shuffle size={16} />随机排序</button><button type="button" className="primary" onClick={() => setActiveStep("preview")}>查看预览</button></div></div>
-        <div className="tier-ranking-list">{tiers.map((tier) => <div className={`tier-rank-row ${dragOver === tier.id ? "is-drag-over" : ""}`} key={tier.id} style={{ "--tier-color": tier.color }} onMouseEnter={() => dragId && setDragOver(tier.id)} onMouseLeave={() => dragId && setDragOver("")} onMouseUp={(event) => pointerDropOnTier(event, tier.id)} onDragEnter={() => setDragOver(tier.id)} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropOnTier(event, tier.id)}>
-          <strong><span>{tier.emoji}</span>{tier.name}</strong><div>{tier.itemIds.map((id, index) => { const asset = assetMap.get(id); return asset ? <TierAsset asset={asset} key={id} number={index + 1} tiers={tiers} onDrag={setDragId} onMove={moveToTier} onPointerDrop={(event) => pointerDropOnTier(event, tier.id, id)} onDrop={(event) => dropOnTier(event, tier.id, id)} isDragging={dragId === id} /> : null; })}{!tier.itemIds.length && <span className="tier-drop-hint">把下方素材拖到这里</span>}</div>
+        <div className="tier-ranking-toolbar"><div><h2>{title || "夯拉排行榜"}</h2><p>拖动图片完成你的夯拉排名</p></div><div className="tier-toolbar-actions"><button type="button" onClick={() => distribute(false)}><Sparkle size={16} />自动排序</button><button type="button" onClick={() => distribute(true)}><Shuffle size={16} />随机排序</button><button type="button" className="primary" onClick={() => setActiveStep("preview")}>查看预览</button></div></div>
+        <div className="tier-ranking-list">{tiers.map((tier) => <div className={`tier-rank-row ${dragOver === tier.id ? "is-drag-over" : ""}`} key={tier.id} style={{ "--tier-color": tier.color }} onMouseEnter={() => dragIdRef.current && setDragOver(tier.id)} onMouseLeave={() => dragIdRef.current && setDragOver("")} onMouseUp={(event) => pointerDropOnTier(event, tier.id)} onDragEnter={() => setDragOver(tier.id)} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDrop={(event) => dropOnTier(event, tier.id)}>
+          <strong>{tier.name}</strong><div>{tier.itemIds.map((id) => { const asset = assetMap.get(id); return asset ? <TierAsset asset={asset} key={id} tiers={tiers} onDrag={beginDrag} onDragEnd={finishDrag} onMove={moveToTier} onPointerDrop={(event) => pointerDropOnTier(event, tier.id, id)} onDrop={(event) => dropOnTier(event, tier.id, id)} isDragging={dragId === id} /> : null; })}</div>
         </div>)}</div>
-        <div className={`tier-material-tray ${dragOver === "tray" ? "is-drag-over" : ""}`} onMouseEnter={() => dragId && setDragOver("tray")} onMouseLeave={() => dragId && setDragOver("")} onMouseUp={(event) => { if (dragId) { event.stopPropagation(); moveToTray(dragId); } }} onDragEnter={() => setDragOver("tray")} onDragOver={(event) => event.preventDefault()} onDrop={dropOnTray}>
-          <div className="tier-material-head"><div><h2>上传图片与待排序素材</h2><p>素材统一放在排序区下方；拖入等级后会从这里移除，拖回即可取消分组。</p></div><div><span>{unassigned.length} 张待排序 · 共 {assets.length}/50</span><button type="button" onClick={() => inputRef.current?.click()}><CloudArrowUp size={17} />上传图片</button></div></div>
-          <button type="button" className="tier-upload tier-upload-compact" onClick={() => inputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); addFiles(event.dataTransfer.files); }}><CloudArrowUp size={24} /><strong>点击或拖拽上传图片</strong><span>JPG / PNG / WebP，单张不超过 10MB</span></button>
-          {!!unassigned.length ? <div className="tier-tray-grid">{unassigned.map((asset) => <TierAsset asset={asset} key={asset.id} tiers={tiers} onDrag={setDragId} onMove={moveToTier} onRemove={removeAsset} isDragging={dragId === asset.id} />)}</div> : <div className="tier-empty-tray"><ImageSquare size={24} />{assets.length ? "所有素材都已完成排序，可拖回这里重新分配" : "还没有图片，先上传素材开始排序"}</div>}
-          {!!assets.length && <div className="tier-upload-summary"><span>电脑端支持鼠标拖拽；移动端可使用图片上的等级菜单</span><button type="button" onClick={() => [...assets].forEach((asset) => removeAsset(asset.id))}>清空全部</button></div>}
+        <div className={`tier-material-tray ${dragOver === "tray" ? "is-drag-over" : ""}`} onMouseEnter={() => dragIdRef.current && setDragOver("tray")} onMouseLeave={() => dragIdRef.current && setDragOver("")} onMouseUp={pointerDropOnTray} onDragEnter={() => dragId && setDragOver("tray")} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDragOver={(event) => { if (dragId) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } }} onDrop={dropOnTray}>
+          <button type="button" className="tier-upload-button" onClick={() => inputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); addFiles(event.dataTransfer.files); }}><CloudArrowUp size={18} />上传图片</button>
+          {!!unassigned.length && <div className="tier-tray-grid">{unassigned.map((asset) => <TierAsset asset={asset} key={asset.id} tiers={tiers} onDrag={beginDrag} onDragEnd={finishDrag} onMove={moveToTier} onRemove={removeAsset} isDragging={dragId === asset.id} />)}</div>}
         </div>
         <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(event) => { addFiles(event.target.files); event.target.value = ""; }} />
       </section>}
@@ -234,8 +260,8 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
   </main>;
 }
 
-function TierAsset({ asset, number, tiers, onDrag, onMove, onDrop, onPointerDrop, onRemove, isDragging }) {
-  return <div className={`tier-asset ${isDragging ? "is-dragging" : ""}`} onMouseDown={(event) => { if (event.button === 0) onDrag(asset.id); }} onMouseUp={onPointerDrop} onDragOver={(event) => onDrop && event.preventDefault()} onDrop={onDrop}>
-    {number && <b>{number}</b>}<img src={asset.url} alt={asset.name} draggable="false" /><select aria-label="移动到等级" defaultValue="" onMouseDown={(event) => event.stopPropagation()} onChange={(event) => { if (event.target.value) onMove(asset.id, event.target.value); event.target.value = ""; }}><option value="">移动到…</option>{tiers.map((tier) => <option key={tier.id} value={tier.id}>{tier.name}</option>)}</select><DotsThree size={16} />{onRemove && <button type="button" className="tier-asset-remove" aria-label={`删除 ${asset.name}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(asset.id); }}><X size={12} /></button>}
+function TierAsset({ asset, tiers, onDrag, onDragEnd, onMove, onDrop, onPointerDrop, onRemove, isDragging }) {
+  return <div className={`tier-asset ${isDragging ? "is-dragging" : ""}`} draggable onMouseDown={(event) => { if (event.button === 0) onDrag(asset.id); }} onMouseUp={onPointerDrop} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", asset.id); onDrag(asset.id); }} onDragEnd={onDragEnd} onDragOver={(event) => { if (onDrop) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move"; } }} onDrop={onDrop}>
+    <img src={asset.url} alt={asset.name} draggable="false" /><select aria-label="移动到等级" defaultValue="" onMouseDown={(event) => event.stopPropagation()} onChange={(event) => { if (event.target.value) onMove(asset.id, event.target.value); event.target.value = ""; }}><option value="">移动到…</option>{tiers.map((tier) => <option key={tier.id} value={tier.id}>{tier.name}</option>)}</select><DotsThree size={16} />{onRemove && <button type="button" className="tier-asset-remove" aria-label={`删除 ${asset.name}`} onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(asset.id); }}><X size={12} /></button>}
   </div>;
 }
