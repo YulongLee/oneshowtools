@@ -10,7 +10,7 @@ import {
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
-  Bell, Star, HandWaving, Brain,
+  Bell, Star, HandWaving, Brain, ForkKnife,
 } from "@phosphor-icons/react";
 import { SupportWidget } from "./SupportWidget.jsx";
 import { LEGAL_VERSION } from "./LegalPage.jsx";
@@ -21,6 +21,7 @@ const MusicStudio = lazy(() => import("./MusicStudio.jsx").then((module) => ({ d
 const LyricsGenerator = lazy(() => import("./LyricsGenerator.jsx").then((module) => ({ default: module.LyricsGenerator })));
 const SlidingAncestorStudio = lazy(() => import("./SlidingAncestorStudio.jsx").then((module) => ({ default: module.SlidingAncestorStudio })));
 const FoodNutritionAnalyzer = lazy(() => import("./FoodNutritionAnalyzer.jsx").then((module) => ({ default: module.FoodNutritionAnalyzer })));
+const FridgeRecipePlanner = lazy(() => import("./FridgeRecipePlanner.jsx").then((module) => ({ default: module.FridgeRecipePlanner })));
 const TierListGenerator = lazy(() => import("./TierListGenerator.jsx").then((module) => ({ default: module.TierListGenerator })));
 const MbtiPersonalityTest = lazy(() => import("./MbtiPersonalityTest.jsx").then((module) => ({ default: module.MbtiPersonalityTest })));
 
@@ -28,7 +29,7 @@ const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
-  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain,
+  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain, ForkKnife,
 };
 const commercialToolIconBySlug = {
   "ai-music-studio": "/tool-icons-v2/optimized/ai-music-studio.png",
@@ -42,6 +43,7 @@ const commercialToolIconBySlug = {
   "hang-la-tier-list-generator": "/tool-icons-v2/optimized/hang-la-tier-list-generator.png",
   "mbti-personality-test": "/mbti/mbti-icon-v1.webp",
   "food-nutrition-analyzer": "/food-nutrition/food-nutrition-icon-v1.webp",
+  "ai-fridge-recipe": "/fridge-recipes/fridge-recipe-icon-v1.webp",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
@@ -249,7 +251,11 @@ const dictionary = {
 };
 
 const api = async (path, options = {}) => {
-  const response = await fetch(path, { credentials: "include", ...options });
+  const response = await fetch(path, {
+    credentials: "include",
+    ...(options.method ? {} : { cache: "no-store" }),
+    ...options,
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data?.error?.code || "REQUEST_FAILED");
@@ -818,6 +824,7 @@ function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, ru
   if (tool.slug === "mbti-personality-test") return <MbtiPersonalityTest tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "hang-la-tier-list-generator") return <TierListGenerator tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
+  if (tool.slug === "ai-fridge-recipe") return <FridgeRecipePlanner tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;

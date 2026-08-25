@@ -16,6 +16,7 @@ import { processUtilityTool, utilityToolSlugs } from "./utility-tools.mjs";
 import { mediaToolSlugs, processMediaTool } from "./media-tools.mjs";
 import { dataFileToolSlugs, processDataFileTool } from "./data-tools.mjs";
 import { analyzeFoodNutrition } from "./food-nutrition.mjs";
+import { analyzeFridgeRecipes } from "./fridge-recipes.mjs";
 import { processTierList } from "./tier-list-generator.mjs";
 import { buildMbtiReport, MBTI_ASSESSMENT_VERSION, mbtiQuestions } from "../shared/mbti-assessment.mjs";
 
@@ -280,6 +281,7 @@ export async function runToolAction(request, user, tool) {
   if (available < tool.creditCost) throw toolError("INSUFFICIENT_CREDITS", 402);
   const alwaysCreatesFile = tool.slug === "background-remover" || tool.slug === "image-compressor"
     || tool.slug === "hang-la-tier-list-generator"
+    || tool.slug === "ai-fridge-recipe"
     || imageToolSlugs.has(tool.slug) || aiImageToolSlugs.has(tool.slug) || pdfToolSlugSet.has(tool.slug)
     || mediaToolSlugs.has(tool.slug) || dataFileToolSlugs.has(tool.slug);
   if (alwaysCreatesFile) assertUserFileCapacity(user.id, tool.slug === "sliding-ancestor-generator" ? 10 : 1);
@@ -302,6 +304,11 @@ export async function runToolAction(request, user, tool) {
     }
     if (tool.slug === "food-nutrition-analyzer") {
       processed = await analyzeFoodNutrition(form, { userId: user.id, modelConnectionId });
+      input = processed.safeInput;
+      input.modelConnectionId = modelConnectionId;
+    }
+    else if (tool.slug === "ai-fridge-recipe") {
+      processed = await analyzeFridgeRecipes(form, { userId: user.id, modelConnectionId });
       input = processed.safeInput;
       input.modelConnectionId = modelConnectionId;
     }

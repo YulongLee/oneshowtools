@@ -178,8 +178,12 @@ export async function saveImageProviderConfiguration(data, actorUserId = null, f
   return publicConfig();
 }
 
-export async function generateMusicCover(prompt, fetchImpl = fetch) {
+export async function generatePlatformImage(prompt, fetchImpl = fetch) {
   const config = credentials();
   if (!config) throw imageError("IMAGE_PROVIDER_NOT_CONFIGURED", 503);
   return generate(config, config.apiKey, prompt, fetchImpl);
+}
+
+export async function generateMusicCover(prompt, fetchImpl = fetch) {
+  return generatePlatformImage(prompt, fetchImpl);
 }
