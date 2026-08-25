@@ -1,0 +1,103 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, Brain, Briefcase, Check, CheckCircle, Clock, Copy, DownloadSimple, Heart, Lightbulb, ShieldCheck, Sparkle, SpinnerGap, Target, UsersThree, Warning } from "@phosphor-icons/react";
+import { mbtiQuestions } from "../shared/mbti-assessment.mjs";
+import "./mbti-personality-test.css";
+
+const ui = {
+  zh: { back: "返回工具市场", title: "MBTI 性格偏好自测", subtitle: "通过原创平衡题库，了解四维偏好、优势与成长建议", original: "原创平衡题库", types: "16 型与模糊维度", private: "结果私密", free: "免费测试", start: "开始测试", login: "登录后开始", questions: "64 题", duration: "8–12 分钟", introTitle: "为什么做性格偏好自测？", noRight: "请按你通常的真实反应选择，没有标准答案；不确定时可以选择中间项。", previous: "上一题", next: "下一题", submit: "生成我的报告", incomplete: "请完成当前题目后继续。", result: "你的性格偏好结果", retake: "重新测试", copy: "复制摘要", print: "打印 / 保存 PDF", history: "历史报告", strengths: "你可能更自然的优势", growth: "成长建议", dimensions: "四维偏好", work: "工作方式", collaboration: "协作偏好", learning: "学习方式", saved: "报告已保存到任务中心。" },
+  en: { back: "Back to tools", title: "Personality Preference Self-Test", subtitle: "Explore four preference dimensions, strengths, and growth ideas through original scenarios", original: "Original bank", types: "16 patterns", private: "Private results", free: "Free", start: "Start assessment", login: "Sign in to start", questions: "64 questions", duration: "8–12 min", introTitle: "Why explore your preferences?", noRight: "Choose what is usually true for you. There are no right answers.", previous: "Previous", next: "Next", submit: "Build my report", incomplete: "Choose an answer before continuing.", result: "Your preference pattern", retake: "Retake", copy: "Copy summary", print: "Print / Save PDF", history: "Past reports", strengths: "Natural strengths", growth: "Growth ideas", dimensions: "Four preferences", work: "Work style", collaboration: "Collaboration", learning: "Learning style", saved: "Saved to Task Center." },
+};
+
+const benefits = [
+  [Brain, "了解真实的自己", "观察你在能量、信息、决策和行动上的习惯"],
+  [Sparkle, "发现优势潜能", "识别更容易进入状态的环境与工作方式"],
+  [UsersThree, "改善沟通协作", "理解自己和他人可能偏好的表达方式"],
+  [Briefcase, "规划职业发展", "把偏好当作探索方向，而不是岗位限制"],
+];
+const reportBenefits = [
+  [Sparkle, "性格类型详解", "16 种偏好组合解析"],
+  [Target, "四维偏好雷达", "查看各维度倾向强度"],
+  [Briefcase, "职业发展建议", "探索更自然的工作方式"],
+  [Heart, "关系沟通指南", "理解不同表达与决策偏好"],
+  [Brain, "学习工作风格", "获得可执行的效率建议"],
+  [Lightbulb, "个性化成长建议", "把偏好转化为行动提示"],
+];
+const scale = [1, 2, 3, 4, 5];
+const scaleLabels = ["更像左侧", "比较像左侧", "两者接近", "比较像右侧", "更像右侧"];
+
+export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "zh", authenticated, onBack, onAuth, onCompleted }) {
+  const t = ui[locale] || ui.zh;
+  const storageKey = "oneshowtools_mbti_draft_v2";
+  const startedAt = useRef(Date.now());
+  const [stage, setStage] = useState(task?.output?.type ? "result" : "intro");
+  const [index, setIndex] = useState(0);
+  const [answers, setAnswers] = useState(() => { try { return JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch { return {}; } });
+  const [report, setReport] = useState(task?.output?.type ? task.output : null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const current = mbtiQuestions[index];
+  const completed = Object.keys(answers).filter((id) => mbtiQuestions.some((item) => item.id === id)).length;
+  const progress = Math.round((completed / mbtiQuestions.length) * 100);
+  const histories = useMemo(() => historyTasks.filter((item) => item.toolSlug === tool.slug && item.output?.type).slice(0, 6), [historyTasks, tool.slug]);
+
+  useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(answers)); }, [answers]);
+  useEffect(() => { if (task?.output?.type) { setReport(task.output); setStage("result"); } }, [task?.id]);
+
+  const begin = () => { if (!authenticated) return onAuth?.(); startedAt.current = Date.now(); setStage("quiz"); setError(""); };
+  const choose = (value) => { setAnswers((previous) => ({ ...previous, [current.id]: value })); setError(""); };
+  const next = () => {
+    if (!answers[current.id]) return setError(t.incomplete);
+    if (index < mbtiQuestions.length - 1) { setIndex((value) => value + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }
+    else submit();
+  };
+  const submit = async () => {
+    if (completed !== mbtiQuestions.length) return setError(locale === "en" ? `Complete all ${mbtiQuestions.length} questions first.` : `请先完成全部 ${mbtiQuestions.length} 道题。`);
+    setBusy(true); setError(""); setStage("generating");
+    try {
+      const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt.current) / 1000));
+      const response = await fetch(`/api/tool-actions/${tool.slug}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers, locale, durationSeconds }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error?.code || "REQUEST_FAILED");
+      setReport(data.output); setStage("result"); localStorage.removeItem(storageKey); onCompleted?.(data);
+    } catch (caught) { setStage("quiz"); setError(locale === "en" ? `Unable to build report (${caught.message}).` : `生成报告失败（${caught.message}），请稍后重试。`); }
+    finally { setBusy(false); }
+  };
+  const restart = () => { setAnswers({}); setIndex(0); setReport(null); setStage("intro"); localStorage.removeItem(storageKey); };
+  const copySummary = async () => report && navigator.clipboard?.writeText(`${report.type} ${report.typeName}\n${report.summary}\n${report.strengths.join("；")}`);
+
+  return <main className="mbti-page">
+    <button className="mbti-back" type="button" onClick={onBack}><ArrowLeft size={18} />{t.back}</button>
+    <section className="mbti-hero">
+      <img className="mbti-icon" src="/mbti/mbti-icon-v1.webp" alt="" />
+      <div className="mbti-hero-copy"><span>PERSONALITY PREFERENCES</span><h1>{t.title}</h1><p>{t.subtitle}</p><div>{[t.original, t.types, t.private, t.free].map((item) => <em key={item}><CheckCircle size={15} weight="fill" />{item}</em>)}</div></div>
+      <img className="mbti-hero-art" src="/mbti/mbti-hero-v1.webp" alt="" />
+      <aside><b>16</b><small>{locale === "en" ? "patterns" : "种偏好组合"}</small><b>{t.duration}</b><small>{t.questions}</small></aside>
+    </section>
+    <nav className="mbti-steps" aria-label="Assessment progress">{[["intro", "开始测试"], ["quiz", "回答问题"], ["generating", "生成结果"], ["result", "查看报告"]].map(([key, label], stepIndex) => <span key={key} className={stage === key || (stage === "result" && stepIndex < 4) ? "active" : ""}><b>{stepIndex + 1}</b>{locale === "en" ? ["Start", "Questions", "Score", "Report"][stepIndex] : label}</span>)}</nav>
+
+    {stage === "intro" && <div className="mbti-intro-grid">
+      <section className="mbti-benefits"><h2>{t.introTitle}</h2>{benefits.map(([Icon, title, text]) => <article key={title}><i><Icon size={23} weight="duotone" /></i><div><strong>{locale === "en" ? ["Understand yourself", "Notice your strengths", "Improve collaboration", "Explore development"][benefits.findIndex((item) => item[1] === title)] : title}</strong><p>{locale === "en" ? ["See your habits across four preference dimensions.", "Notice environments where you more easily do your best.", "Understand different communication preferences.", "Use preferences as prompts, never as limits."][benefits.findIndex((item) => item[1] === title)] : text}</p></div></article>)}</section>
+      <section className="mbti-start-card"><span>👋</span><h2>{locale === "en" ? "Welcome to your preference self-test" : "欢迎开始性格偏好自测"}</h2><p>{t.noRight}</p><div><article><Brain size={28} /><b>{t.original}</b><small>{locale === "en" ? "Original scenarios" : "基于公开理论维度"}</small></article><article><Target size={28} /><b>{t.types}</b><small>{locale === "en" ? "Four preference axes" : "四维偏好解读"}</small></article><article><ShieldCheck size={28} /><b>{t.private}</b><small>{locale === "en" ? "Saved to your account" : "仅你的账户可查看"}</small></article></div><button type="button" onClick={begin}>{authenticated ? t.start : t.login}<ArrowRight size={20} /></button><small><Clock size={15} />{t.duration} · {t.questions}</small></section>
+      <aside className="mbti-sample"><small>SAMPLE REPORT</small><div><img src="/mbti/mbti-icon-v1.webp" alt="" /><span><b>INFJ</b><em>洞察引导型</em></span></div><p>示例仅展示报告结构。你的结果将由完整答题实时计算。</p><ul><li><Heart size={18} />关注意义与人的体验</li><li><Brain size={18} />善于连接复杂信息</li><li><Target size={18} />重视长期方向</li></ul></aside>
+    </div>}
+    {stage === "intro" && <section className="mbti-report-benefits"><h2>{locale === "en" ? "Your report includes" : "你将获得一份完整的偏好分析报告"}</h2><div>{reportBenefits.map(([Icon, title, text], featureIndex) => <article key={title}><i><Icon size={25} weight="duotone" /></i><span><strong>{locale === "en" ? ["Preference pattern", "Dimension profile", "Career prompts", "Relationship guide", "Learning style", "Growth ideas"][featureIndex] : title}</strong><small>{locale === "en" ? ["A practical 16-pattern summary", "See the strength of each preference", "Explore natural ways of working", "Understand communication styles", "Actionable productivity prompts", "Turn preferences into experiments"][featureIndex] : text}</small></span></article>)}</div></section>}
+
+    {stage === "quiz" && <section className="mbti-quiz">
+      <header><div><small>{locale === "en" ? "QUESTION" : "问题"} {index + 1} / {mbtiQuestions.length}</small><strong>{progress}%</strong></div><span><i style={{ width: `${progress}%` }} /></span></header>
+      <div className="mbti-question-card"><em>{current.axis}</em><h2>{locale === "en" ? "Which statement is usually closer to you?" : "哪一种描述通常更接近你？"}</h2><div className="mbti-statements"><article><small>{current.leftCode}</small><strong>{current.left}</strong></article><article><small>{current.rightCode}</small><strong>{current.right}</strong></article></div><div className="mbti-scale">{scale.map((value, valueIndex) => <button key={value} className={answers[current.id] === value ? "selected" : ""} type="button" onClick={() => choose(value)} aria-label={scaleLabels[valueIndex]}><span>{value}</span><small>{valueIndex === 0 || valueIndex === 4 ? scaleLabels[valueIndex] : valueIndex === 2 ? scaleLabels[valueIndex] : ""}</small></button>)}</div>{error && <p className="mbti-error"><Warning size={17} />{error}</p>}<footer><button type="button" disabled={!index} onClick={() => setIndex((value) => Math.max(0, value - 1))}><ArrowLeft size={17} />{t.previous}</button><button className="primary" type="button" onClick={next}>{index === mbtiQuestions.length - 1 ? t.submit : t.next}<ArrowRight size={17} /></button></footer></div>
+    </section>}
+
+    {stage === "generating" && <section className="mbti-generating"><SpinnerGap className="spin" size={45} /><h2>{locale === "en" ? "Scoring your four preferences" : "正在计算你的四维偏好"}</h2><p>{locale === "en" ? "Building a practical, non-diagnostic report…" : "正在生成一份可回看的非诊断性报告…"}</p></section>}
+
+    {stage === "result" && report && <section className="mbti-report">
+      <header><div><small>{t.result}</small><h2>{report.type}<em>{report.typeName}</em></h2><p>{report.summary}</p></div><img src="/mbti/mbti-icon-v1.webp" alt="" /></header>
+      <div className="mbti-dimensions"><h3>{t.dimensions}</h3>{report.dimensions.map((item) => <article key={item.axis}><div><b>{item.leftCode} {item.leftPercent}%</b><span>{item.axis}</span><b>{item.rightPercent}% {item.rightCode}</b></div><span><i style={{ width: `${item.leftPercent}%` }} /></span><small>{item.closeness === "balanced" ? (locale === "en" ? "Nearly balanced" : "两侧较为均衡") : (locale === "en" ? `Leans ${item.selected}` : `当前更偏向 ${item.selected}`)}</small></article>)}</div>
+      <div className="mbti-report-grid"><article><h3><Sparkle size={20} />{t.strengths}</h3><ul>{report.strengths.map((item) => <li key={item}><Check size={16} />{item}</li>)}</ul></article><article><h3><Lightbulb size={20} />{t.growth}</h3><ul>{report.growth.map((item) => <li key={item}><ArrowRight size={16} />{item}</li>)}</ul></article></div>
+      {report.quality && <div className={"mbti-quality " + report.quality.status}><ShieldCheck size={20} weight="duotone" /><div><strong>{locale === "en" ? "Response quality" : "答题质量"}：{report.quality.status === "good" ? (locale === "en" ? "Good" : "良好") : report.quality.status === "review" ? (locale === "en" ? "Review suggested" : "建议复核") : (locale === "en" ? "Low confidence" : "可信度较低")}</strong><p>{report.quality.warnings?.length ? (locale === "en" ? "The response pattern was unusually fast or repetitive. Retake when you have enough uninterrupted time." : "检测到答题速度过快、中立项过多或连续选择相同选项。建议在不受打扰时重新测试。") : (locale === "en" ? "No obvious rushed or repetitive response pattern was detected." : "未发现明显的过快作答或机械重复选择。")}</p></div></div>}
+      <div className="mbti-style-grid">{[[Briefcase, t.work, report.workStyle], [UsersThree, t.collaboration, report.collaboration], [Brain, t.learning, report.learning]].map(([Icon, title, body]) => <article key={title}><Icon size={24} /><div><h3>{title}</h3><p>{body}</p></div></article>)}</div>
+      <p className="mbti-disclaimer"><ShieldCheck size={17} />{report.disclaimer}</p><footer><button type="button" onClick={restart}>{t.retake}</button><button type="button" onClick={copySummary}><Copy size={17} />{t.copy}</button><button className="primary" type="button" onClick={() => window.print()}><DownloadSimple size={17} />{t.print}</button></footer>
+    </section>}
+    {error && stage !== "quiz" && <p className="mbti-error"><Warning size={17} />{error}</p>}
+    {!!histories.length && <section className="mbti-history"><h2><Clock size={20} />{t.history}</h2><div>{histories.map((item) => <button type="button" key={item.id} onClick={() => { setReport(item.output); setStage("result"); }}><img src="/mbti/mbti-icon-v1.webp" alt="" /><span><strong>{item.output.type} · {item.output.typeName}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></span><ArrowRight size={17} /></button>)}</div></section>}
+  </main>;
+}

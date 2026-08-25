@@ -63,5 +63,18 @@ export function sameOrigin(request, appUrl) {
   // go through the normal web-origin check.
   if (!origin && requestClientKind(request)) return true;
   if (!origin) return !String(appUrl).startsWith("https://");
+  // Keep production CSRF protection intact while allowing the local Vite
+  // preview to exercise real authenticated writes. Both the browser Origin
+  // and the HTTP Host must be loopback, so an internet-facing deployment can
+  // never accept a request merely because a caller forged a localhost Origin.
+  try {
+    const originHost = new URL(origin).hostname;
+    const rawRequestHost = String(request.headers.get("host") || "");
+    const requestHost = rawRequestHost.startsWith("[")
+      ? rawRequestHost.slice(1, rawRequestHost.indexOf("]"))
+      : rawRequestHost.split(":")[0];
+    const loopback = new Set(["localhost", "127.0.0.1", "::1"]);
+    if (loopback.has(originHost) && loopback.has(requestHost)) return true;
+  } catch {}
   return origin === new URL(appUrl).origin;
 }

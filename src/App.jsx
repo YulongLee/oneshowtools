@@ -10,7 +10,7 @@ import {
   NotePencil, Article, ArrowsClockwise, TrendUp, MegaphoneSimple, Palette, TextAa,
   PaperPlaneRight, CheckSquare, FileText, Crown, Gift, Lightning,
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
-  Bell, Star, HandWaving,
+  Bell, Star, HandWaving, Brain,
 } from "@phosphor-icons/react";
 import { SupportWidget } from "./SupportWidget.jsx";
 import { LEGAL_VERSION } from "./LegalPage.jsx";
@@ -22,12 +22,13 @@ const LyricsGenerator = lazy(() => import("./LyricsGenerator.jsx").then((module)
 const SlidingAncestorStudio = lazy(() => import("./SlidingAncestorStudio.jsx").then((module) => ({ default: module.SlidingAncestorStudio })));
 const FoodNutritionAnalyzer = lazy(() => import("./FoodNutritionAnalyzer.jsx").then((module) => ({ default: module.FoodNutritionAnalyzer })));
 const TierListGenerator = lazy(() => import("./TierListGenerator.jsx").then((module) => ({ default: module.TierListGenerator })));
+const MbtiPersonalityTest = lazy(() => import("./MbtiPersonalityTest.jsx").then((module) => ({ default: module.MbtiPersonalityTest })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
-  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal,
+  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain,
 };
 const commercialToolIconBySlug = {
   "ai-music-studio": "/tool-icons-v2/optimized/ai-music-studio.png",
@@ -39,6 +40,7 @@ const commercialToolIconBySlug = {
   "pdf-summary": "/tool-icons-v2/optimized/pdf-tools.png",
   "pdf-merge": "/tool-icons-v2/optimized/pdf-tools.png",
   "hang-la-tier-list-generator": "/tool-icons-v2/optimized/hang-la-tier-list-generator.png",
+  "mbti-personality-test": "/mbti/mbti-icon-v1.webp",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
@@ -812,6 +814,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 }
 
 function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "mbti-personality-test") return <MbtiPersonalityTest tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "hang-la-tier-list-generator") return <TierListGenerator tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;

@@ -17,6 +17,7 @@ import { mediaToolSlugs, processMediaTool } from "./media-tools.mjs";
 import { dataFileToolSlugs, processDataFileTool } from "./data-tools.mjs";
 import { analyzeFoodNutrition } from "./food-nutrition.mjs";
 import { processTierList } from "./tier-list-generator.mjs";
+import { buildMbtiReport, MBTI_ASSESSMENT_VERSION, mbtiQuestions } from "../shared/mbti-assessment.mjs";
 
 const toolError = (code, status = 400) => Object.assign(new Error(code), { code, status });
 
@@ -328,7 +329,14 @@ export async function runToolAction(request, user, tool) {
       ? toolModelSelection(user.id, tool.id, payload.modelConnectionId)
       : null;
     payload.modelConnectionId = modelConnectionId;
-    if (tool.slug === "ai-writer") {
+    if (tool.slug === "mbti-personality-test") {
+      if (String(payload.version || MBTI_ASSESSMENT_VERSION) !== MBTI_ASSESSMENT_VERSION) throw toolError("MBTI_VERSION_UNSUPPORTED", 409);
+      processed = {
+        safeInput: { version: MBTI_ASSESSMENT_VERSION, answerCount: mbtiQuestions.length },
+        output: { ...buildMbtiReport(payload.answers, payload.locale || user.locale, { durationSeconds: payload.durationSeconds }), assessedAt: new Date().toISOString() },
+      };
+      input = processed.safeInput;
+    } else if (tool.slug === "ai-writer") {
       processed = await generateWriting({ user, payload, connectionId: modelConnectionId });
       input = processed.safeInput;
     } else if (tool.slug === "lyrics-generator") {

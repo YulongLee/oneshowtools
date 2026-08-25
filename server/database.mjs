@@ -453,6 +453,7 @@ export function initializeDatabase() {
     ["tool_ai_restore", "ai-image-restorer", "图片高清修复", "AI Image Restorer", "修复模糊、噪点、压缩痕迹和老照片划痕，输出高清图片。", "Restore blur, noise, compression artifacts, and scratches into a high-resolution image.", "image", "Sparkle", 25, "platform-image-upscale"],
     ["tool_food_nutrition", "food-nutrition-analyzer", "AI 食物热量分析", "AI Food Nutrition Analyzer", "上传一张食物照片，识别菜品与份量，估算热量、蛋白质、碳水、脂肪、膳食纤维和钠，并说明误差来源。", "Upload a food photo to estimate portions, calories, protein, carbs, fat, fiber, and sodium with transparent uncertainty.", "image", "ChartBar", 8, "platform-food-vision"],
     ["tool_hang_la_tier", "hang-la-tier-list-generator", "夯拉排行榜生成器", "Hang-La Tier List Maker", "上传图片、自定义夯拉等级并拖拽排序，一键导出适合分享的排行榜长图。", "Upload images, customize ranking tiers, drag to rank, and export a share-ready tier list.", "image", "ChartBar", 0, "builtin-tier-list"],
+    ["tool_mbti_test", "mbti-personality-test", "MBTI 性格偏好自测", "Personality Preference Self-Test", "通过 64 道原创平衡情境题了解四维偏好，支持模糊维度与答题质量提示，报告可回看。", "Explore four preference dimensions with an original balanced questionnaire, ambiguity handling, response-quality checks, and saved reports.", "developer", "Brain", 0, "builtin-assessment"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
@@ -553,6 +554,13 @@ export function initializeDatabase() {
     db.prepare("UPDATE tools SET active = 1, updated_at = ? WHERE slug = 'hang-la-tier-list-generator'").run(timestamp);
     db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
       .run(hangLaPublicationKey, JSON.stringify({ slug: "hang-la-tier-list-generator", published: true }), timestamp);
+  }
+
+  const mbtiPublicationKey = "tool_mbti_test_publication_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(mbtiPublicationKey)) {
+    db.prepare("UPDATE tools SET active = 1, updated_at = ? WHERE slug = 'mbti-personality-test'").run(timestamp);
+    db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+      .run(mbtiPublicationKey, JSON.stringify({ slug: "mbti-personality-test", published: true }), timestamp);
   }
 
   const plans = billingPlanSeeds;

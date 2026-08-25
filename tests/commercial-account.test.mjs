@@ -231,6 +231,20 @@ test("production cookie mutations reject cross-origin requests", async () => {
   process.env.APP_URL = "http://localhost";
 });
 
+test("local preview permits loopback-only authenticated mutations", async () => {
+  const { sameOrigin } = await import("../server/security.mjs");
+  const localRequest = new Request("https://oneshowtools.com/api/tool-actions/mbti-personality-test", {
+    method: "POST",
+    headers: { origin: "http://localhost:5173", host: "localhost:5173" },
+  });
+  const forgedInternetRequest = new Request("https://oneshowtools.com/api/tool-actions/mbti-personality-test", {
+    method: "POST",
+    headers: { origin: "http://localhost:5173", host: "oneshowtools.com" },
+  });
+  assert.equal(sameOrigin(localRequest, "https://oneshowtools.com"), true);
+  assert.equal(sameOrigin(forgedInternetRequest, "https://oneshowtools.com"), false);
+});
+
 test("Google authentication routes are not exposed", async () => {
   const start = await handleApi(request("/api/auth/google/start"));
   const callback = await handleApi(request("/api/auth/google/callback?code=test&state=test"));
