@@ -777,6 +777,57 @@ export async function invokeModel({
   }
 }
 
+export async function invokeVisionModel({
+  userId,
+  taskId = null,
+  capability = "vision",
+  instruction,
+  prompt,
+  imageDataUrl,
+  connectionId = null,
+  signal,
+  timeoutMs = null,
+}) {
+  if (!userId) throw gatewayError("MODEL_USER_REQUIRED", 400);
+  const route = resolveRoute(userId, connectionId);
+  const image = String(imageDataUrl || "");
+  const match = image.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!match || image.length > 10_000_000) throw gatewayError("INVALID_MODEL_IMAGE", 400);
+  const text = String(prompt || "").trim().slice(0, 16_000);
+  if (!text) throw gatewayError("INVALID_MODEL_MESSAGES", 400);
+  const content = route.protocol === "anthropic"
+    ? [{ type: "image", source: { type: "base64", media_type: match[1], data: match[2] } }, { type: "text", text }]
+    : [{ type: "text", text }, { type: "image_url", image_url: { url: image } }];
+  const invocationId = randomUUID();
+  const startedAt = Date.now();
+  db.prepare(`
+    INSERT INTO model_invocations
+      (id, task_id, user_id, route_kind, connection_id, capability, status, started_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
+  `).run(invocationId, taskId, userId, route.routeKind, route.connectionId, capability, startedAt);
+  try {
+    const result = await requestModel({
+      ...route,
+      instruction: String(instruction || "").slice(0, 12_000),
+      text,
+      messages: [{ role: "user", content }],
+      signal,
+      timeoutMs,
+    });
+    db.prepare(`
+      UPDATE model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,
+        latency_ms = ?, completed_at = ? WHERE id = ?
+    `).run(result.usage.inputTokens, result.usage.outputTokens, Date.now() - startedAt, Date.now(), invocationId);
+    return { ...result, route: route.routeKind, modelId: route.modelId, invocationId };
+  } catch (error) {
+    db.prepare(`
+      UPDATE model_invocations SET status = 'failed', error_class = ?, latency_ms = ?,
+        completed_at = ? WHERE id = ?
+    `).run(error.code || "MODEL_REQUEST_FAILED", Date.now() - startedAt, Date.now(), invocationId);
+    throw error;
+  }
+}
+
 export async function testModelConnection(userId, connectionId) {
   const row = ownedConnection(userId, connectionId, true);
   const startedAt = Date.now();

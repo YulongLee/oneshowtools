@@ -20,8 +20,10 @@ test("food nutrition analyzer returns structured estimates and safe input", asyn
   form.set("file", await imageFile());
   form.set("portionHint", "米饭半碗");
   form.set("mealContext", "lunch");
-  const result = await analyzeFoodNutrition(form, { modelInvoker: async ({ imageDataUrl, purpose }) => {
-    assert.equal(purpose, "food_nutrition");
+  const result = await analyzeFoodNutrition(form, { userId: "user_food", modelConnectionId: "managed", modelInvoker: async ({ imageDataUrl, capability, userId, connectionId }) => {
+    assert.equal(capability, "vision:food_nutrition");
+    assert.equal(userId, "user_food");
+    assert.equal(connectionId, "managed");
     assert.match(imageDataUrl, /^data:image\/jpeg;base64,/);
     return { modelId: "vision-test", text: JSON.stringify({
       isFood: true, mealName: "鸡肉米饭", summary: "一份鸡肉米饭", confidence: "medium",

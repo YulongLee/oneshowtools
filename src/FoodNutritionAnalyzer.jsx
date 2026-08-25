@@ -51,7 +51,7 @@ export function FoodNutritionAnalyzer({ tool, task, historyTasks = [], locale = 
   ] : [];
 
   return <main className="food-analyzer-page">
-    <header className="food-analyzer-hero"><button type="button" onClick={onBack}><ArrowLeft size={18} />{locale === "en" ? "Back" : "返回工具市场"}</button><div><span><ForkKnife size={20} />SMART NUTRITION</span><h1>{t.title}</h1><p>{t.intro}</p></div><aside><Coins size={19} /><strong>{tool.creditCost}</strong><small>{locale === "en" ? "credits / analysis" : "积分 / 次"}</small></aside></header>
+    <header className="food-analyzer-hero"><button type="button" onClick={onBack}><ArrowLeft size={18} />{locale === "en" ? "Back" : "返回工具市场"}</button><img className="food-hero-art" src="/food-nutrition/food-nutrition-icon-v1.webp" alt="" /><div><span><ForkKnife size={20} />SMART NUTRITION</span><h1>{t.title}</h1><p>{t.intro}</p></div><aside><Coins size={19} /><strong>{tool.creditCost}</strong><small>{locale === "en" ? "credits / analysis" : "积分 / 次"}</small></aside></header>
     <div className="food-analyzer-grid">
       <section className="food-input-card">
         <div className={`food-dropzone ${preview ? "has-image" : ""}`}>

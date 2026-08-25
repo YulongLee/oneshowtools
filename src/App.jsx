@@ -41,6 +41,7 @@ const commercialToolIconBySlug = {
   "pdf-merge": "/tool-icons-v2/optimized/pdf-tools.png",
   "hang-la-tier-list-generator": "/tool-icons-v2/optimized/hang-la-tier-list-generator.png",
   "mbti-personality-test": "/mbti/mbti-icon-v1.webp",
+  "food-nutrition-analyzer": "/food-nutrition/food-nutrition-icon-v1.webp",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {

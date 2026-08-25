@@ -301,8 +301,9 @@ export async function runToolAction(request, user, tool) {
       input.prompt = String(form.get("prompt") || "").trim().slice(0, 1200);
     }
     if (tool.slug === "food-nutrition-analyzer") {
-      processed = await analyzeFoodNutrition(form);
+      processed = await analyzeFoodNutrition(form, { userId: user.id, modelConnectionId });
       input = processed.safeInput;
+      input.modelConnectionId = modelConnectionId;
     }
     else if (tool.slug === "hang-la-tier-list-generator") {
       processed = await processTierList(form);

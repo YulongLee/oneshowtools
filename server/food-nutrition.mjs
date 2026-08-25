@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { invokePlatformVisionModel } from "./model-gateway.mjs";
+import { invokeVisionModel } from "./model-gateway.mjs";
 
 const nutritionError = (code, status = 422) => Object.assign(new Error(code), { code, status });
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
@@ -88,7 +88,7 @@ JSON Schema：
 {"isFood":true,"mealName":"","summary":"","confidence":"high|medium|low","total":{"caloriesKcal":{"estimate":0,"min":0,"max":0},"proteinG":{"estimate":0,"min":0,"max":0},"carbsG":{"estimate":0,"min":0,"max":0},"fatG":{"estimate":0,"min":0,"max":0},"fiberG":{"estimate":0,"min":0,"max":0},"sodiumMg":{"estimate":0,"min":0,"max":0}},"items":[{"name":"","portionDescription":"","estimatedWeightG":0,"caloriesKcal":{"estimate":0,"min":0,"max":0},"proteinG":{"estimate":0,"min":0,"max":0},"carbsG":{"estimate":0,"min":0,"max":0},"fatG":{"estimate":0,"min":0,"max":0},"fiberG":{"estimate":0,"min":0,"max":0},"sodiumMg":{"estimate":0,"min":0,"max":0},"confidence":"high|medium|low","assumptions":[]}],"visibleEvidence":[],"hiddenUncertainties":[],"tips":[]}`;
 }
 
-export async function analyzeFoodNutrition(form, { modelInvoker = invokePlatformVisionModel } = {}) {
+export async function analyzeFoodNutrition(form, { userId = null, modelConnectionId = null, modelInvoker = invokeVisionModel } = {}) {
   const file = form.get("file");
   if (!file?.size) throw nutritionError("IMAGE_REQUIRED", 400);
   if (file.size > 12 * 1024 * 1024) throw nutritionError("IMAGE_TOO_LARGE", 413);
@@ -105,7 +105,9 @@ export async function analyzeFoodNutrition(form, { modelInvoker = invokePlatform
   const mealContext = String(form.get("mealContext") || "unspecified").slice(0, 30);
   const locale = String(form.get("locale") || "zh") === "en" ? "en" : "zh";
   const result = await modelInvoker({
-    purpose: "food_nutrition",
+    userId,
+    connectionId: modelConnectionId,
+    capability: "vision:food_nutrition",
     service: "food-nutrition-analyzer",
     instruction: "Return valid JSON only. Never include markdown fences.",
     prompt: buildPrompt({ portionHint, mealContext, locale }),

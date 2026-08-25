@@ -56,6 +56,7 @@ const {
   createModelConnection,
   decryptCredential,
   invokeModel,
+  invokeVisionModel,
   invokePlatformModel,
   listModelConnections,
   listPlatformModelConfigurations,
@@ -106,6 +107,23 @@ test("managed runtime returns a provider-neutral result and redacted status", as
   assert.match(publicStatus, /OneShowModel/);
   assert.doesNotMatch(publicStatus, /internal-model-id|managed-secret-key|127\.0\.0\.1/);
   assert.deepEqual(runtimeSummary(userId).supportedTemplates.map((item) => item.id), ["openai", "anthropic"]);
+});
+
+test("managed runtime accepts image input for vision-backed tools", async () => {
+  const userId = addUser("managed-vision@example.com");
+  const result = await invokeVisionModel({
+    userId,
+    connectionId: "managed",
+    capability: "vision:food_nutrition",
+    instruction: "Return JSON only.",
+    prompt: "Analyze this meal.",
+    imageDataUrl: `data:image/png;base64,${Buffer.from("test-image").toString("base64")}`,
+  });
+  assert.equal(result.text, "ok:internal-model-id");
+  assert.equal(result.route, "managed");
+  const invocation = db.prepare("SELECT capability, status FROM model_invocations WHERE id = ?").get(result.invocationId);
+  assert.equal(invocation.capability, "vision:food_nutrition");
+  assert.equal(invocation.status, "completed");
 });
 
 test("AI writing exposes 7 modules and 49 templates, then performs draft and review calls", async () => {
