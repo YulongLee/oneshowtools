@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import sharp from "sharp";
 import { processTierList } from "../server/tier-list-generator.mjs";
@@ -36,4 +37,9 @@ test("tier list generator rejects more than ten levels", async () => {
   const form = new FormData();
   form.append("tiers", JSON.stringify(Array.from({ length: 11 }, (_, index) => ({ id: `t${index}`, name: `T${index}`, color: "#6757f5" }))));
   await assert.rejects(() => processTierList(form), (error) => error.code === "TIER_LIST_LEVEL_COUNT_INVALID");
+});
+
+test("empty tier rows stay visually clean without instructional copy", async () => {
+  const source = await readFile(new URL("../src/TierListGenerator.jsx", import.meta.url), "utf8");
+  assert.equal(source.includes("把下方素材拖到这里"), false);
 });
