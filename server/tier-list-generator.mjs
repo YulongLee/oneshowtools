@@ -4,7 +4,6 @@ const toolError = (code, status = 400) => Object.assign(new Error(code), { code,
 
 const layouts = {
   portrait: { width: 1080, height: 1920 },
-  landscape: { width: 1600, height: 900 },
   square: { width: 1080, height: 1080 },
 };
 
@@ -50,7 +49,9 @@ export async function processTierList(form) {
   const tiers = normalizedTiers(form);
   const assignments = parseJson(form, "assignments", []);
   if (!Array.isArray(assignments)) throw toolError("TIER_LIST_INVALID_CONFIGURATION", 422);
-  const layout = layouts[String(form.get("layout") || "portrait")] || layouts.portrait;
+  const requestedLayout = String(form.get("layout") || "portrait");
+  const layoutKey = Object.hasOwn(layouts, requestedLayout) ? requestedLayout : "portrait";
+  const layout = layouts[layoutKey];
   const templateKey = String(form.get("template") || "paper");
   const theme = templates[templateKey] || templates.paper;
   const title = String(form.get("title") || "夯拉排行榜").trim().slice(0, 30) || "夯拉排行榜";
@@ -58,7 +59,7 @@ export async function processTierList(form) {
   const width = layout.width;
   const height = layout.height;
   const margin = Math.round(width * 0.055);
-  const headerHeight = Math.round(height * (layout === layouts.portrait ? 0.17 : 0.2));
+  const headerHeight = Math.round(height * (layoutKey === "portrait" ? 0.17 : 0.2));
   const footerHeight = Math.round(height * 0.075);
   const rowGap = Math.max(8, Math.round(height * 0.007));
   const contentHeight = height - headerHeight - footerHeight - margin;
@@ -114,6 +115,6 @@ export async function processTierList(form) {
     name: `${title.replace(/[\\/:*?"<>|]/g, "-")}-${layout.width}x${layout.height}.png`,
     mimeType: "image/png",
     extension: ".png",
-    output: { title, layout: String(form.get("layout") || "portrait"), template: templateKey, tierCount: tiers.length, itemCount: files.length, width, height },
+    output: { title, layout: layoutKey, template: templateKey, tierCount: tiers.length, itemCount: files.length, width, height },
   };
 }

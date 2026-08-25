@@ -42,4 +42,20 @@ test("tier list generator rejects more than ten levels", async () => {
 test("empty tier rows stay visually clean without instructional copy", async () => {
   const source = await readFile(new URL("../src/TierListGenerator.jsx", import.meta.url), "utf8");
   assert.equal(source.includes("把下方素材拖到这里"), false);
+  assert.equal(source.includes("横版 (16:9)"), false);
+});
+
+test("retired landscape exports fall back to the visible portrait format", async () => {
+  const form = new FormData();
+  form.append("layout", "landscape");
+  form.append("tiers", JSON.stringify([
+    { id: "hang", name: "夯", color: "#ef4444" },
+    { id: "pull", name: "拉完了", color: "#4f6de8" },
+  ]));
+  form.append("assignments", "[]");
+
+  const result = await processTierList(form);
+  assert.equal(result.output.layout, "portrait");
+  assert.equal(result.output.width, 1080);
+  assert.equal(result.output.height, 1920);
 });

@@ -206,7 +206,7 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
     } catch { setError(zh ? "分享未完成，你也可以直接下载图片。" : "Sharing was not completed. You can download the image instead."); }
   };
 
-  const previewRatio = layout === "portrait" ? "9 / 16" : layout === "landscape" ? "16 / 9" : "1 / 1";
+  const previewRatio = layout === "portrait" ? "9 / 16" : "1 / 1";
 
   return <main className="tier-tool-page">
     <button type="button" className="tier-back" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
@@ -248,7 +248,7 @@ export function TierListGenerator({ tool, locale, authenticated, onBack, onAuth,
 
       {activeStep === "preview" && <section className="tier-panel tier-preview-panel">
         <div className="tier-section-head"><h2>预览效果</h2></div>
-        <div className="tier-layout-tabs"><button className={layout === "portrait" ? "active" : ""} onClick={() => setLayout("portrait")}>竖版 (9:16)</button><button className={layout === "landscape" ? "active" : ""} onClick={() => setLayout("landscape")}>横版 (16:9)</button><button className={layout === "square" ? "active" : ""} onClick={() => setLayout("square")}>方版 (1:1)</button></div>
+        <div className="tier-layout-tabs"><button className={layout === "portrait" ? "active" : ""} onClick={() => setLayout("portrait")}>竖版 (9:16)</button><button className={layout === "square" ? "active" : ""} onClick={() => setLayout("square")}>方版 (1:1)</button></div>
         <div className={`tier-live-preview theme-${template}`} style={{ aspectRatio: previewRatio }}><header><h3>{title || "夯拉排行榜"}</h3><p>从夯到拉，主观锐评，仅供娱乐</p></header>{tiers.map((tier) => <div className="tier-preview-row" key={tier.id} style={{ "--tier-color": tier.color }}><strong>{tier.name}</strong><span>{tier.itemIds.map((id) => assetMap.get(id)).filter(Boolean).map((asset) => <img key={asset.id} src={asset.url} alt="" />)}</span></div>)}<footer>你怎么排？评论区见！</footer></div>
         <div className="tier-section-head tier-template-head"><h2>样式模板</h2></div>
         <div className="tier-template-list">{templateOptions.map((option) => <button type="button" key={option.id} className={template === option.id ? "active" : ""} onClick={() => setTemplate(option.id)} style={{ background: `linear-gradient(135deg, ${option.colors[0]}, ${option.colors[1]})` }}><span>{option.name}</span>{template === option.id && <CheckCircle weight="fill" size={16} />}</button>)}</div>
