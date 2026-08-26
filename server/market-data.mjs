@@ -227,7 +227,7 @@ export class HttpMarketDataProvider {
 }
 
 export class MarketDataService {
-  constructor(provider, ttlMs = 12000) { this.provider = provider; this.ttlMs = ttlMs; this.cache = new Map(); }
+  constructor(provider, ttlMs = 12000) { this.provider = provider; this.ttlMs = ttlMs; this.cache = new Map(); this.historyCache = new Map(); }
   async getQuotes(symbols) {
     const now = Date.now(), result = new Map(), missing = [];
     for (const original of symbols) {
@@ -247,7 +247,18 @@ export class MarketDataService {
     return symbols.map((original) => result.get(normalizeMarketSymbol(original) || original)).filter(Boolean);
   }
   async searchSymbols(query) { return this.provider.searchSymbols?.(query) || []; }
-  async getHistory(symbol, options) { return this.provider.getHistory?.(symbol, options) || []; }
+  async getHistory(symbol, options = {}) {
+    const normalized = normalizeMarketSymbol(symbol) || symbol;
+    const range = String(options.range || "1m");
+    const key = `${normalized}:${range}`;
+    const now = Date.now();
+    const cached = this.historyCache.get(key);
+    const ttl = range === "1d" ? Math.max(30000, this.ttlMs) : 300000;
+    if (cached && now - cached.cachedAt < ttl) return cached.items;
+    const items = await this.provider.getHistory?.(normalized, options) || [];
+    this.historyCache.set(key, { items, cachedAt: now });
+    return items;
+  }
 }
 
 let activeService;

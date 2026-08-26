@@ -91,11 +91,51 @@ const motionNames: Record<MotionPreset, string> = {
   rocket: "冲上云霄", sway: "左右观察", shiver: "紧张发抖", collapse: "趴下休息",
   pulse: "异动提醒", sleep: "收盘睡觉",
 };
-function clientMarketState(quote: Quote | null, message: string, preferences: ActionPreferences): MarketState {
+function recentMomentum(items: HistoryPoint[], minutes = 5) {
+  const points = items.filter((item) => Number.isFinite(Number(item.close)));
+  if (points.length < 2) return null;
+  const latest = points.at(-1)!;
+  const latestTime = String(latest.time || "");
+  const latestMatch = latestTime.match(/(\d{2}):(\d{2})$|^(\d{2})(\d{2})$/);
+  const latestMinute = latestMatch
+    ? Number(latestMatch[1] || latestMatch[3]) * 60 + Number(latestMatch[2] || latestMatch[4])
+    : null;
+  let baseline = points[Math.max(0, points.length - (minutes + 1))];
+  if (latestMinute !== null) {
+    for (let index = points.length - 2; index >= 0; index -= 1) {
+      const match = String(points[index].time || "").match(/(\d{2}):(\d{2})$|^(\d{2})(\d{2})$/);
+      if (!match) continue;
+      const pointMinute = Number(match[1] || match[3]) * 60 + Number(match[2] || match[4]);
+      if (latestMinute - pointMinute >= minutes) {
+        baseline = points[index];
+        break;
+      }
+    }
+  }
+  const start = Number(baseline.close), end = Number(latest.close);
+  if (!start || !Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return ((end - start) / start) * 100;
+}
+
+function clientMarketState(quote: Quote | null, message: string, preferences: ActionPreferences, recentChange: number | null): MarketState {
   if (!quote) return message ? "OFFLINE" : "LOADING";
   if (["CLOSED", "OFFLINE", "LOADING", "ALERT", "LIMIT_UP", "LIMIT_DOWN"].includes(String(quote.state)))
     return quote.state as MarketState;
-  const value = Number(quote.changePercent || 0), threshold = preferences.thresholds;
+  const threshold = preferences.thresholds;
+  // The configured values describe a full trading day. A five-minute move is
+  // meaningful at roughly one eighth of those thresholds, with a noise floor
+  // so the pet does not flicker between states on every tick.
+  if (recentChange !== null) {
+    const recentUp = Math.max(.08, Math.abs(threshold.up) * .12);
+    const recentStrongUp = Math.max(.3, Math.abs(threshold.strongUp) * .12);
+    const recentDown = -Math.max(.08, Math.abs(threshold.down) * .12);
+    const recentStrongDown = -Math.max(.3, Math.abs(threshold.strongDown) * .12);
+    if (recentChange >= recentStrongUp) return "STRONG_UP";
+    if (recentChange >= recentUp) return "UP";
+    if (recentChange <= recentStrongDown) return "STRONG_DOWN";
+    if (recentChange <= recentDown) return "DOWN";
+  }
+  const value = Number(quote.changePercent || 0);
   if (value >= threshold.strongUp) return "STRONG_UP";
   if (value >= threshold.up) return "UP";
   if (value <= threshold.strongDown) return "STRONG_DOWN";
@@ -161,6 +201,7 @@ function App() {
   const [customAssets, setCustomAssets] = useState<Record<string, string>>({});
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1m");
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [intradayHistory, setIntradayHistory] = useState<HistoryPoint[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyMessage, setHistoryMessage] = useState("");
   const [visible, setVisible] = useState(!document.hidden);
@@ -303,6 +344,17 @@ function App() {
 
   const currentSymbol = watchlist[selected]?.symbol || quotes[selected]?.symbol || "";
   useEffect(() => {
+    if (!session?.authenticated || !session?.license?.entitled || !currentSymbol || !visible) return;
+    let active = true;
+    const loadIntraday = () => window.stockPet
+      .api(`/api/products/stock-pet/history?symbol=${encodeURIComponent(currentSymbol)}&range=1d`)
+      .then((payload) => { if (active) setIntradayHistory(payload.items || []); })
+      .catch(() => { if (active) setIntradayHistory([]); });
+    loadIntraday();
+    const timer = window.setInterval(loadIntraday, marketClosed ? 300000 : 60000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session, currentSymbol, visible, marketClosed]);
+  useEffect(() => {
     if (rendererMode !== "control" || panel !== "chart" || !currentSymbol) return;
     let active = true;
     setHistoryBusy(true); setHistoryMessage("");
@@ -314,7 +366,8 @@ function App() {
   }, [panel, currentSymbol, historyRange]);
 
   const current = quotes[selected] || null,
-    state: MarketState = clientMarketState(current, message, actions);
+    recentChange = useMemo(() => recentMomentum(intradayHistory, 5), [intradayHistory]),
+    state: MarketState = clientMarketState(current, message, actions, recentChange);
   const title = current?.name || watchlist[selected]?.name || "添加第一只自选",
     change = Number(current?.changePercent || 0);
   const price = useMemo(
@@ -445,8 +498,8 @@ function App() {
     <main className="control-app">
       <header className="control-header"><div><img src="./niu-lai-le-mascot.png" alt="" /><span><b>牛来了</b><small>行情桌宠管理中心</small></span></div><button onClick={() => window.close()}><X /></button></header>
       <section className="control-summary">
-        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong></div>
-        {current?.trend && current.trend.length > 1 && <QuoteSparkline values={current.trend} negative={change < 0} />}
+        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong>{recentChange !== null && <em className={recentChange < 0 ? "negative" : ""}>近 5 分钟 {recentChange >= 0 ? "+" : ""}{recentChange.toFixed(2)}% · 动作按短线走势更新</em>}</div>
+        {intradayHistory.length > 1 ? <QuoteSparkline values={intradayHistory.map((item) => item.close)} negative={(recentChange ?? change) < 0} /> : current?.trend && current.trend.length > 1 ? <QuoteSparkline values={current.trend} negative={change < 0} /> : null}
       </section>
       <nav className="control-tabs">
         {([['watch', <Star />, '自选行情'], ['chart', <TrendUp />, '行情走势'], ['alerts', <Bell />, '异动提醒'], ['actions', <Sparkle />, '场景动作'], ['settings', <GearSix />, '桌宠设置']] as const).map(([key, icon, label]) => <button key={key} className={panel === key ? "active" : ""} onClick={() => setPanel(key)}>{icon}{label}</button>)}

@@ -559,6 +559,8 @@ body,
 .control-summary h1 { margin: 5px 0; font-size: 24px; }
 .control-summary strong { font-size: 20px; color: #e34b52; }
 .control-summary strong.negative { color: #17a66a; }
+.control-summary em { display: block; margin-top: 7px; color: #e34b52; font-size: 11px; font-style: normal; font-weight: 700; }
+.control-summary em.negative { color: #17a66a; }
 .control-summary .quote-sparkline { width: 44%; height: 68px; }
 .control-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0; }
 .control-tabs button { border: 1px solid #e0e5f1; background: #fff; color: #66718d; border-radius: 12px; height: 48px; display: flex; justify-content: center; align-items: center; gap: 7px; font-weight: 700; cursor: pointer; }
