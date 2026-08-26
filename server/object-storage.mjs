@@ -1,6 +1,6 @@
 import OSS from "ali-oss";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import { db, uploadDirectory } from "./database.mjs";
 
@@ -334,10 +334,18 @@ export async function putStockPetRelease({ platform, version, filePath, env = pr
   const release = stockPetReleaseObject(platform, version, env);
   const instance = createClient(objectStorageConfig(env), clientFactory);
   try {
-    const result = await instance.put(release.objectKey, filePath, { headers: {
+    const headers = {
       "content-type": release.mimeType,
       "x-oss-object-acl": "private",
-    } });
+    };
+    const file = await stat(filePath);
+    const result = file.size >= 64 * 1024 * 1024 && typeof instance.multipartUpload === "function"
+      ? await instance.multipartUpload(release.objectKey, filePath, {
+        parallel: 4,
+        partSize: 10 * 1024 * 1024,
+        headers,
+      })
+      : await instance.put(release.objectKey, filePath, { headers });
     return { ...release, etag: result?.res?.headers?.etag || result?.etag || null };
   } catch (error) {
     const failure = storageError("OSS_RELEASE_UPLOAD_FAILED", error?.status || 502);
