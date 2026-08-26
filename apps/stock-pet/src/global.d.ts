@@ -6,6 +6,7 @@ declare global { interface Window { stockPet: {
   logout(): Promise<any>;
   api(path: string, options?: { method?: string; body?: unknown }): Promise<any>;
   openLogin(): Promise<void>;
+  openControl(panel?:string): Promise<void>;
   setAlwaysOnTop(enabled:boolean):Promise<void>;
   setLaunchAtLogin(enabled:boolean):Promise<void>;
   setWindowSize(size:"small"|"medium"|"large"):Promise<void>;
@@ -16,6 +17,7 @@ declare global { interface Window { stockPet: {
   saveActionPreferences(value:unknown):Promise<any>;
   showContextMenu():Promise<void>;
   onQuickAction(handler:(action:string)=>void):()=>void;
+  onSessionChanged(handler:(session:any)=>void):()=>void;
   checkUpdates():Promise<{status:string}>;
   installUpdate():Promise<void>;
   onUpdateStatus(handler:(status:string)=>void):()=>void;

@@ -5,7 +5,8 @@ import { hostname, platform } from "node:os";
 import { join } from "node:path";
 import { autoUpdater } from "electron-updater";
 
-let window: BrowserWindow | null = null;
+let petWindow: BrowserWindow | null = null;
+let controlWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 const apiBase = process.env.ONESHOWTOOLS_API_URL || "https://www.gameforcast.top";
 const updateFeedUrl = String(process.env.STOCK_PET_UPDATE_URL || "").trim();
@@ -114,9 +115,9 @@ function readWindowState() {
   try {
     const value = JSON.parse(readFileSync(windowStatePath(), "utf8"));
     if ([value.x, value.y, value.width, value.height].every(Number.isFinite))
-      return { x: value.x, y: value.y, width: Math.max(280, Math.min(700, value.width)), height: Math.max(340, Math.min(900, value.height)) };
+      return { x: value.x, y: value.y, width: Math.max(220, Math.min(340, value.width)), height: Math.max(270, Math.min(410, value.height)) };
   } catch {}
-  return { width: 360, height: 460 };
+  return { width: 280, height: 340 };
 }
 
 function visibleWindowBounds(bounds: ReturnType<typeof readWindowState>) {
@@ -139,12 +140,12 @@ function visibleWindowBounds(bounds: ReturnType<typeof readWindowState>) {
 
 let windowStateTimer: NodeJS.Timeout | undefined;
 function persistWindowState() {
-  if (!window || window.isDestroyed()) return;
+  if (!petWindow || petWindow.isDestroyed()) return;
   clearTimeout(windowStateTimer);
   windowStateTimer = setTimeout(() => {
-    if (!window || window.isDestroyed()) return;
+    if (!petWindow || petWindow.isDestroyed()) return;
     const temporary = `${windowStatePath()}.tmp`;
-    writeFileSync(temporary, JSON.stringify(window.getBounds()), { mode: 0o600 });
+    writeFileSync(temporary, JSON.stringify(petWindow.getBounds()), { mode: 0o600 });
     renameSync(temporary, windowStatePath());
   }, 250);
 }
@@ -166,38 +167,62 @@ async function api(pathname: string, options: { method?: string; body?: unknown;
   return payload;
 }
 
-function createWindow() {
+function loadRenderer(target: BrowserWindow, mode: "pet" | "control") {
+  if (process.env.VITE_DEV_SERVER_URL) target.loadURL(`${process.env.VITE_DEV_SERVER_URL}?mode=${mode}`);
+  else target.loadFile(join(__dirname, "../dist/index.html"), { query: { mode } });
+}
+
+function createPetWindow() {
   const initialBounds = visibleWindowBounds(readWindowState());
-  window = new BrowserWindow({
-    ...initialBounds, minWidth: 280, minHeight: 340, transparent: true, frame: false,
-    alwaysOnTop: true, resizable: true, skipTaskbar: false, show: false,
+  petWindow = new BrowserWindow({
+    ...initialBounds, width: Math.min(initialBounds.width, 300), height: Math.min(initialBounds.height, 360),
+    minWidth: 220, minHeight: 260, transparent: true, frame: false,
+    alwaysOnTop: true, resizable: false, skipTaskbar: true, show: false, hasShadow: false,
     webPreferences: { preload: join(__dirname, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  window.on("move", persistWindowState);
-  window.on("resize", persistWindowState);
+  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  petWindow.on("move", persistWindowState);
   const reveal = () => {
-    if (!window || window.isDestroyed()) return;
-    window.show();
-    window.focus();
+    if (!petWindow || petWindow.isDestroyed()) return;
+    petWindow.showInactive();
   };
-  window.once("ready-to-show", reveal);
-  window.webContents.once("did-finish-load", reveal);
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  petWindow.once("ready-to-show", reveal);
+  petWindow.webContents.once("did-finish-load", reveal);
+  petWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(apiBase)) shell.openExternal(url);
     return { action: "deny" };
   });
-  if (process.env.VITE_DEV_SERVER_URL) window.loadURL(process.env.VITE_DEV_SERVER_URL);
-  else window.loadFile(join(__dirname, "../dist/index.html"));
+  loadRenderer(petWindow, "pet");
+}
+
+function openControlWindow(panel = "watch") {
+  if (controlWindow && !controlWindow.isDestroyed()) {
+    controlWindow.show();
+    controlWindow.focus();
+    controlWindow.webContents.send("pet:quick-action", panel);
+    return;
+  }
+  controlWindow = new BrowserWindow({
+    width: 820, height: 680, minWidth: 680, minHeight: 560,
+    title: "牛来了 · 管理中心", backgroundColor: "#f5f7fc", show: false,
+    webPreferences: { preload: join(__dirname, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  controlWindow.setMenuBarVisibility(false);
+  controlWindow.once("ready-to-show", () => { controlWindow?.show(); controlWindow?.focus(); });
+  controlWindow.on("closed", () => { controlWindow = null; });
+  loadRenderer(controlWindow, "control");
+  controlWindow.webContents.once("did-finish-load", () => controlWindow?.webContents.send("pet:quick-action", panel));
 }
 
 app.whenReady().then(() => {
-  createWindow();
+  createPetWindow();
+  if (process.env.STOCK_PET_OPEN_CONTROL === "1") openControlWindow("watch");
   tray = new Tray(nativeImage.createFromPath(join(__dirname, "../dist/niu-lai-le-mascot.png")).resize({ width: 18, height: 18 }));
   tray.setToolTip("牛来了");
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "显示 / 隐藏", click: () => window?.isVisible() ? window.hide() : window?.show() },
-    { label: "保持置顶", type: "checkbox", checked: true, click: (item) => window?.setAlwaysOnTop(item.checked) },
+    { label: "显示 / 隐藏牛牛", click: () => petWindow?.isVisible() ? petWindow.hide() : petWindow?.showInactive() },
+    { label: "管理自选与动作", click: () => openControlWindow("watch") },
+    { label: "保持置顶", type: "checkbox", checked: true, click: (item) => petWindow?.setAlwaysOnTop(item.checked) },
     { type: "separator" }, { label: "退出", click: () => app.quit() },
   ]));
   if (app.isPackaged && updateFeedUrl) {
@@ -210,7 +235,10 @@ app.whenReady().then(() => {
 for (const [eventName, status] of [
   ["checking-for-update", "checking"], ["update-available", "downloading"],
   ["update-not-available", "current"], ["update-downloaded", "ready"], ["error", "error"],
-] as const) autoUpdater.on(eventName, () => window?.webContents.send("pet:update-status", status));
+] as const) autoUpdater.on(eventName, () => {
+  petWindow?.webContents.send("pet:update-status", status);
+  controlWindow?.webContents.send("pet:update-status", status);
+});
 
 ipcMain.handle("pet:identity", () => ({ fingerprint, name: hostname(), platform: platform(), appVersion: app.getVersion(), installationId: randomUUID() }));
 ipcMain.handle("pet:open-login", () => shell.openExternal(`${apiBase}/?desktopProduct=stock-pet`));
@@ -233,9 +261,18 @@ ipcMain.handle("pet:login", async (_event, credentials) => {
   await api("/api/products/stock-pet/devices", { method: "POST", body: { fingerprint, name: hostname(), platform: platform(), appVersion: app.getVersion() } });
   const session = { authenticated: true, account: await api("/api/auth/session"), license: await api("/api/products/stock-pet/license") };
   writeEncryptedJson(licenseCachePath(), { ...session, cachedAt: Date.now() });
+  petWindow?.webContents.send("pet:session-changed", session);
+  controlWindow?.webContents.send("pet:session-changed", session);
   return session;
 });
-ipcMain.handle("pet:logout", () => { writeToken(""); writeEncryptedJson(licenseCachePath(), {}); return { authenticated: false }; });
+ipcMain.handle("pet:logout", () => {
+  writeToken(""); writeEncryptedJson(licenseCachePath(), {});
+  const session = { authenticated: false };
+  petWindow?.webContents.send("pet:session-changed", session);
+  controlWindow?.webContents.send("pet:session-changed", session);
+  return session;
+});
+ipcMain.handle("pet:open-control", (_event, panel = "watch") => openControlWindow(panel));
 ipcMain.handle("pet:api", (_event, pathname: string, options = {}) => {
   if (!pathname.startsWith("/api/products/stock-pet/")) throw new Error("INVALID_API_PATH");
   if (pathname.startsWith("/api/products/stock-pet/quotes"))
@@ -247,17 +284,17 @@ ipcMain.handle("pet:api", (_event, pathname: string, options = {}) => {
     });
   return api(pathname, options);
 });
-ipcMain.handle("pet:set-always-on-top", (_event, enabled: boolean) => window?.setAlwaysOnTop(Boolean(enabled)));
+ipcMain.handle("pet:set-always-on-top", (_event, enabled: boolean) => petWindow?.setAlwaysOnTop(Boolean(enabled)));
 ipcMain.handle("pet:set-launch-at-login", (_event, enabled: boolean) => app.setLoginItemSettings({ openAtLogin: Boolean(enabled) }));
 ipcMain.handle("pet:set-window-size", (_event, size: "small"|"medium"|"large") => {
-  const sizes = { small: [300, 390], medium: [360, 460], large: [430, 560] } as const;
+  const sizes = { small: [220, 270], medium: [280, 340], large: [340, 410] } as const;
   const [width, height] = sizes[size] || sizes.medium;
-  window?.setSize(width, height, true);
+  petWindow?.setSize(width, height, true);
 });
-ipcMain.handle("pet:set-opacity", (_event, value: number) => window?.setOpacity(Math.max(.55, Math.min(1, Number(value) || 1))));
-ipcMain.handle("pet:set-position-locked", (_event, value: boolean) => window?.setMovable(!Boolean(value)));
+ipcMain.handle("pet:set-opacity", (_event, value: number) => petWindow?.setOpacity(Math.max(.55, Math.min(1, Number(value) || 1))));
+ipcMain.handle("pet:set-position-locked", (_event, value: boolean) => petWindow?.setMovable(!Boolean(value)));
 ipcMain.handle("pet:get-system-settings", () => ({
-  alwaysOnTop: Boolean(window?.isAlwaysOnTop()),
+  alwaysOnTop: Boolean(petWindow?.isAlwaysOnTop()),
   launchAtLogin: app.getLoginItemSettings().openAtLogin,
 }));
 ipcMain.handle("pet:get-action-preferences", () => readActionPreferences());
@@ -265,24 +302,24 @@ ipcMain.handle("pet:save-action-preferences", (_event, value) => writeActionPref
 ipcMain.handle("pet:show-context-menu", () => {
   const preferences = readActionPreferences();
   const menu = Menu.buildFromTemplate([
-    { label: "查看行情", click: () => window?.webContents.send("pet:quick-action", "watch") },
-    { label: "添加自选", click: () => window?.webContents.send("pet:quick-action", "search") },
-    { label: "动作设置", click: () => window?.webContents.send("pet:quick-action", "actions") },
+    { label: "查看行情", click: () => openControlWindow("watch") },
+    { label: "添加自选", click: () => openControlWindow("search") },
+    { label: "动作设置", click: () => openControlWindow("actions") },
     { type: "separator" },
-    { label: "小号", type: "radio", click: () => window?.setSize(300, 390, true) },
-    { label: "中号", type: "radio", checked: true, click: () => window?.setSize(360, 460, true) },
-    { label: "大号", type: "radio", click: () => window?.setSize(430, 560, true) },
+    { label: "小号", type: "radio", click: () => petWindow?.setSize(220, 270, true) },
+    { label: "中号", type: "radio", checked: true, click: () => petWindow?.setSize(280, 340, true) },
+    { label: "大号", type: "radio", click: () => petWindow?.setSize(340, 410, true) },
     { label: "锁定位置", type: "checkbox", checked: preferences.locked, click: (item) => {
-      window?.setMovable(!item.checked);
+      petWindow?.setMovable(!item.checked);
       writeActionPreferences({ ...preferences, locked: item.checked });
     } },
-    { label: "始终置顶", type: "checkbox", checked: window?.isAlwaysOnTop(), click: (item) => window?.setAlwaysOnTop(item.checked) },
+    { label: "始终置顶", type: "checkbox", checked: petWindow?.isAlwaysOnTop(), click: (item) => petWindow?.setAlwaysOnTop(item.checked) },
     { label: "开机启动", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
     { type: "separator" },
-    { label: "隐藏牛牛", click: () => window?.hide() },
+    { label: "隐藏牛牛", click: () => petWindow?.hide() },
     { label: "退出", click: () => app.quit() },
   ]);
-  menu.popup({ window: window || undefined });
+  menu.popup({ window: petWindow || undefined });
 });
 ipcMain.handle("pet:check-updates", async () => {
   if (!app.isPackaged || !updateFeedUrl) return { status: "unavailable" };
@@ -290,6 +327,6 @@ ipcMain.handle("pet:check-updates", async () => {
   return { status: "checking" };
 });
 ipcMain.handle("pet:install-update", () => autoUpdater.quitAndInstall(false, true));
-ipcMain.handle("pet:hide", () => window?.hide());
+ipcMain.handle("pet:hide", () => petWindow?.hide());
 ipcMain.handle("pet:quit", () => app.quit());
 app.on("window-all-closed", () => {});

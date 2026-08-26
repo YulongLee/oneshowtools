@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("stockPet", {
   logout: () => ipcRenderer.invoke("pet:logout"),
   api: (path: string, options?: { method?: string; body?: unknown }) => ipcRenderer.invoke("pet:api", path, options),
   openLogin: () => ipcRenderer.invoke("pet:open-login"),
+  openControl: (panel?: string) => ipcRenderer.invoke("pet:open-control", panel),
   setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke("pet:set-always-on-top", enabled),
   setLaunchAtLogin: (enabled: boolean) => ipcRenderer.invoke("pet:set-launch-at-login", enabled),
   setWindowSize: (size: "small"|"medium"|"large") => ipcRenderer.invoke("pet:set-window-size", size),
@@ -19,6 +20,11 @@ contextBridge.exposeInMainWorld("stockPet", {
     const listener = (_event: unknown, action: string) => handler(action);
     ipcRenderer.on("pet:quick-action", listener);
     return () => ipcRenderer.removeListener("pet:quick-action", listener);
+  },
+  onSessionChanged: (handler: (session: unknown) => void) => {
+    const listener = (_event: unknown, session: unknown) => handler(session);
+    ipcRenderer.on("pet:session-changed", listener);
+    return () => ipcRenderer.removeListener("pet:session-changed", listener);
   },
   checkUpdates: () => ipcRenderer.invoke("pet:check-updates"),
   installUpdate: () => ipcRenderer.invoke("pet:install-update"),

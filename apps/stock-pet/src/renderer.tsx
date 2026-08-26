@@ -21,6 +21,8 @@ import {
 } from "@phosphor-icons/react";
 import "./renderer.css";
 
+const rendererMode = new URLSearchParams(window.location.search).get("mode") === "control" ? "control" : "pet";
+
 type MarketState =
   | "LOADING"
   | "OFFLINE"
@@ -144,7 +146,7 @@ function App() {
     [quotes, setQuotes] = useState<Quote[]>([]),
     [alerts, setAlerts] = useState<Alert[]>([]);
   const [selected, setSelected] = useState(0),
-    [expanded, setExpanded] = useState(true),
+    [expanded, setExpanded] = useState(false),
     [panel, setPanel] = useState<"watch" | "alerts" | "actions" | "settings">("watch");
   const [actions, setActions] = useState<ActionPreferences>(defaultActions);
   const [visible, setVisible] = useState(!document.hidden);
@@ -200,6 +202,7 @@ function App() {
       window.stockPet.setPositionLocked(value.locked);
     }).catch(() => undefined);
   }, []);
+  useEffect(() => window.stockPet.onSessionChanged(setSession), []);
   useEffect(() => {
     const update = () => setVisible(!document.hidden);
     document.addEventListener("visibilitychange", update);
@@ -374,205 +377,60 @@ function App() {
     setAlerts(payload.items || []);
   };
 
-  if (session === null)
-    return (
-      <main className="pet loading">
-        <img
-          className="pet-loading"
-          src="./niu-lai-le-mascot.png"
-          alt="牛来了"
-        />
-        <b>正在唤醒小牛…</b>
+  const petAsset = ["UP", "STRONG_UP", "LIMIT_UP"].includes(state)
+    ? "./niu-lai-le-up.png"
+    : ["DOWN", "STRONG_DOWN", "LIMIT_DOWN", "OFFLINE"].includes(state)
+      ? "./niu-lai-le-down.png"
+      : state === "CLOSED" ? "./niu-lai-le-sleep.png" : "./niu-lai-le-mascot.png";
+
+  if (rendererMode === "pet") {
+    const openManager = (target = "watch") => window.stockPet.openControl(target);
+    if (session === null) return <main className="pet-only loading"><div className="pet-drag-region"><img draggable={false} src="./niu-lai-le-mascot.png" alt="正在唤醒小牛" /></div></main>;
+    if (!session.authenticated || !session.license?.entitled) return (
+      <main className="pet-only locked-pet" onContextMenu={(event) => { event.preventDefault(); window.stockPet.showContextMenu(); }}>
+        <div className="pet-drag-region"><img draggable={false} src="./niu-lai-le-sleep.png" alt="牛来了" /></div>
+        <button className="pet-status-chip" onClick={() => openManager("account")}>{session.authenticated ? "待解锁" : "登录后唤醒"}</button>
       </main>
     );
-  if (!session.authenticated)
     return (
-      <main className="pet auth">
-        <WindowHeader />
-        <img
-          className="auth-mascot"
-          src="./niu-lai-le-mascot.png"
-          alt="牛来了"
-        />
-        <form onSubmit={login}>
-          <h1>欢迎回来</h1>
-          <p>登录 OneShowTools，同步产品权益与自选。</p>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="邮箱"
-            required
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="密码"
-            required
-          />
-          <button disabled={busy}>{busy ? "登录中…" : "登录"}</button>
-          {message && <small>{message}</small>}
-        </form>
-      </main>
-    );
-  if (!session.license?.entitled)
-    return (
-      <main className="pet auth">
-        <WindowHeader />
-        <img
-          className="auth-mascot"
-          src="./niu-lai-le-mascot.png"
-          alt="牛来了"
-        />
-        <section className="locked">
-          <h1>尚未解锁牛来了</h1>
-          <p>前往 OneShowTools 使用 1,000 积分永久解锁。</p>
-          <button onClick={() => window.stockPet.openLogin()}>
-            前往产品页
-          </button>
-          <button
-            className="link"
-            onClick={async () => setSession(await window.stockPet.logout())}
-          >
-            <SignOut />
-            退出账号
-          </button>
-        </section>
-      </main>
-    );
-  return (
-    <main className={`pet ${state.toLowerCase()}`}>
-      <WindowHeader />
-      {session.graceMode && <div className="grace-badge">离线授权模式 · 联网后自动恢复</div>}
-      <button
-        className={`mascot ${actions.animations ? `motion-${actions.stateMotions[state] || defaultActions.stateMotions[state]}` : "motion-off"}`}
-        style={{ "--motion-speed": actions.speed } as React.CSSProperties}
-        onClick={() => setExpanded((value) => !value)}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          window.stockPet.showContextMenu();
-        }}
-        aria-label="展开或收起行情"
-      >
-        <img src="./niu-lai-le-mascot.png" alt={`牛来了：${copy[state]}`} />
-      </button>
-      <section className={expanded ? "quote open" : "quote"}>
-        <span>{copy[state]}</span>
-        <h2>{title}</h2>
-        <div className={`price ${change < 0 ? "negative" : ""}`}>
-          <strong>{price}</strong>
-          {current && (
-            <div className="quote-change">
-              <b>
-                {change >= 0 ? "+" : ""}
-                {change.toFixed(2)}%
-              </b>
-              {Number.isFinite(Number(current.change)) && (
-                <small>{Number(current.change) >= 0 ? "+" : ""}{Number(current.change).toFixed(2)}</small>
-              )}
-            </div>
-          )}
+      <main className={`pet-only ${state.toLowerCase()}`} onContextMenu={(event) => { event.preventDefault(); window.stockPet.showContextMenu(); }}>
+        <div className={`pet-drag-region ${actions.animations ? `motion-${actions.stateMotions[state] || defaultActions.stateMotions[state]}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
+          <img draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
         </div>
-        {current && (
-          <div className="quote-meta">
-            <span>{current.market || "A"} · {current.code || current.symbol}{current.currency ? ` · ${current.currency}` : ""}</span>
-            {current.updatedAt && <span>更新 {new Date(current.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
-            {current.sourceLabel && <span>来源 {current.sourceLabel}</span>}
-          </div>
-        )}
+        <button className={`pet-quote-chip ${expanded ? "open" : ""}`} onClick={() => setExpanded((value) => !value)}>
+          <span>{copy[state]}</span><b>{title}</b>{current && <strong className={change < 0 ? "negative" : ""}>{price} · {change >= 0 ? "+" : ""}{change.toFixed(2)}%</strong>}
+        </button>
+        {expanded && <button className="pet-manage-button" onClick={() => openManager("watch")}><GearSix /> 管理</button>}
+      </main>
+    );
+  }
+
+  if (session === null) return <main className="control-app control-loading"><img src="./niu-lai-le-mascot.png" alt="牛来了" /><b>正在连接 OneShowTools…</b></main>;
+  if (!session.authenticated) return (
+    <main className="control-app control-auth"><section><img src="./niu-lai-le-mascot.png" alt="牛来了" /><form onSubmit={login}><small>ONSHOWTOOLS DESKTOP</small><h1>登录牛来了</h1><p>登录后同步产品权益、自选和提醒。</p><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="邮箱" required /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码" required /><button disabled={busy}>{busy ? "登录中…" : "登录"}</button>{message && <em>{message}</em>}</form></section>
+    </main>
+  );
+  if (!session.license?.entitled) return (
+    <main className="control-app control-auth"><section><img src="./niu-lai-le-sleep.png" alt="牛来了" /><div className="control-locked"><h1>尚未解锁牛来了</h1><p>前往 OneShowTools 使用 1,000 积分永久解锁。</p><button onClick={() => window.stockPet.openLogin()}>前往产品页</button><button className="secondary" onClick={async () => setSession(await window.stockPet.logout())}>退出账号</button></div></section></main>
+  );
+  return (
+    <main className="control-app">
+      <header className="control-header"><div><img src="./niu-lai-le-mascot.png" alt="" /><span><b>牛来了</b><small>行情桌宠管理中心</small></span></div><button onClick={() => window.close()}><X /></button></header>
+      <section className="control-summary">
+        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong></div>
         {current?.trend && current.trend.length > 1 && <QuoteSparkline values={current.trend} negative={change < 0} />}
-        {message && <p className="message">{message}</p>}
-        {panel === "watch" && (
-          <WatchPanel
-            search={search}
-            setSearch={setSearch}
-            results={results}
-            add={add}
-            watchlist={watchlist}
-            selected={selected}
-            setSelected={setSelected}
-            remove={remove}
-            updateWatchlist={updateWatchlist}
-          />
-        )}
-        {panel === "alerts" && (
-          <AlertPanel
-            alerts={alerts}
-            watchlist={watchlist}
-            selected={selected}
-            alertType={alertType}
-            setAlertType={setAlertType}
-            alertValue={alertValue}
-            setAlertValue={setAlertValue}
-            addAlert={addAlert}
-            removeAlert={removeAlert}
-            updateAlert={updateAlert}
-          />
-        )}
-        {panel === "actions" && (
-          <ActionPanel
-            state={state}
-            preferences={actions}
-            onChange={async (next: ActionPreferences) => {
-              const saved = await window.stockPet.saveActionPreferences(next);
-              setActions(saved);
-              setMessage("动作偏好已保存");
-            }}
-          />
-        )}
-        {panel === "settings" && (
-          <SettingsPanel
-            logout={async () => setSession(await window.stockPet.logout())}
-            preferences={actions}
-            onChange={async (next: ActionPreferences) => setActions(await window.stockPet.saveActionPreferences(next))}
-            updateStatus={updateStatus}
-            setUpdateStatus={setUpdateStatus}
-          />
-        )}
       </section>
-      <footer>
-        <button
-          className={panel === "actions" ? "active" : ""}
-          onClick={() => {
-            setPanel("actions");
-            setExpanded(true);
-          }}
-        >
-          <Sparkle />
-          动作
-        </button>
-        <button
-          className={panel === "watch" ? "active" : ""}
-          onClick={() => {
-            setPanel("watch");
-            setExpanded(true);
-          }}
-        >
-          <TrendUp />
-          自选
-        </button>
-        <button
-          className={panel === "alerts" ? "active" : ""}
-          onClick={() => {
-            setPanel("alerts");
-            setExpanded(true);
-          }}
-        >
-          <Bell />
-          提醒
-        </button>
-        <button
-          className={panel === "settings" ? "active" : ""}
-          onClick={() => {
-            setPanel("settings");
-            setExpanded(true);
-          }}
-        >
-          <GearSix />
-          设置
-        </button>
-      </footer>
+      <nav className="control-tabs">
+        {([['watch', <TrendUp />, '自选行情'], ['alerts', <Bell />, '异动提醒'], ['actions', <Sparkle />, '动作配置'], ['settings', <GearSix />, '桌宠设置']] as const).map(([key, icon, label]) => <button key={key} className={panel === key ? "active" : ""} onClick={() => setPanel(key)}>{icon}{label}</button>)}
+      </nav>
+      <section className="control-content">
+        {message && <p className="message">{message}</p>}
+        {panel === "watch" && <WatchPanel search={search} setSearch={setSearch} results={results} add={add} watchlist={watchlist} selected={selected} setSelected={setSelected} remove={remove} updateWatchlist={updateWatchlist} />}
+        {panel === "alerts" && <AlertPanel alerts={alerts} watchlist={watchlist} selected={selected} alertType={alertType} setAlertType={setAlertType} alertValue={alertValue} setAlertValue={setAlertValue} addAlert={addAlert} removeAlert={removeAlert} updateAlert={updateAlert} />}
+        {panel === "actions" && <ActionPanel state={state} preferences={actions} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作偏好已保存"); }} />}
+        {panel === "settings" && <SettingsPanel logout={async () => setSession(await window.stockPet.logout())} preferences={actions} onChange={async (next) => setActions(await window.stockPet.saveActionPreferences(next))} updateStatus={updateStatus} setUpdateStatus={setUpdateStatus} />}
+      </section>
+      <footer className="control-disclaimer">行情数据仅供信息展示，不构成投资建议或交易依据。</footer>
     </main>
   );
 }
