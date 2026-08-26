@@ -110,6 +110,9 @@ function createClient(config, clientFactory = (options) => new OSS(options)) {
     bucket: config.bucket,
     authorizationV4: true,
     secure: true,
+    // Desktop installers and other generated assets can be hundreds of MB.
+    // Keep the request alive long enough for slower cross-region uploads.
+    timeout: 300_000,
   });
 }
 
