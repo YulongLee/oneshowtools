@@ -215,6 +215,54 @@ export function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS ledger_user_created_idx ON credit_ledger(user_id, created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS product_entitlements (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      product_code TEXT NOT NULL,
+      entitlement_type TEXT NOT NULL DEFAULT 'lifetime',
+      status TEXT NOT NULL DEFAULT 'active',
+      credit_cost INTEGER NOT NULL DEFAULT 0,
+      granted_at INTEGER NOT NULL,
+      revoked_at INTEGER,
+      UNIQUE(user_id, product_code)
+    );
+
+    CREATE TABLE IF NOT EXISTS licensed_devices (
+      id TEXT PRIMARY KEY,
+      entitlement_id TEXT NOT NULL REFERENCES product_entitlements(id) ON DELETE CASCADE,
+      device_fingerprint TEXT NOT NULL,
+      device_name TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      app_version TEXT NOT NULL DEFAULT '',
+      last_seen_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(entitlement_id, device_fingerprint)
+    );
+
+    CREATE TABLE IF NOT EXISTS stock_watchlists (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL,
+      market TEXT NOT NULL DEFAULT 'A',
+      display_name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE(user_id, symbol)
+    );
+
+    CREATE TABLE IF NOT EXISTS stock_alerts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      symbol TEXT NOT NULL,
+      alert_type TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      cooldown_minutes INTEGER NOT NULL DEFAULT 30,
+      last_triggered_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS plans (
       id TEXT PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
@@ -314,6 +362,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0028_domestic_payment_providers.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0029_favorites_library.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0030_workspace_projects_and_preferences.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0031_stock_market_provider.sql"), "utf8"));
   const taskColumns = new Set(db.prepare("PRAGMA table_info(tasks)").all().map((item) => item.name));
   if (!taskColumns.has("deleted_at")) db.exec("ALTER TABLE tasks ADD COLUMN deleted_at INTEGER");
   db.exec("CREATE INDEX IF NOT EXISTS tasks_user_visible_created_idx ON tasks(user_id, deleted_at, created_at DESC)");
@@ -363,6 +412,8 @@ export function initializeDatabase() {
   const musicTrackColumns = new Set(db.prepare("PRAGMA table_info(music_tracks)").all().map((item) => item.name));
   if (!musicTrackColumns.has("cover_file_id")) db.exec("ALTER TABLE music_tracks ADD COLUMN cover_file_id TEXT");
   if (!musicTrackColumns.has("lyrics_source")) db.exec("ALTER TABLE music_tracks ADD COLUMN lyrics_source TEXT NOT NULL DEFAULT 'input'");
+  const stockWatchColumns = new Set(db.prepare("PRAGMA table_info(stock_watchlists)").all().map((item) => item.name));
+  if (!stockWatchColumns.has("is_primary")) db.exec("ALTER TABLE stock_watchlists ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0");
   const musicTrackSql = String(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'music_tracks'").get()?.sql || "");
   if (!musicTrackSql.includes("'singing_cover'")) {
     db.exec(`
@@ -453,6 +504,7 @@ export function initializeDatabase() {
     ["tool_ai_restore", "ai-image-restorer", "图片高清修复", "AI Image Restorer", "修复模糊、噪点、压缩痕迹和老照片划痕，输出高清图片。", "Restore blur, noise, compression artifacts, and scratches into a high-resolution image.", "image", "Sparkle", 25, "platform-image-upscale"],
     ["tool_food_nutrition", "food-nutrition-analyzer", "AI 食物热量分析", "AI Food Nutrition Analyzer", "上传一张食物照片，识别菜品与份量，估算热量、蛋白质、碳水、脂肪、膳食纤维和钠，并说明误差来源。", "Upload a food photo to estimate portions, calories, protein, carbs, fat, fiber, and sodium with transparent uncertainty.", "image", "ChartBar", 8, "openai"],
     ["tool_fridge_recipe", "ai-fridge-recipe", "AI 冰箱食谱", "AI Fridge Recipe Planner", "上传冰箱照片识别现有食材，生成匹配度、缺少食材、采购清单与完整烹饪步骤。", "Upload a fridge photo to identify ingredients and get matched recipes, shopping gaps, and complete cooking steps.", "image", "ForkKnife", 30, "openai"],
+    ["tool_stock_pet", "stock-pet", "牛来了桌面宠物", "Niu Lai Le Stock Pet", "把自选行情变成会涨会跌、会提醒的桌面小牛；一次解锁，支持 Windows 与 macOS。", "A lively desktop bull that follows your watchlist, reacts to market moves, and alerts you on Windows and macOS.", "data", "ChartLineUp", 1000, "desktop-product"],
     ["tool_hang_la_tier", "hang-la-tier-list-generator", "夯拉排行榜生成器", "Hang-La Tier List Maker", "上传图片、自定义夯拉等级并拖拽排序，一键导出适合分享的排行榜长图。", "Upload images, customize ranking tiers, drag to rank, and export a share-ready tier list.", "image", "ChartBar", 0, "builtin-tier-list"],
     ["tool_mbti_test", "mbti-personality-test", "MBTI 性格偏好自测", "Personality Preference Self-Test", "通过 64 道原创平衡情境题了解四维偏好，支持模糊维度与答题质量提示，报告可回看。", "Explore four preference dimensions with an original balanced questionnaire, ambiguity handling, response-quality checks, and saved reports.", "developer", "Brain", 0, "builtin-assessment"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
@@ -564,6 +616,13 @@ export function initializeDatabase() {
       .run(mbtiPublicationKey, JSON.stringify({ slug: "mbti-personality-test", published: true }), timestamp);
   }
 
+  const stockPetPublicationKey = "tool_stock_pet_publication_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(stockPetPublicationKey)) {
+    db.prepare("UPDATE tools SET active = 1, updated_at = ? WHERE slug = 'stock-pet'").run(timestamp);
+    db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+      .run(stockPetPublicationKey, JSON.stringify({ slug: "stock-pet", published: true }), timestamp);
+  }
+
   const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`
     INSERT INTO plans (id, code, name_zh, name_en, amount_minor, currency, interval, recurring_credits, file_limit, active)
@@ -588,6 +647,7 @@ export function refreshRuntimeStatuses() {
   db.prepare("UPDATE tools SET runtime_status = ?, runtime_url = ? WHERE runtime_kind = 'external'")
     .run(externalReady ? "ready" : "configuration_required", process.env.TOOL_RUNTIME_BASE_URL || null);
   db.prepare("UPDATE tools SET runtime_status = 'ready' WHERE (runtime_kind LIKE 'builtin-%' AND runtime_kind <> 'builtin-music') OR runtime_kind = 'browser'").run();
+  db.prepare("UPDATE tools SET runtime_status = 'ready' WHERE runtime_kind = 'desktop-product'").run();
   const musicReady = db.prepare("SELECT 1 AS ready FROM music_provider_configs WHERE status = 'active' LIMIT 1").get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'builtin-music'")
     .run(musicReady ? "ready" : "configuration_required");

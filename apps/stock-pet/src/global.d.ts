@@ -1,0 +1,24 @@
+export {};
+declare global { interface Window { stockPet: {
+  identity(): Promise<Record<string,string>>;
+  session(): Promise<any>;
+  login(credentials: { email: string; password: string }): Promise<any>;
+  logout(): Promise<any>;
+  api(path: string, options?: { method?: string; body?: unknown }): Promise<any>;
+  openLogin(): Promise<void>;
+  setAlwaysOnTop(enabled:boolean):Promise<void>;
+  setLaunchAtLogin(enabled:boolean):Promise<void>;
+  setWindowSize(size:"small"|"medium"|"large"):Promise<void>;
+  setOpacity(value:number):Promise<void>;
+  setPositionLocked(value:boolean):Promise<void>;
+  getSystemSettings():Promise<{alwaysOnTop:boolean;launchAtLogin:boolean}>;
+  getActionPreferences():Promise<any>;
+  saveActionPreferences(value:unknown):Promise<any>;
+  showContextMenu():Promise<void>;
+  onQuickAction(handler:(action:string)=>void):()=>void;
+  checkUpdates():Promise<{status:string}>;
+  installUpdate():Promise<void>;
+  onUpdateStatus(handler:(status:string)=>void):()=>void;
+  hide():Promise<void>;
+  quit():Promise<void>;
+} } }

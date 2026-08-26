@@ -1,0 +1,71 @@
+{
+  "name": "oneshowtools-stock-pet",
+  "version": "0.1.0",
+  "description": "OneShowTools 牛来了 A股、港股与美股行情桌面宠物",
+  "author": "OneShowTools",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --port 5180\" \"wait-on http://127.0.0.1:5180 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5180 electron .\"",
+    "build:main": "esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "package": "npm run build && electron-builder --publish never",
+    "package:mac": "npm run build && electron-builder --mac dmg zip --universal --publish never",
+    "package:windows": "npm run build && electron-builder --win nsis portable --x64 --publish never",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "electron-updater": "^6.8.9",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.2",
+    "vite": "^6.4.3",
+    "wait-on": "^9.0.1"
+  },
+  "build": {
+    "appId": "com.oneshowtools.stockpet",
+    "productName": "牛来了",
+    "icon": "public/niu-lai-le-mascot.png",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "identity": "Yulong li (8Y5FAR3TF3)",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

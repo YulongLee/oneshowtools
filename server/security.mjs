@@ -21,7 +21,7 @@ export const createSessionToken = () => randomBytes(32).toString("base64url");
 export const hashToken = (token) => createHash("sha256").update(token).digest("hex");
 export const hashIdentifier = (value) => createHash("sha256").update(String(value || "")).digest("hex");
 
-const supportedClients = new Set(["mobile", "wechat-miniprogram"]);
+const supportedClients = new Set(["mobile", "wechat-miniprogram", "desktop"]);
 
 export function requestClientKind(request) {
   const value = String(request.headers.get("x-oneshow-client") || "").trim().toLowerCase();

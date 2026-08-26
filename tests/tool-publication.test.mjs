@@ -14,7 +14,7 @@ const request = (path, options = {}) => new Request(`http://localhost${path}`, o
 
 test("new installations publish the approved launch tools", async () => {
   const published = db.prepare("SELECT slug FROM tools WHERE active = 1 ORDER BY slug").all().map((tool) => tool.slug);
-  assert.deepEqual(published, ["ai-music-studio", "ai-outfit-changer", "hang-la-tier-list-generator", "mbti-personality-test"]);
+  assert.deepEqual(published, ["ai-music-studio", "ai-outfit-changer", "hang-la-tier-list-generator", "mbti-personality-test", "stock-pet"]);
 
   const storefront = await (await handleApi(request("/api/tools"))).json();
   assert.deepEqual(storefront.tools.map((tool) => tool.slug).sort(), published);

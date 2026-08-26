@@ -24,6 +24,7 @@ const FoodNutritionAnalyzer = lazy(() => import("./FoodNutritionAnalyzer.jsx").t
 const FridgeRecipePlanner = lazy(() => import("./FridgeRecipePlanner.jsx").then((module) => ({ default: module.FridgeRecipePlanner })));
 const TierListGenerator = lazy(() => import("./TierListGenerator.jsx").then((module) => ({ default: module.TierListGenerator })));
 const MbtiPersonalityTest = lazy(() => import("./MbtiPersonalityTest.jsx").then((module) => ({ default: module.MbtiPersonalityTest })));
+const StockPetProduct = lazy(() => import("./StockPetProduct.jsx").then((module) => ({ default: module.StockPetProduct })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -44,6 +45,7 @@ const commercialToolIconBySlug = {
   "mbti-personality-test": "/mbti/mbti-icon-v1.webp",
   "food-nutrition-analyzer": "/food-nutrition/food-nutrition-icon-v1.webp",
   "ai-fridge-recipe": "/fridge-recipes/fridge-recipe-icon-v1.webp",
+  "stock-pet": "/stock-pet/niu-lai-le-mascot.png",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
@@ -821,6 +823,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 }
 
 function ToolPage({ tool, catalog, task, historyTasks, locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.slug === "stock-pet") return <StockPetProduct authenticated={authenticated} account={account} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "mbti-personality-test") return <MbtiPersonalityTest tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "hang-la-tier-list-generator") return <TierListGenerator tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;

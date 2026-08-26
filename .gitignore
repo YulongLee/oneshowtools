@@ -18,3 +18,6 @@ qa-compare.html
 reference-current-live.png
 apps/**/.swc/
 apps/**/dist-check/
+apps/**/dist/
+apps/**/dist-electron/
+apps/**/release/

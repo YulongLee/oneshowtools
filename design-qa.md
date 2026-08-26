@@ -1,28 +1,22 @@
-# Design QA — AI 冰箱食谱
+# 牛来了桌面宠物设计核查
 
-- Source reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-c54df13f-89a4-4313-b63c-6e68e50bdc6a.png`
-- Implementation: `http://localhost:5174/tools/ai-fridge-recipe`
-- Desktop evidence: `qa-fridge-desktop.png`
-- Narrow-screen evidence: `qa-fridge-narrow.png`
-- Viewports checked: 1440 × 1000 and 390 × 844
-- Responsive evidence: desktop `scrollWidth=1440`; narrow screen `scrollWidth=390`
-- State checked: initial upload state, dietary/allergy inputs, cook-time selector, paid-credit label, empty results, side guidance
-- Interaction checked: text entry, selector change, route load, marketplace-to-tool route, responsive bottom navigation
-- Console: no page-level errors observed during the visual pass
+- 参考图：`codex-clipboard-5b0c4a79-fc9b-4fac-b0e7-0d770d6ee117.png`
+- 本地页面：`http://localhost:5173/tools/stock-pet`
+- 对比图：`/tmp/stock-pet-comparison.png`
 
-## Visual findings and fixes
+## 视觉核查
 
-1. The page follows the reference hierarchy: title and four-step workflow, photo controls, ingredient/recipe workspace, supporting side rail, and detailed cooking section.
-2. The new mint-green fridge artwork provides a commercial product identity without embedded text or watermark.
-3. At narrow widths the desktop side navigation changes to the platform bottom navigation; the workflow becomes horizontally scrollable and the workspace becomes a single column.
-4. Dynamic tool data now bypasses stale browser caching so newly enabled tools can open immediately after an admin change.
-5. Empty recipe artwork uses consistent vector fallbacks rather than emoji or platform-dependent glyphs.
+- 沿用 OneShowTools 工作台侧栏、顶部栏、蓝紫渐变、圆角卡片和信息层级。
+- 产品图标与主视觉均使用同一只真实生成的小牛资产，未使用占位图或 CSS 绘图。
+- 产品名称、平台标签、终身解锁价格、主视觉、行情卡片、权益卡和功能页签均已呈现。
+- 购买区与主视觉在宽屏分栏，小屏自动堆叠；功能卡在窄屏降为单列。
+- 未伪造安装包可用状态、真实用户评分或行情数据；未配置项均明确提示。
 
-## Verification history
+## 交互核查
 
-- Backend analyzer unit tests: structured recipe result, generated dish image, invalid-photo rejection.
-- Full application test suite: run after implementation.
-- Production build: run after implementation.
-- Git whitespace validation: run after implementation.
+- 返回工具市场、功能介绍、使用教程、更新日志、设备管理均可切换。
+- 未登录时进入登录流程；积分不足时解锁按钮禁用；已解锁后按服务端配置开放下载。
+- 设备移除、解锁、下载均连接真实接口并显示可恢复错误信息。
+- 浏览器控制台仅出现本地 Vite 热更新连接提示，无页面运行错误。
 
 final result: passed

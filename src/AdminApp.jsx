@@ -20,7 +20,7 @@ const copy = {
     supportCenter: "客服中心", supportQueue: "客服工单", supportKnowledge: "解决方案知识库", awaitingAgent: "待处理工单", inProgress: "处理中", resolvedSupport: "已解决",
     replyUser: "回复工单", resolveTicket: "标记已解决", publishKnowledge: "将本次方案沉淀到知识库", knowledgeTitle: "方案标题", knowledgeQuestion: "典型问题", knowledgeAnswer: "标准答案", knowledgeKeywords: "检索关键词", priority: "优先级", selectTicket: "选择一条工单查看问题和历史回复", noTickets: "暂无客服工单",
     models: "平台模型", platformModels: "平台模型配置", platformModelsHint: "管理用户工具和市场情报使用的服务端模型。密钥加密保存且不会再次显示明文。",
-    model_studio_workspace: "百炼工作空间", music_generation: "OneShowMusic", singing_cover: "歌曲翻唱模型", image_generation: "图片生成模型", image_editing: "图片编辑模型", image_upscaling: "高清修复模型", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
+    model_studio_workspace: "百炼工作空间", stock_market_data: "股票行情数据", music_generation: "OneShowMusic", singing_cover: "歌曲翻唱模型", image_generation: "图片生成模型", image_editing: "图片编辑模型", image_upscaling: "高清修复模型", musicProvider: "音乐模型", musicProviderTitle: "OneShowMusic 生成服务", musicProviderHint: "管理 AI 音乐工作室使用的服务端音乐模型。密钥只在后端加密保存，不会发送到浏览器。",
     musicModel: "音乐模型 ID", musicFormat: "输出格式", musicCredits: "每个版本积分", musicDuration: "最长时长（秒）", musicStatus: "运行状态", musicActive: "启用", musicDisabled: "停用",
     seoSources: "SEO 数据源", seoSourceTitle: "DataForSEO 数据源", seoSourceHint: "用于关键词指标、实时排名、外链和竞争分析。API 密码加密保存，提交后不再显示明文。",
     seoLogin: "API 登录名", seoPassword: "API 密码（留空则保留现有密码）", seoConnectionTest: "测试账户连接",
@@ -110,7 +110,7 @@ const copy = {
     supportCenter: "Support Center", supportQueue: "Support tickets", supportKnowledge: "Resolution knowledge", awaitingAgent: "Pending tickets", inProgress: "In progress", resolvedSupport: "Resolved",
     replyUser: "Reply to user", resolveTicket: "Resolve ticket", publishKnowledge: "Publish this resolution to the knowledge base", knowledgeTitle: "Resolution title", knowledgeQuestion: "Typical question", knowledgeAnswer: "Verified answer", knowledgeKeywords: "Search keywords", priority: "Priority", selectTicket: "Select a ticket to view the full conversation", noTickets: "No support tickets",
     models: "Platform Models", platformModels: "Platform model configuration", platformModelsHint: "Manage server-side models used by customer tools and market intelligence. Keys are encrypted and never shown again.",
-    model_studio_workspace: "Model Studio Workspace", music_generation: "OneShowMusic", singing_cover: "Song Cover Model", image_generation: "Image Generation Model", image_editing: "Image Editing Model", image_upscaling: "Image Restoration Model", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
+    model_studio_workspace: "Model Studio Workspace", stock_market_data: "Stock Market Data", music_generation: "OneShowMusic", singing_cover: "Song Cover Model", image_generation: "Image Generation Model", image_editing: "Image Editing Model", image_upscaling: "Image Restoration Model", musicProvider: "Music Model", musicProviderTitle: "OneShowMusic generation service", musicProviderHint: "Manage the server-side music model used by AI Music Studio. Credentials are encrypted on the backend and never sent to browsers.",
     musicModel: "Music model ID", musicFormat: "Output format", musicCredits: "Credits per version", musicDuration: "Maximum duration (seconds)", musicStatus: "Runtime status", musicActive: "Enabled", musicDisabled: "Disabled",
     seoSources: "SEO Sources", seoSourceTitle: "DataForSEO source", seoSourceHint: "Provides keyword metrics, live rankings, backlinks, and competitor data. The API password is encrypted and never displayed again.",
     seoLogin: "API login", seoPassword: "API password (leave blank to keep the stored password)", seoConnectionTest: "Test account connection",
@@ -570,7 +570,34 @@ function ModelStudioWorkspaceView({ configuration, locale, canManage, onTest, on
   </article><aside className="admin-v2-panel platform-model-guidance"><Globe size={25} /><h3>{locale === "en" ? "Alibaba Cloud Model Studio" : "阿里云百炼工作空间"}</h3><p>{locale === "en" ? "Centralize the region, endpoint, workspace ID and API key. Image models can inherit this connection without storing another key." : "统一管理地域、接口地址、Workspace ID 与 API Key，图片模型可直接继承，无需重复保存密钥。"}</p><ul><li>{locale === "en" ? "The test validates authentication without generating a billable image" : "连接测试使用无计费鉴权探针，不生成图片"}</li><li>{locale === "en" ? "Use the exact API Host shown when the API key was created" : "专属接口必须与创建 API Key 时显示的 API Host 一致"}</li><li>{locale === "en" ? "Keys are encrypted and never returned in plaintext" : "密钥加密保存，提交后不再返回明文"}</li></ul></aside></section>;
 }
 
-function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onSingingTest, onSingingSave, onImageTest, onImageSave, onImageEditTest, onImageEditSave, onWorkspaceTest, onWorkspaceSave, onStorageTest, onStorageSave }) {
+function StockMarketProviderView({ configuration, locale, canManage, onTest, onSave }) {
+  const [draft, setDraft] = useState({});
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  useEffect(() => {
+    setDraft({ quoteUrl: configuration?.quoteUrl || "", searchUrl: configuration?.searchUrl || "", apiKey: "", cacheTtlMs: configuration?.cacheTtlMs || 12000, status: configuration?.enabled === false && configuration?.configured ? "disabled" : "active", reason: "" });
+    setTestResult(null);
+  }, [configuration?.updatedAt, configuration?.configured]);
+  const change = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const test = async () => { setTesting(true); setTestResult(null); try { setTestResult(await onTest(draft)); } finally { setTesting(false); } };
+  const save = async (event) => { event.preventDefault(); setSaving(true); try { const ok = await onSave(draft); if (ok) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); } finally { setSaving(false); } };
+  return <section className="platform-model-layout"><article className="admin-v2-panel platform-model-editor">
+    <div className="platform-model-current"><span className={`admin-metric-state ${configuration?.enabled ? "healthy" : "warning"}`} /><div><strong>{configuration?.builtIn ? (locale === "en" ? "Tencent Finance (built in)" : "腾讯财经（内置）") : configuration?.configured ? (locale === "en" ? "Licensed market data" : "自定义正式行情数据源") : (locale === "en" ? "Not configured" : "尚未配置")}</strong><small>{configuration?.builtIn ? (locale === "en" ? "A-share, Hong Kong and US quotes are available without an API key" : "无需 API Key，已支持 A 股、港股和美股；可在下方随时替换为正式数据源") : configuration?.configured ? `${configuration.keyHint || "••••"} · ${configuration.lastTestStatus || "pending"}` : (locale === "en" ? "Configure a licensed source for production distribution" : "商业发布前可替换为获得展示授权的行情源")}</small></div></div>
+    <form className="platform-model-form" onSubmit={save}>
+      <label className="wide">{locale === "en" ? "Quote API URL" : "实时行情 API 地址"}<input type="url" value={draft.quoteUrl || ""} onChange={change("quoteUrl")} disabled={!canManage} required placeholder="https://provider.example.com/v1/quotes" /></label>
+      <label className="wide">{locale === "en" ? "Symbol search API URL (optional)" : "股票搜索 API 地址（可选）"}<input type="url" value={draft.searchUrl || ""} onChange={change("searchUrl")} disabled={!canManage} placeholder="https://provider.example.com/v1/search" /></label>
+      <label>{locale === "en" ? "Cache time (ms)" : "行情缓存（毫秒）"}<input type="number" min="5000" max="300000" value={draft.cacheTtlMs || 12000} onChange={change("cacheTtlMs")} disabled={!canManage} /></label>
+      <label>{locale === "en" ? "Status" : "运行状态"}<select value={draft.status || "active"} onChange={change("status")} disabled={!canManage}><option value="active">{locale === "en" ? "Enabled" : "启用"}</option><option value="disabled">{locale === "en" ? "Disabled" : "停用"}</option></select></label>
+      <label className="wide">API Key<input type="password" autoComplete="new-password" value={draft.apiKey || ""} onChange={change("apiKey")} disabled={!canManage} required={!configuration?.configured} placeholder={configuration?.configured ? (locale === "en" ? "Leave blank to keep existing key" : "留空则保留现有密钥") : "Bearer token"} /></label>
+      <label className="wide">{locale === "en" ? "Change reason" : "变更原因"}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
+      {testResult && <div className="platform-model-test healthy"><CheckCircle size={17} /><span>{locale === "en" ? "Quote and search schemas validated" : "行情与搜索接口格式验证通过"}</span><em>{testResult.latencyMs} ms</em></div>}
+      {canManage && <div className="platform-model-actions"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{locale === "en" ? "Test provider" : "测试行情源"}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{locale === "en" ? "Test and save" : "测试并保存"}</button></div>}
+    </form>
+  </article><aside className="admin-v2-panel platform-model-guidance"><ChartLineUp size={25} /><h3>{locale === "en" ? "Provider response contract" : "行情接口响应约定"}</h3><p>{locale === "en" ? "OneShowTools calls the provider only from the server. API keys never enter the desktop package." : "OneShowTools 仅由服务器请求行情，API Key 不会写入桌面安装包或发送到用户浏览器。"}</p><ul><li>POST /quotes: {`{ quotes: [{ symbol, name, price, change, changePercent, updatedAt, marketOpen, limitStatus }] }`}</li><li>POST /search: {`{ items: [{ symbol, code, name, market }] }`}</li><li>{locale === "en" ? "Use a licensed source whose redistribution terms cover your customers" : "请使用许可范围包含面向终端用户展示的持牌数据源"}</li></ul></aside></section>;
+}
+
+function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest, onSave, onMusicTest, onMusicSave, onSingingTest, onSingingSave, onImageTest, onImageSave, onImageEditTest, onImageEditSave, onWorkspaceTest, onWorkspaceSave, onStorageTest, onStorageSave, onStockMarketTest, onStockMarketSave }) {
   const t = copy[locale];
   const [purpose, setPurpose] = useState("managed_runtime");
   const selected = data?.models?.find((item) => item.purpose === purpose);
@@ -596,11 +623,13 @@ function PlatformModelsView({ data, locale, canManage, canManageStorage, onTest,
     try { const result = await onSave(purpose, draft); if (result) setDraft((current) => ({ ...current, apiKey: "", reason: "" })); }
     finally { setSaving(false); }
   };
-  const purposes = ["managed_runtime", "market_intelligence", "oneshow_home_chat", "food_nutrition", "model_studio_workspace", "music_generation", "singing_cover", "image_generation", "image_editing", "image_upscaling", "storage_management"];
+  const purposes = ["managed_runtime", "market_intelligence", "oneshow_home_chat", "food_nutrition", "model_studio_workspace", "stock_market_data", "music_generation", "singing_cover", "image_generation", "image_editing", "image_upscaling", "storage_management"];
   return <div className="admin-page-stack platform-model-page">
     <section className="admin-v2-panel platform-model-intro"><header><div><small>SERVER-SIDE AI ROUTING</small><h2>{t.platformModels}</h2></div><Gear size={23} /></header><p>{t.platformModelsHint}</p></section>
     <nav className="admin-v2-panel admin-section-tabs platform-model-purpose-tabs">{purposes.map((item) => <button key={item} className={purpose === item ? "active" : ""} onClick={() => setPurpose(item)}>{t[item]}</button>)}</nav>
-    {purpose === "storage_management"
+    {purpose === "stock_market_data"
+      ? <StockMarketProviderView configuration={data?.stockMarket} locale={locale} canManage={canManage} onTest={onStockMarketTest} onSave={onStockMarketSave} />
+      : purpose === "storage_management"
       ? <ObjectStorageView configuration={data?.storage} locale={locale} canManage={canManageStorage} onTest={onStorageTest} onSave={onStorageSave} />
       : purpose === "model_studio_workspace"
       ? <ModelStudioWorkspaceView configuration={data?.modelStudioWorkspace} locale={locale} canManage={canManage} onTest={onWorkspaceTest} onSave={onWorkspaceSave} />
@@ -1353,6 +1382,15 @@ export function AdminApp() {
     try { await api("/api/admin/v1/object-storage", json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const testStockMarketProvider = async (draft) => {
+    try { return await api("/api/admin/v1/stock-market-provider/test", json("POST", draft)); }
+    catch (error) { setMessage(error.code || t.loadFailed); return null; }
+  };
+  const saveStockMarketProvider = async (draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api("/api/admin/v1/stock-market-provider", json("PUT", draft)); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const testSeoProvider = async (draft) => {
     try { return await api("/api/admin/v1/seo-provider/test", json("POST", draft)); }
     catch (error) { setMessage(error.code || t.loadFailed); return null; }
@@ -1396,7 +1434,7 @@ export function AdminApp() {
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
     supportCenter: <SupportCenterView data={data.supportCenter} detail={selectedSupport} locale={locale} status={supportStatus} onStatus={(next) => { setSupportStatus(next); setSelectedSupport(null); }} onSelect={openSupportConversation} onReply={replySupportConversation} onResolve={resolveSupportTicket} busy={busy} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
-    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onWorkspaceTest={testModelStudioWorkspace} onWorkspaceSave={saveModelStudioWorkspace} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} />,
+    models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onWorkspaceTest={testModelStudioWorkspace} onWorkspaceSave={saveModelStudioWorkspace} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} onStockMarketTest={testStockMarketProvider} onStockMarketSave={saveStockMarketProvider} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} />,

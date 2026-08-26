@@ -300,6 +300,74 @@ export function platformAssetKey(scope, assetId, fileName, env = process.env) {
   return `${config.prefix}/platform/${safeScope}/${storageName(safeAssetId, fileName)}`;
 }
 
+const stockPetReleaseFiles = {
+  windows: { suffix: "windows-setup.exe", mimeType: "application/vnd.microsoft.portable-executable" },
+  macos: { suffix: "macos-universal.dmg", mimeType: "application/x-apple-diskimage" },
+};
+
+function safeReleaseVersion(version) {
+  const normalized = String(version || "0.1.0").trim();
+  if (!/^[0-9A-Za-z][0-9A-Za-z._-]{0,39}$/.test(normalized)) {
+    throw storageError("RELEASE_VERSION_INVALID", 400);
+  }
+  return normalized;
+}
+
+export function stockPetReleaseObject(platform, version = process.env.STOCK_PET_VERSION || "0.1.0", env = process.env) {
+  const file = stockPetReleaseFiles[platform];
+  if (!file) throw storageError("DOWNLOAD_PLATFORM_INVALID", 400);
+  const releaseVersion = safeReleaseVersion(version);
+  const fileName = `niu-lai-le-${releaseVersion}-${file.suffix}`;
+  return {
+    platform,
+    version: releaseVersion,
+    fileName,
+    mimeType: file.mimeType,
+    objectKey: `${objectStorageConfig(env).prefix}/releases/stock-pet/${releaseVersion}/${fileName}`,
+  };
+}
+
+export async function putStockPetRelease({ platform, version, filePath, env = process.env }, clientFactory) {
+  const release = stockPetReleaseObject(platform, version, env);
+  const instance = createClient(objectStorageConfig(env), clientFactory);
+  try {
+    const result = await instance.put(release.objectKey, filePath, { headers: {
+      "content-type": release.mimeType,
+      "x-oss-object-acl": "private",
+    } });
+    return { ...release, etag: result?.res?.headers?.etag || result?.etag || null };
+  } catch (error) {
+    const failure = storageError("OSS_RELEASE_UPLOAD_FAILED", error?.status || 502);
+    failure.details = String(error?.code || error?.message || "unknown").slice(0, 120);
+    throw failure;
+  }
+}
+
+export async function signStockPetRelease(platform, {
+  version = process.env.STOCK_PET_VERSION || "0.1.0",
+  expires = 900,
+  env = process.env,
+} = {}, clientFactory) {
+  const release = stockPetReleaseObject(platform, version, env);
+  const ttl = Math.max(60, Math.min(Number(expires) || 900, 3600));
+  const instance = createClient(objectStorageConfig(env), clientFactory);
+  try {
+    await instance.head(release.objectKey);
+    const url = typeof instance.signatureUrlV4 === "function"
+      ? await instance.signatureUrlV4("GET", ttl, {}, release.objectKey)
+      : await instance.asyncSignatureUrl(release.objectKey, { expires: ttl });
+    return { ...release, url, expiresAt: Date.now() + ttl * 1000 };
+  } catch (error) {
+    if (error?.status === 404 || error?.statusCode === 404 || error?.code === "NoSuchKey") {
+      throw storageError("DOWNLOAD_NOT_CONFIGURED", 503);
+    }
+    if (error?.code?.startsWith?.("OSS_") || error?.code === "DOWNLOAD_NOT_CONFIGURED") throw error;
+    const failure = storageError("OSS_RELEASE_DOWNLOAD_FAILED", error?.status || 502);
+    failure.details = String(error?.code || error?.message || "unknown").slice(0, 120);
+    throw failure;
+  }
+}
+
 export async function putPlatformAsset({ scope, assetId, fileName, mimeType, buffer, env = process.env }) {
   const config = objectStorageConfig(env);
   const localName = storageName(assetId, fileName);

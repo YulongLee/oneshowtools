@@ -42,6 +42,9 @@ import {
 import {
   adminSupportConversation, adminSupportOverview, replyToSupportConversation, resolveSupportConversation,
 } from "./customer-support.mjs";
+import {
+  saveStockMarketProviderConfiguration, stockMarketProviderConfiguration, testStockMarketProviderConfiguration,
+} from "./stock-market-provider.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -1543,7 +1546,27 @@ export function createAdminHandler(dependencies) {
         imageUpscaling: imageEditProviderConfiguration("image_upscaling"),
         modelStudioWorkspace: modelStudioWorkspaceConfiguration(),
         storage: objectStorageConfiguration(),
+        stockMarket: stockMarketProviderConfiguration(),
       });
+    }
+    if (path === "/api/admin/v1/stock-market-provider/test" && request.method === "POST") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      try {
+        const result = await testStockMarketProviderConfiguration(await parseBody(request));
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.stock_market_provider.test", targetType: "stock_market_provider", targetId: "licensed_http", after: result });
+        return json(result);
+      } catch (error) { return fail(error?.code || "STOCK_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    if (path === "/api/admin/v1/stock-market-provider" && request.method === "PUT") {
+      const denied = requirePermission(context, "models.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = stockMarketProviderConfiguration();
+        const configuration = await saveStockMarketProviderConfiguration(data, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "models.manage", action: "admin.stock_market_provider.update", targetType: "stock_market_provider", targetId: "licensed_http", reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "STOCK_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
     if (path === "/api/admin/v1/object-storage/test" && request.method === "POST") {
       const denied = requirePermission(context, "storage.manage"); if (denied) return denied;
