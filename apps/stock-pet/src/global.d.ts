@@ -15,6 +15,10 @@ declare global { interface Window { stockPet: {
   getSystemSettings():Promise<{alwaysOnTop:boolean;launchAtLogin:boolean}>;
   getActionPreferences():Promise<any>;
   saveActionPreferences(value:unknown):Promise<any>;
+  getCustomStateAssets():Promise<Record<string,string>>;
+  chooseCustomGif(state:string):Promise<Record<string,string>>;
+  clearCustomGif(state:string):Promise<Record<string,string>>;
+  onCustomAssetsChanged(handler:(assets:Record<string,string>)=>void):()=>void;
   showContextMenu():Promise<void>;
   onQuickAction(handler:(action:string)=>void):()=>void;
   onSessionChanged(handler:(session:any)=>void):()=>void;

@@ -15,6 +15,14 @@ contextBridge.exposeInMainWorld("stockPet", {
   getSystemSettings: () => ipcRenderer.invoke("pet:get-system-settings"),
   getActionPreferences: () => ipcRenderer.invoke("pet:get-action-preferences"),
   saveActionPreferences: (value: unknown) => ipcRenderer.invoke("pet:save-action-preferences", value),
+  getCustomStateAssets: () => ipcRenderer.invoke("pet:get-custom-state-assets"),
+  chooseCustomGif: (state: string) => ipcRenderer.invoke("pet:choose-custom-gif", state),
+  clearCustomGif: (state: string) => ipcRenderer.invoke("pet:clear-custom-gif", state),
+  onCustomAssetsChanged: (handler: (assets: Record<string, string>) => void) => {
+    const listener = (_event: unknown, assets: Record<string, string>) => handler(assets);
+    ipcRenderer.on("pet:custom-assets-changed", listener);
+    return () => ipcRenderer.removeListener("pet:custom-assets-changed", listener);
+  },
   showContextMenu: () => ipcRenderer.invoke("pet:show-context-menu"),
   onQuickAction: (handler: (action: string) => void) => {
     const listener = (_event: unknown, action: string) => handler(action);

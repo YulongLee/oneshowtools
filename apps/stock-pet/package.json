@@ -13,7 +13,10 @@
     "build": "npm run build:main && npm run build:renderer",
     "package": "npm run build && electron-builder --publish never",
     "package:mac": "npm run build && electron-builder --mac dmg zip --universal --publish never",
+    "package:mac:notarized": "APPLE_KEYCHAIN_PROFILE=oneshowtools-notary npm run package:mac && npm run notarize:mac:dmg && npm run verify:mac",
     "package:windows": "npm run build && electron-builder --win nsis portable --x64 --publish never",
+    "notarize:mac:dmg": "bash scripts/notarize-mac-dmg.sh",
+    "verify:mac": "bash scripts/verify-mac-release.sh",
     "check": "tsc --noEmit"
   },
   "dependencies": {
@@ -55,7 +58,10 @@
         "dmg",
         "zip"
       ],
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
     },
     "win": {
       "target": [

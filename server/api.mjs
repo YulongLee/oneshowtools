@@ -102,6 +102,7 @@ import {
   stockPetDownload,
   stockPetLicense,
   stockPetPublicProduct,
+  stockHistory,
   stockQuotes,
   stockSearch,
   stockAlerts,
@@ -2554,6 +2555,17 @@ export async function handleApi(request) {
       });
     } catch (error) {
       return fail(error.code || "STOCK_PROVIDER_FAILED", error.status || 502);
+    }
+  }
+  if (path === "/api/products/stock-pet/history" && request.method === "GET") {
+    try {
+      return json(await stockHistory(
+        user.id,
+        url.searchParams.get("symbol"),
+        url.searchParams.get("range") || "1m",
+      ));
+    } catch (error) {
+      return fail(error.code || "STOCK_HISTORY_FAILED", error.status || 502);
     }
   }
   if (path === "/api/products/stock-pet/download" && request.method === "GET") {

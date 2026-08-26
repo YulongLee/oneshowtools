@@ -1,8 +1,10 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, screen, shell, Tray } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, safeStorage, screen, shell, Tray } from "electron";
+import type { OpenDialogOptions } from "electron";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { hostname, platform } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { autoUpdater } from "electron-updater";
 
 let petWindow: BrowserWindow | null = null;
@@ -16,6 +18,8 @@ const licenseCachePath = () => join(app.getPath("userData"), "license-cache.bin"
 const quoteCachePath = () => join(app.getPath("userData"), "quote-cache.json");
 const preferencesPath = () => join(app.getPath("userData"), "action-preferences.json");
 const windowStatePath = () => join(app.getPath("userData"), "window-state.json");
+const customAssetDirectory = () => join(app.getPath("userData"), "state-gifs");
+protocol.registerSchemesAsPrivileged([{ scheme: "stockpet-asset", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const motionPresets = new Set(["calm", "float", "bounce", "power", "rocket", "sway", "shiver", "collapse", "pulse", "sleep"]);
 const marketStates = new Set(["LOADING", "OFFLINE", "FLAT", "UP", "STRONG_UP", "LIMIT_UP", "DOWN", "STRONG_DOWN", "LIMIT_DOWN", "ALERT", "CLOSED"]);
 const defaultActionPreferences = {
@@ -73,6 +77,19 @@ function writeActionPreferences(input: any) {
   writeFileSync(temporary, JSON.stringify(value, null, 2), { mode: 0o600 });
   renameSync(temporary, preferencesPath());
   return value;
+}
+
+function customAssetPath(state: string) {
+  return join(customAssetDirectory(), `${state.toLowerCase()}.gif`);
+}
+
+function readCustomStateAssets() {
+  const result: Record<string, string> = {};
+  for (const state of marketStates) {
+    const pathname = customAssetPath(state);
+    if (existsSync(pathname)) result[state] = `stockpet-asset://state/${state.toLowerCase()}?v=${Math.floor(statSync(pathname).mtimeMs)}`;
+  }
+  return result;
 }
 
 function readToken() {
@@ -215,6 +232,12 @@ function openControlWindow(panel = "watch") {
 }
 
 app.whenReady().then(() => {
+  protocol.handle("stockpet-asset", (request) => {
+    const url = new URL(request.url);
+    const state = url.hostname === "state" ? url.pathname.slice(1).toUpperCase() : "";
+    if (!marketStates.has(state) || !existsSync(customAssetPath(state))) return new Response("Not found", { status: 404 });
+    return net.fetch(pathToFileURL(customAssetPath(state)).href);
+  });
   createPetWindow();
   if (process.env.STOCK_PET_OPEN_CONTROL === "1") openControlWindow("watch");
   tray = new Tray(nativeImage.createFromPath(join(__dirname, "../dist/niu-lai-le-mascot.png")).resize({ width: 18, height: 18 }));
@@ -299,6 +322,34 @@ ipcMain.handle("pet:get-system-settings", () => ({
 }));
 ipcMain.handle("pet:get-action-preferences", () => readActionPreferences());
 ipcMain.handle("pet:save-action-preferences", (_event, value) => writeActionPreferences(value));
+ipcMain.handle("pet:get-custom-state-assets", () => readCustomStateAssets());
+ipcMain.handle("pet:choose-custom-gif", async (_event, state: string) => {
+  if (!marketStates.has(state)) throw new Error("INVALID_MARKET_STATE");
+  const owner = controlWindow || petWindow;
+  const options: OpenDialogOptions = {
+    title: `选择 ${state} 场景 GIF`, properties: ["openFile"], filters: [{ name: "GIF 动图", extensions: ["gif"] }],
+  };
+  const selected = owner
+    ? await dialog.showOpenDialog(owner, options)
+    : await dialog.showOpenDialog(options);
+  if (selected.canceled || !selected.filePaths[0]) return readCustomStateAssets();
+  const source = selected.filePaths[0];
+  if (statSync(source).size > 25 * 1024 * 1024) throw new Error("GIF_FILE_TOO_LARGE");
+  const header = readFileSync(source).subarray(0, 6).toString("ascii");
+  if (header !== "GIF87a" && header !== "GIF89a") throw new Error("INVALID_GIF_FILE");
+  mkdirSync(customAssetDirectory(), { recursive: true, mode: 0o700 });
+  copyFileSync(source, customAssetPath(state));
+  petWindow?.webContents.send("pet:custom-assets-changed", readCustomStateAssets());
+  return readCustomStateAssets();
+});
+ipcMain.handle("pet:clear-custom-gif", (_event, state: string) => {
+  if (!marketStates.has(state)) throw new Error("INVALID_MARKET_STATE");
+  const pathname = customAssetPath(state);
+  if (existsSync(pathname)) unlinkSync(pathname);
+  const assets = readCustomStateAssets();
+  petWindow?.webContents.send("pet:custom-assets-changed", assets);
+  return assets;
+});
 ipcMain.handle("pet:show-context-menu", () => {
   const preferences = readActionPreferences();
   const menu = Menu.buildFromTemplate([

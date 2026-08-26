@@ -535,6 +535,17 @@ export async function stockQuotes(symbols = []) {
   }));
 }
 
+export async function stockHistory(userId, symbol, range = "1m") {
+  const normalized = normalizeMarketSymbol(symbol);
+  const allowedRanges = new Set(["1d", "1m", "3m", "1y"]);
+  if (!normalized || !stockWatchlist(userId).some((item) => item.symbol === normalized))
+    throw Object.assign(new Error("STOCK_NOT_IN_WATCHLIST"), { code: "STOCK_NOT_IN_WATCHLIST", status: 403 });
+  if (!allowedRanges.has(range))
+    throw Object.assign(new Error("INVALID_STOCK_HISTORY_RANGE"), { code: "INVALID_STOCK_HISTORY_RANGE", status: 400 });
+  const items = await marketDataService().getHistory(normalized, { range });
+  return { symbol: normalized, range, items, provider: activeMarketProviderInfo() };
+}
+
 export async function stockPetDownload(userId, platform) {
   if (!stockPetLicense(userId).entitled) {
     throw Object.assign(new Error("PRODUCT_NOT_OWNED"), {

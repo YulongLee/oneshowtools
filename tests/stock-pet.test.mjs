@@ -6,6 +6,7 @@ import {
   TencentFinanceMarketDataProvider,
   normalizeMarketSymbol,
   parseTencentQuotes,
+  parseTencentHistory,
   parseTencentSearch,
   toTencentSymbol,
 } from "../server/market-data.mjs";
@@ -82,6 +83,44 @@ test("Tencent provider uses fixed server-side endpoints and GET requests", async
   assert.equal(quotes[0].symbol, "AAPL.US");
   assert.equal(calls[0].method, "GET");
   assert.match(calls[0].url, /qt\.gtimg\.cn\/q=usAAPL/);
+});
+
+test("Tencent history parser normalizes daily and intraday points", () => {
+  assert.deepEqual(parseTencentHistory({ data: { sh600519: { qfqday: [["2026-08-25", "10", "11", "12", "9", "100"]] } } }, "sh600519", "day"), [
+    { time: "2026-08-25", open: 10, close: 11, high: 12, low: 9, volume: 100 },
+  ]);
+  assert.deepEqual(parseTencentHistory({ data: { sh600519: { data: { data: ["0930 10.50 20 210.00"] } } } }, "sh600519", "minute"), [
+    { time: "0930", open: 10.5, close: 10.5, high: 10.5, low: 10.5, volume: 20, amount: 210 },
+  ]);
+});
+
+test("Tencent provider requests history ranges without exposing provider codes to clients", async () => {
+  const calls = [];
+  const provider = new TencentFinanceMarketDataProvider({
+    fetchImpl: async (url) => {
+      calls.push(String(url));
+      return new Response(JSON.stringify({ data: { sh600519: { qfqday: [["2026-08-25", "10", "11", "12", "9", "100"]] } } }), { status: 200 });
+    },
+  });
+  const items = await provider.getHistory("600519.SS", { range: "1m" });
+  assert.equal(items[0].close, 11);
+  assert.match(calls[0], /param=sh600519%2Cday/);
+});
+
+test("Tencent provider resolves US exchange suffixes while using the base code for intraday history", async () => {
+  const calls = [];
+  const provider = new TencentFinanceMarketDataProvider({
+    fetchImpl: async (url) => {
+      calls.push(String(url));
+      if (String(url).includes("smartbox.gtimg.cn")) return new Response('v_hint="us~AAPL~Apple Inc.~apple~GP"');
+      return new Response(JSON.stringify({ data: { usAAPL: { data: { data: ["1109 313.35 7763269"] } } } }), { status: 200 });
+    },
+  });
+  const items = await provider.getHistory("AAPL.US", { range: "1d" });
+  assert.equal(items[0].close, 313.35);
+  assert.match(calls[1], /UsMinute\/query/);
+  assert.match(calls[1], /code=usAAPL(?:&|$)/);
+  assert.doesNotMatch(calls[1], /AAPL\.OQ/);
 });
 
 test("market data service batches requests and reuses short-lived cache", async () => {

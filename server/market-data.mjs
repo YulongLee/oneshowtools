@@ -1,5 +1,8 @@
 const TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q=";
 const TENCENT_SEARCH_URL = "https://smartbox.gtimg.cn/s3/";
+const TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
+const TENCENT_MINUTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/minute/query";
+const TENCENT_US_MINUTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/UsMinute/query";
 
 function cleanSymbol(value) { return String(value || "").trim().toUpperCase(); }
 
@@ -105,9 +108,41 @@ export function parseTencentSearch(text) {
   }).filter(Boolean).slice(0, 10);
 }
 
+function providerSymbolFromTencentSearch(text, logicalSymbol) {
+  const target = normalizeMarketSymbol(logicalSymbol);
+  const value = String(text || "").match(/v_hint="([\s\S]*?)"/)?.[1] || "";
+  for (const entry of decodeEscapedText(value).split("^")) {
+    const [prefix, code] = entry.split("~");
+    if (fromTencentSymbol(prefix, code) === target)
+      return `${String(prefix).toLowerCase()}${String(prefix).toLowerCase() === "us" ? String(code).toUpperCase() : code}`;
+  }
+  return "";
+}
+
+export function parseTencentHistory(payload, providerSymbol, period = "day") {
+  const root = payload?.data?.[providerSymbol] || {};
+  if (period === "minute") {
+    const rows = root?.data?.data;
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => {
+      const [time, price, volume, amount] = String(row || "").trim().split(/\s+/);
+      const value = finiteNumber(price);
+      if (!/^\d{4}$/.test(time) || value === undefined) return null;
+      return { time, open: value, close: value, high: value, low: value, volume: finiteNumber(volume) || 0, amount: finiteNumber(amount) || 0 };
+    }).filter(Boolean);
+  }
+  const rows = root[`qfq${period}`] || root[period] || [];
+  return Array.isArray(rows) ? rows.map((row) => {
+    if (!Array.isArray(row) || row.length < 5) return null;
+    const [time, open, close, high, low, volume] = row;
+    if (!time || [open, close, high, low].some((value) => finiteNumber(value) === undefined)) return null;
+    return { time: String(time), open: Number(open), close: Number(close), high: Number(high), low: Number(low), volume: finiteNumber(volume) || 0 };
+  }).filter(Boolean) : [];
+}
+
 export class TencentFinanceMarketDataProvider {
-  constructor({ fetchImpl = fetch, quoteUrl = TENCENT_QUOTE_URL, searchUrl = TENCENT_SEARCH_URL } = {}) {
-    this.fetchImpl = fetchImpl; this.quoteUrl = quoteUrl; this.searchUrl = searchUrl;
+  constructor({ fetchImpl = fetch, quoteUrl = TENCENT_QUOTE_URL, searchUrl = TENCENT_SEARCH_URL, klineUrl = TENCENT_KLINE_URL, minuteUrl = TENCENT_MINUTE_URL, usMinuteUrl = TENCENT_US_MINUTE_URL } = {}) {
+    this.fetchImpl = fetchImpl; this.quoteUrl = quoteUrl; this.searchUrl = searchUrl; this.klineUrl = klineUrl; this.minuteUrl = minuteUrl; this.usMinuteUrl = usMinuteUrl;
   }
 
   async getText(url) {
@@ -132,11 +167,40 @@ export class TencentFinanceMarketDataProvider {
     url.searchParams.set("q", term); url.searchParams.set("t", "all");
     return parseTencentSearch(await this.getText(url.toString()));
   }
+
+  async resolveProviderSymbol(symbol) {
+    const normalized = normalizeMarketSymbol(symbol);
+    if (!normalized.endsWith(".US")) return toTencentSymbol(normalized);
+    const url = new URL(this.searchUrl);
+    url.searchParams.set("q", normalized.slice(0, -3)); url.searchParams.set("t", "all");
+    return providerSymbolFromTencentSearch(await this.getText(url.toString()), normalized) || toTencentSymbol(normalized);
+  }
+
+  async getHistory(symbol, { range = "1m" } = {}) {
+    const normalized = normalizeMarketSymbol(symbol);
+    if (!normalized) return [];
+    const providerSymbol = await this.resolveProviderSymbol(normalized);
+    if (range === "1d") {
+      // Tencent's US minute endpoint accepts the base code (usAAPL), while
+      // its daily K-line endpoint may return an exchange-qualified code
+      // (usAAPL.OQ). Keep both conventions behind the server adapter.
+      const minuteSymbol = normalized.endsWith(".US") ? providerSymbol.split(".")[0] : providerSymbol;
+      const url = new URL(normalized.endsWith(".US") ? this.usMinuteUrl : this.minuteUrl);
+      url.searchParams.set("code", minuteSymbol);
+      const payload = JSON.parse(await this.getText(url.toString()));
+      return parseTencentHistory(payload, minuteSymbol, "minute");
+    }
+    const counts = { "1m": 24, "3m": 72, "1y": 260 };
+    const url = new URL(this.klineUrl);
+    url.searchParams.set("param", `${providerSymbol},day,,,${counts[range] || counts["1m"]},qfq`);
+    const payload = JSON.parse(await this.getText(url.toString()));
+    return parseTencentHistory(payload, providerSymbol, "day");
+  }
 }
 
 export class HttpMarketDataProvider {
-  constructor({ endpoint, searchEndpoint = "", apiKey = "", fetchImpl = fetch }) {
-    this.endpoint = endpoint; this.searchEndpoint = searchEndpoint; this.apiKey = apiKey; this.fetchImpl = fetchImpl;
+  constructor({ endpoint, searchEndpoint = "", historyEndpoint = "", apiKey = "", fetchImpl = fetch }) {
+    this.endpoint = endpoint; this.searchEndpoint = searchEndpoint; this.historyEndpoint = historyEndpoint; this.apiKey = apiKey; this.fetchImpl = fetchImpl;
   }
   async request(endpoint, body) {
     const response = await this.fetchImpl(endpoint, {
@@ -154,6 +218,11 @@ export class HttpMarketDataProvider {
     if (!this.searchEndpoint) return [];
     const payload = await this.request(this.searchEndpoint, { query, market: "ALL", limit: 10 });
     return Array.isArray(payload.items) ? payload.items : [];
+  }
+  async getHistory(symbol, options = {}) {
+    if (!this.historyEndpoint) throw Object.assign(new Error("STOCK_HISTORY_NOT_SUPPORTED"), { code: "STOCK_HISTORY_NOT_SUPPORTED", status: 503 });
+    const payload = await this.request(this.historyEndpoint, { symbol, ...options });
+    return Array.isArray(payload.items) ? payload.items : Array.isArray(payload.history) ? payload.history : [];
   }
 }
 
@@ -178,6 +247,7 @@ export class MarketDataService {
     return symbols.map((original) => result.get(normalizeMarketSymbol(original) || original)).filter(Boolean);
   }
   async searchSymbols(query) { return this.provider.searchSymbols?.(query) || []; }
+  async getHistory(symbol, options) { return this.provider.getHistory?.(symbol, options) || []; }
 }
 
 let activeService;
@@ -190,9 +260,10 @@ export function marketDataService() {
   const useLicensedHttp = Boolean(stored || endpoint) && providerMode !== "tencent_finance";
   const apiKey = String(stored?.apiKey || process.env.STOCK_QUOTE_API_KEY || "");
   const searchEndpoint = String(stored?.searchUrl || process.env.STOCK_SEARCH_API_URL || "").trim();
-  const signature = useLicensedHttp ? `http:${endpoint}:${searchEndpoint}:${apiKey}` : "tencent_finance:v1";
+  const historyEndpoint = String(stored?.historyUrl || process.env.STOCK_HISTORY_API_URL || "").trim();
+  const signature = useLicensedHttp ? `http:${endpoint}:${searchEndpoint}:${historyEndpoint}:${apiKey}` : "tencent_finance:v2";
   if (!activeService || activeSignature !== signature) {
-    const provider = useLicensedHttp ? new HttpMarketDataProvider({ endpoint, searchEndpoint, apiKey }) : new TencentFinanceMarketDataProvider();
+    const provider = useLicensedHttp ? new HttpMarketDataProvider({ endpoint, searchEndpoint, historyEndpoint, apiKey }) : new TencentFinanceMarketDataProvider();
     activeService = new MarketDataService(provider, Math.max(5000, Number(stored?.cacheTtlMs || process.env.STOCK_QUOTE_CACHE_TTL_MS) || 12000));
     activeSignature = signature;
   }

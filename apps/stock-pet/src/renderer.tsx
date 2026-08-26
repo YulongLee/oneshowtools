@@ -59,6 +59,8 @@ type Alert = {
   enabled: boolean;
   lastTriggeredAt?: number | null;
 };
+type HistoryRange = "1d" | "1m" | "3m" | "1y";
+type HistoryPoint = { time: string; open: number; close: number; high: number; low: number; volume?: number };
 type MotionPreset = "calm" | "float" | "bounce" | "power" | "rocket" | "sway" | "shiver" | "collapse" | "pulse" | "sleep";
 type ActionPreferences = {
   speed: 0.75 | 1 | 1.25;
@@ -113,12 +115,20 @@ const copy: Record<MarketState, string> = {
   ALERT: "有异动！",
   CLOSED: "收盘休息",
 };
+const stateNames: Record<MarketState, string> = {
+  LOADING: "加载行情", OFFLINE: "网络异常", FLAT: "平稳行情", UP: "普通上涨",
+  STRONG_UP: "明显上涨", LIMIT_UP: "涨停", DOWN: "普通下跌",
+  STRONG_DOWN: "明显下跌", LIMIT_DOWN: "跌停", ALERT: "异动提醒", CLOSED: "收盘休息",
+};
 const errors: Record<string, string> = {
   INVALID_CREDENTIALS: "邮箱或密码不正确",
   EMAIL_UNVERIFIED: "请先完成邮箱验证",
   PRODUCT_NOT_OWNED: "请先在 OneShowTools 网页解锁产品",
   STOCK_PROVIDER_NOT_CONFIGURED: "行情服务尚未配置，请联系平台管理员",
   STOCK_PROVIDER_FAILED: "行情源暂时不可用，稍后将自动重试",
+  STOCK_HISTORY_NOT_SUPPORTED: "当前行情源尚未提供历史走势，请联系平台管理员配置历史行情接口",
+  INVALID_STOCK_HISTORY_RANGE: "不支持所选的行情周期",
+  STOCK_NOT_IN_WATCHLIST: "请先把这只股票加入自选，再查看历史走势",
   WATCHLIST_LIMIT_REACHED: "最多添加 10 只自选",
   INVALID_STOCK_ALERT: "提醒条件不正确",
   REQUEST_FAILED: "暂时无法连接服务",
@@ -146,9 +156,13 @@ function App() {
     [quotes, setQuotes] = useState<Quote[]>([]),
     [alerts, setAlerts] = useState<Alert[]>([]);
   const [selected, setSelected] = useState(0),
-    [expanded, setExpanded] = useState(false),
-    [panel, setPanel] = useState<"watch" | "alerts" | "actions" | "settings">("watch");
+    [panel, setPanel] = useState<"watch" | "chart" | "alerts" | "actions" | "settings">("watch");
   const [actions, setActions] = useState<ActionPreferences>(defaultActions);
+  const [customAssets, setCustomAssets] = useState<Record<string, string>>({});
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("1m");
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyMessage, setHistoryMessage] = useState("");
   const [visible, setVisible] = useState(!document.hidden);
   const [updateStatus, setUpdateStatus] = useState("idle");
   const [search, setSearch] = useState(""),
@@ -201,7 +215,9 @@ function App() {
       window.stockPet.setOpacity(value.opacity);
       window.stockPet.setPositionLocked(value.locked);
     }).catch(() => undefined);
+    window.stockPet.getCustomStateAssets().then(setCustomAssets).catch(() => undefined);
   }, []);
+  useEffect(() => window.stockPet.onCustomAssetsChanged(setCustomAssets), []);
   useEffect(() => window.stockPet.onSessionChanged(setSession), []);
   useEffect(() => {
     const update = () => setVisible(!document.hidden);
@@ -210,8 +226,8 @@ function App() {
   }, []);
   useEffect(() => window.stockPet.onQuickAction((action) => {
     if (action === "actions") setPanel("actions");
+    else if (action === "chart") setPanel("chart");
     else setPanel("watch");
-    setExpanded(true);
   }), []);
   useEffect(() => window.stockPet.onUpdateStatus(setUpdateStatus), []);
   useEffect(() => {
@@ -284,6 +300,18 @@ function App() {
       }
     });
   }, [quotes, alerts, actions.sound]);
+
+  const currentSymbol = watchlist[selected]?.symbol || quotes[selected]?.symbol || "";
+  useEffect(() => {
+    if (rendererMode !== "control" || panel !== "chart" || !currentSymbol) return;
+    let active = true;
+    setHistoryBusy(true); setHistoryMessage("");
+    window.stockPet.api(`/api/products/stock-pet/history?symbol=${encodeURIComponent(currentSymbol)}&range=${historyRange}`)
+      .then((payload) => { if (active) setHistory(payload.items || []); })
+      .catch((error: any) => { if (active) { setHistory([]); setHistoryMessage(errors[error?.code] || "历史行情暂时不可用"); } })
+      .finally(() => { if (active) setHistoryBusy(false); });
+    return () => { active = false; };
+  }, [panel, currentSymbol, historyRange]);
 
   const current = quotes[selected] || null,
     state: MarketState = clientMarketState(current, message, actions);
@@ -377,11 +405,12 @@ function App() {
     setAlerts(payload.items || []);
   };
 
-  const petAsset = ["UP", "STRONG_UP", "LIMIT_UP"].includes(state)
+  const defaultPetAsset = ["UP", "STRONG_UP", "LIMIT_UP"].includes(state)
     ? "./niu-lai-le-up.png"
     : ["DOWN", "STRONG_DOWN", "LIMIT_DOWN", "OFFLINE"].includes(state)
       ? "./niu-lai-le-down.png"
       : state === "CLOSED" ? "./niu-lai-le-sleep.png" : "./niu-lai-le-mascot.png";
+  const petAsset = customAssets[state] || defaultPetAsset;
 
   if (rendererMode === "pet") {
     const openManager = (target = "watch") => window.stockPet.openControl(target);
@@ -397,10 +426,9 @@ function App() {
         <div className={`pet-drag-region ${actions.animations ? `motion-${actions.stateMotions[state] || defaultActions.stateMotions[state]}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
           <img draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
         </div>
-        <button className={`pet-quote-chip ${expanded ? "open" : ""}`} onClick={() => setExpanded((value) => !value)}>
+        <button className="pet-quote-chip" title="点击查看行情走势" onClick={() => openManager("chart")}>
           <span>{copy[state]}</span><b>{title}</b>{current && <strong className={change < 0 ? "negative" : ""}>{price} · {change >= 0 ? "+" : ""}{change.toFixed(2)}%</strong>}
         </button>
-        {expanded && <button className="pet-manage-button" onClick={() => openManager("watch")}><GearSix /> 管理</button>}
       </main>
     );
   }
@@ -421,13 +449,14 @@ function App() {
         {current?.trend && current.trend.length > 1 && <QuoteSparkline values={current.trend} negative={change < 0} />}
       </section>
       <nav className="control-tabs">
-        {([['watch', <TrendUp />, '自选行情'], ['alerts', <Bell />, '异动提醒'], ['actions', <Sparkle />, '动作配置'], ['settings', <GearSix />, '桌宠设置']] as const).map(([key, icon, label]) => <button key={key} className={panel === key ? "active" : ""} onClick={() => setPanel(key)}>{icon}{label}</button>)}
+        {([['watch', <Star />, '自选行情'], ['chart', <TrendUp />, '行情走势'], ['alerts', <Bell />, '异动提醒'], ['actions', <Sparkle />, '场景动作'], ['settings', <GearSix />, '桌宠设置']] as const).map(([key, icon, label]) => <button key={key} className={panel === key ? "active" : ""} onClick={() => setPanel(key)}>{icon}{label}</button>)}
       </nav>
       <section className="control-content">
         {message && <p className="message">{message}</p>}
         {panel === "watch" && <WatchPanel search={search} setSearch={setSearch} results={results} add={add} watchlist={watchlist} selected={selected} setSelected={setSelected} remove={remove} updateWatchlist={updateWatchlist} />}
+        {panel === "chart" && <MarketChartPanel quote={current} range={historyRange} setRange={setHistoryRange} items={history} busy={historyBusy} message={historyMessage} />}
         {panel === "alerts" && <AlertPanel alerts={alerts} watchlist={watchlist} selected={selected} alertType={alertType} setAlertType={setAlertType} alertValue={alertValue} setAlertValue={setAlertValue} addAlert={addAlert} removeAlert={removeAlert} updateAlert={updateAlert} />}
-        {panel === "actions" && <ActionPanel state={state} preferences={actions} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作偏好已保存"); }} />}
+        {panel === "actions" && <ActionPanel state={state} preferences={actions} customAssets={customAssets} setCustomAssets={setCustomAssets} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作偏好已保存"); }} />}
         {panel === "settings" && <SettingsPanel logout={async () => setSession(await window.stockPet.logout())} preferences={actions} onChange={async (next) => setActions(await window.stockPet.saveActionPreferences(next))} updateStatus={updateStatus} setUpdateStatus={setUpdateStatus} />}
       </section>
       <footer className="control-disclaimer">行情数据仅供信息展示，不构成投资建议或交易依据。</footer>
@@ -443,22 +472,55 @@ function QuoteSparkline({ values, negative }: { values: number[]; negative: bool
   return <svg className={`quote-sparkline ${negative ? "negative" : ""}`} viewBox="0 0 100 32" preserveAspectRatio="none" aria-label="分时趋势"><polyline points={points} /></svg>;
 }
 
-function ActionPanel({ state, preferences, onChange }: {
+function MarketChartPanel({ quote, range, setRange, items, busy, message }: {
+  quote: Quote | null; range: HistoryRange; setRange: (value: HistoryRange) => void;
+  items: HistoryPoint[]; busy: boolean; message: string;
+}) {
+  const prices = items.map((item) => Number(item.close)).filter(Number.isFinite);
+  const min = prices.length ? Math.min(...prices) : 0;
+  const max = prices.length ? Math.max(...prices) : 0;
+  const spread = Math.max(max - min, Math.abs(max || 1) * .002);
+  const points = prices.map((value, index) => `${12 + (index / Math.max(prices.length - 1, 1)) * 576},${176 - ((value - min) / spread) * 142}`).join(" ");
+  const area = points ? `12,190 ${points} 588,190` : "";
+  const latest = items.at(-1);
+  const first = items[0];
+  const positive = Number(latest?.close || 0) >= Number(first?.close || 0);
+  return <div className="market-chart-panel">
+    <header><div><h2>{quote?.name || quote?.symbol || "行情走势"}</h2><p>{quote?.symbol} · {quote?.sourceLabel || "行情数据"}</p></div><div className="range-tabs">{([['1d','日内'],['1m','1月'],['3m','3月'],['1y','1年']] as const).map(([value,label]) => <button key={value} className={range === value ? "active" : ""} onClick={() => setRange(value)}>{label}</button>)}</div></header>
+    {busy ? <div className="chart-state">正在加载历史行情…</div> : message ? <div className="chart-state error">{message}</div> : items.length < 2 ? <div className="chart-state">该市场暂时没有可展示的历史数据</div> : <>
+      <div className={`price-overview ${positive ? "positive" : "negative"}`}><strong>{latest?.close.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}</strong><span>区间最高 {max.toFixed(2)}</span><span>区间最低 {min.toFixed(2)}</span></div>
+      <svg className={`history-chart ${positive ? "positive" : "negative"}`} viewBox="0 0 600 210" role="img" aria-label={`${range} 价格走势`}>
+        <defs><linearGradient id="chartArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopOpacity=".28"/><stop offset="1" stopOpacity="0"/></linearGradient></defs>
+        {[45,90,135,180].map((y) => <line key={y} x1="12" y1={y} x2="588" y2={y} className="chart-grid" />)}
+        <polygon points={area} className="chart-area"/><polyline points={points} className="chart-line" />
+      </svg>
+      <div className="chart-axis"><span>{items[0]?.time}</span><span>{items[Math.floor(items.length / 2)]?.time}</span><span>{latest?.time}</span></div>
+    </>}
+    <small className="chart-note">历史行情可能存在延迟，仅供信息展示，不构成投资建议。</small>
+  </div>;
+}
+
+function ActionPanel({ state, preferences, customAssets, setCustomAssets, onChange }: {
   state: MarketState;
   preferences: ActionPreferences;
+  customAssets: Record<string, string>;
+  setCustomAssets: (value: Record<string, string>) => void;
   onChange: (value: ActionPreferences) => void;
 }) {
-  const updateMotion = (value: MotionPreset) => onChange({
-    ...preferences,
-    stateMotions: { ...preferences.stateMotions, [state]: value },
-  });
+  const [assetMessage, setAssetMessage] = useState("");
+  const chooseGif = async (item: MarketState) => {
+    try {
+      setCustomAssets(await window.stockPet.chooseCustomGif(item));
+      setAssetMessage(`${stateNames[item]}场景动图已保存`);
+    } catch (error: any) {
+      const code = String(error?.message || error || "");
+      setAssetMessage(code.includes("GIF_FILE_TOO_LARGE") ? "GIF 不能超过 25MB" : code.includes("INVALID_GIF_FILE") ? "请选择有效的 GIF 动图" : "动图保存失败，请重试");
+    }
+  };
   return (
     <div className="action-panel">
       <div className="action-heading">
-        <span><b>{copy[state]}</b><small>当前行情状态</small></span>
-        <select value={preferences.stateMotions[state]} onChange={(event) => updateMotion(event.target.value as MotionPreset)}>
-          {(Object.keys(motionNames) as MotionPreset[]).map((preset) => <option key={preset} value={preset}>{motionNames[preset]}</option>)}
-        </select>
+        <span><b>行情场景与 GIF</b><small>当前场景：{stateNames[state]}。每个场景均可使用自己的 GIF 动图。</small></span>
       </div>
       <label>
         <span>动作速度</span>
@@ -466,7 +528,15 @@ function ActionPanel({ state, preferences, onChange }: {
           <option value="0.75">舒缓</option><option value="1">标准</option><option value="1.25">活泼</option>
         </select>
       </label>
-      <p>每一种涨跌状态都能单独选择动作，切换行情时会自动播放。</p>
+      <div className="scene-list">{(Object.keys(stateNames) as MarketState[]).map((item) => <div className={`scene-row ${state === item ? "current" : ""}`} key={item}>
+        <div className="scene-preview">{customAssets[item] ? <img src={customAssets[item]} alt=""/> : <Sparkle />}</div>
+        <span><b>{stateNames[item]}</b><small>{copy[item]}{customAssets[item] ? " · 已使用自定义 GIF" : " · 使用默认形象"}</small></span>
+        <select value={preferences.stateMotions[item]} onChange={(event) => onChange({ ...preferences, stateMotions: { ...preferences.stateMotions, [item]: event.target.value as MotionPreset } })}>{(Object.keys(motionNames) as MotionPreset[]).map((preset) => <option key={preset} value={preset}>{motionNames[preset]}</option>)}</select>
+        <button onClick={() => chooseGif(item)}>上传 GIF</button>
+        {customAssets[item] && <button className="secondary" onClick={async () => setCustomAssets(await window.stockPet.clearCustomGif(item))}>恢复默认</button>}
+      </div>)}</div>
+      {assetMessage && <p className="asset-message">{assetMessage}</p>}
+      <p>建议 GIF 小于 25MB；切换行情状态时，桌宠会自动更换对应动图和动作。</p>
       <div className="threshold-grid">
         {([
           ["up", "普通上涨"], ["strongUp", "明显上涨"],
