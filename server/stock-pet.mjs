@@ -124,7 +124,7 @@ export function stockPetPublicProduct() {
       windows: releaseStorageReady || Boolean(process.env.STOCK_PET_WINDOWS_DOWNLOAD_URL),
       macos: releaseStorageReady || Boolean(process.env.STOCK_PET_MACOS_DOWNLOAD_URL),
     },
-    version: process.env.STOCK_PET_VERSION || "0.1.0-preview",
+    version: process.env.STOCK_PET_VERSION || "0.1.1",
   };
 }
 

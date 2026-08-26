@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, screen, shell, Tray } from "electron";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { hostname, platform } from "node:os";
@@ -119,6 +119,24 @@ function readWindowState() {
   return { width: 360, height: 460 };
 }
 
+function visibleWindowBounds(bounds: ReturnType<typeof readWindowState>) {
+  if (!Number.isFinite(bounds.x) || !Number.isFinite(bounds.y)) return bounds;
+  const intersectsDisplay = screen.getAllDisplays().some(({ workArea }) =>
+    bounds.x! < workArea.x + workArea.width &&
+    bounds.x! + bounds.width > workArea.x &&
+    bounds.y! < workArea.y + workArea.height &&
+    bounds.y! + bounds.height > workArea.y
+  );
+  if (intersectsDisplay) return bounds;
+  const { workArea } = screen.getPrimaryDisplay();
+  return {
+    width: bounds.width,
+    height: bounds.height,
+    x: workArea.x + workArea.width - bounds.width - 24,
+    y: workArea.y + workArea.height - bounds.height - 24,
+  };
+}
+
 let windowStateTimer: NodeJS.Timeout | undefined;
 function persistWindowState() {
   if (!window || window.isDestroyed()) return;
@@ -149,7 +167,7 @@ async function api(pathname: string, options: { method?: string; body?: unknown;
 }
 
 function createWindow() {
-  const initialBounds = readWindowState();
+  const initialBounds = visibleWindowBounds(readWindowState());
   window = new BrowserWindow({
     ...initialBounds, minWidth: 280, minHeight: 340, transparent: true, frame: false,
     alwaysOnTop: true, resizable: true, skipTaskbar: false, show: false,
@@ -158,7 +176,13 @@ function createWindow() {
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   window.on("move", persistWindowState);
   window.on("resize", persistWindowState);
-  window.once("ready-to-show", () => window?.show());
+  const reveal = () => {
+    if (!window || window.isDestroyed()) return;
+    window.show();
+    window.focus();
+  };
+  window.once("ready-to-show", reveal);
+  window.webContents.once("did-finish-load", reveal);
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(apiBase)) shell.openExternal(url);
     return { action: "deny" };

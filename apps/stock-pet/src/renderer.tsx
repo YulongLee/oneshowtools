@@ -379,7 +379,7 @@ function App() {
       <main className="pet loading">
         <img
           className="pet-loading"
-          src="/niu-lai-le-mascot.png"
+          src="./niu-lai-le-mascot.png"
           alt="牛来了"
         />
         <b>正在唤醒小牛…</b>
@@ -391,7 +391,7 @@ function App() {
         <WindowHeader />
         <img
           className="auth-mascot"
-          src="/niu-lai-le-mascot.png"
+          src="./niu-lai-le-mascot.png"
           alt="牛来了"
         />
         <form onSubmit={login}>
@@ -422,7 +422,7 @@ function App() {
         <WindowHeader />
         <img
           className="auth-mascot"
-          src="/niu-lai-le-mascot.png"
+          src="./niu-lai-le-mascot.png"
           alt="牛来了"
         />
         <section className="locked">
@@ -455,7 +455,7 @@ function App() {
         }}
         aria-label="展开或收起行情"
       >
-        <img src="/niu-lai-le-mascot.png" alt={`牛来了：${copy[state]}`} />
+        <img src="./niu-lai-le-mascot.png" alt={`牛来了：${copy[state]}`} />
       </button>
       <section className={expanded ? "quote open" : "quote"}>
         <span>{copy[state]}</span>
