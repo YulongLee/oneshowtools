@@ -19,9 +19,12 @@ const quoteCachePath = () => join(app.getPath("userData"), "quote-cache.json");
 const preferencesPath = () => join(app.getPath("userData"), "action-preferences.json");
 const windowStatePath = () => join(app.getPath("userData"), "window-state.json");
 const customAssetDirectory = () => join(app.getPath("userData"), "state-gifs");
+const customRuleAssetDirectory = () => join(app.getPath("userData"), "rule-gifs");
 protocol.registerSchemesAsPrivileged([{ scheme: "stockpet-asset", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const motionPresets = new Set(["calm", "float", "bounce", "power", "rocket", "sway", "shiver", "collapse", "pulse", "sleep"]);
 const marketStates = new Set(["LOADING", "OFFLINE", "FLAT", "UP", "STRONG_UP", "LIMIT_UP", "DOWN", "STRONG_DOWN", "LIMIT_DOWN", "ALERT", "CLOSED"]);
+const ruleTriggers = new Set(["daily_change", "recent_change", "price", "market_state", "time_range"]);
+const ruleOperators = new Set(["gte", "lte", "between", "equals"]);
 const defaultActionPreferences = {
   speed: 1,
   sound: false,
@@ -35,6 +38,7 @@ const defaultActionPreferences = {
     STRONG_UP: "power", LIMIT_UP: "rocket", DOWN: "sway",
     STRONG_DOWN: "shiver", LIMIT_DOWN: "collapse", ALERT: "pulse", CLOSED: "sleep",
   },
+  stockRuleGroups: {},
 };
 
 function sanitizeActionPreferences(input: any) {
@@ -52,6 +56,41 @@ function sanitizeActionPreferences(input: any) {
   };
   if (thresholds.strongUp <= thresholds.up) thresholds.strongUp = Math.min(30, thresholds.up + 1);
   if (thresholds.strongDown >= thresholds.down) thresholds.strongDown = Math.max(-30, thresholds.down - 1);
+  const seenRuleIds = new Set<string>();
+  const sanitizeRules = (rules: unknown, maximum = 30) => (Array.isArray(rules) ? rules : []).slice(0, maximum).flatMap((rule: any, index: number) => {
+    let id = String(rule?.id || "").trim().toLowerCase();
+    if (!/^[a-z0-9-]{8,64}$/.test(id) || seenRuleIds.has(id)) id = randomUUID();
+    seenRuleIds.add(id);
+    const trigger = ruleTriggers.has(String(rule?.trigger)) ? String(rule.trigger) : "daily_change";
+    const operator = ruleOperators.has(String(rule?.operator)) ? String(rule.operator) : "gte";
+    const motion = motionPresets.has(String(rule?.motion)) ? String(rule.motion) : "bounce";
+    const marketState = marketStates.has(String(rule?.marketState)) ? String(rule.marketState) : "UP";
+    const startTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(rule?.startTime)) ? String(rule.startTime) : "09:30";
+    const endTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(rule?.endTime)) ? String(rule.endTime) : "15:00";
+    return [{
+      id,
+      name: String(rule?.name || `自定义动作 ${index + 1}`).trim().slice(0, 24) || `自定义动作 ${index + 1}`,
+      enabled: rule?.enabled !== false,
+      trigger,
+      operator,
+      value: Math.max(-1000000, Math.min(1000000, Number(rule?.value) || 0)),
+      endValue: Math.max(-1000000, Math.min(1000000, Number(rule?.endValue) || 0)),
+      marketState,
+      startTime,
+      endTime,
+      motion,
+    }];
+  });
+  const stockRuleGroups: Record<string, any[]> = {};
+  for (const [rawSymbol, rules] of Object.entries(input?.stockRuleGroups || {}).slice(0, 50)) {
+    const symbol = String(rawSymbol || "").trim().toUpperCase();
+    if (!/^[A-Z0-9._-]{1,64}$/.test(symbol)) continue;
+    stockRuleGroups[symbol] = sanitizeRules(rules);
+  }
+  // Existing installations stored one global list. Keep it once so the UI can
+  // migrate it into the currently selected stock without losing user work.
+  if (!Object.keys(stockRuleGroups).length && Array.isArray(input?.customRules) && input.customRules.length)
+    stockRuleGroups.__LEGACY__ = sanitizeRules(input.customRules, 50);
   return {
     speed,
     sound: Boolean(input?.sound),
@@ -61,6 +100,7 @@ function sanitizeActionPreferences(input: any) {
     locked: Boolean(input?.locked),
     thresholds,
     stateMotions,
+    stockRuleGroups,
   };
 }
 
@@ -88,6 +128,41 @@ function readCustomStateAssets() {
   for (const state of marketStates) {
     const pathname = customAssetPath(state);
     if (existsSync(pathname)) result[state] = `stockpet-asset://state/${state.toLowerCase()}?v=${Math.floor(statSync(pathname).mtimeMs)}`;
+  }
+  return result;
+}
+
+function normalizeStockSymbol(symbol: string) {
+  const value = String(symbol || "").trim().toUpperCase();
+  return /^[A-Z0-9._-]{1,64}$/.test(value) ? value : "";
+}
+
+function customRuleAssetKey(symbol: string, ruleId: string) {
+  return `${normalizeStockSymbol(symbol)}::${ruleId}`;
+}
+
+function customRuleAssetPath(symbol: string, ruleId: string) {
+  const symbolHash = createHash("sha256").update(normalizeStockSymbol(symbol)).digest("hex").slice(0, 16);
+  return join(customRuleAssetDirectory(), `${symbolHash}-${ruleId}.gif`);
+}
+
+function isValidRuleId(ruleId: string) {
+  return /^[a-z0-9-]{8,64}$/.test(ruleId);
+}
+
+function readCustomRuleAssets() {
+  const result: Record<string, string> = {};
+  for (const [symbol, rules] of Object.entries(readActionPreferences().stockRuleGroups || {})) {
+    if (symbol === "__LEGACY__") continue;
+    for (const rule of rules as any[]) {
+      const pathname = customRuleAssetPath(symbol, rule.id);
+      const legacyPath = join(customRuleAssetDirectory(), `${rule.id}.gif`);
+      if (!existsSync(pathname) && existsSync(legacyPath)) {
+        try { copyFileSync(legacyPath, pathname); } catch { /* default mascot remains available */ }
+      }
+      const key = customRuleAssetKey(symbol, rule.id);
+      if (existsSync(pathname)) result[key] = `stockpet-asset://rule/${encodeURIComponent(symbol)}/${rule.id}?v=${Math.floor(statSync(pathname).mtimeMs)}`;
+    }
   }
   return result;
 }
@@ -236,6 +311,13 @@ function openControlWindow(panel = "watch") {
 app.whenReady().then(() => {
   protocol.handle("stockpet-asset", (request) => {
     const url = new URL(request.url);
+    if (url.hostname === "rule") {
+      const [rawSymbol, rawRuleId] = url.pathname.slice(1).split("/");
+      const symbol = normalizeStockSymbol(decodeURIComponent(rawSymbol || ""));
+      const ruleId = String(rawRuleId || "").toLowerCase();
+      if (!symbol || !isValidRuleId(ruleId) || !existsSync(customRuleAssetPath(symbol, ruleId))) return new Response("Not found", { status: 404 });
+      return net.fetch(pathToFileURL(customRuleAssetPath(symbol, ruleId)).href);
+    }
     const state = url.hostname === "state" ? url.pathname.slice(1).toUpperCase() : "";
     if (!marketStates.has(state) || !existsSync(customAssetPath(state))) return new Response("Not found", { status: 404 });
     return net.fetch(pathToFileURL(customAssetPath(state)).href);
@@ -326,6 +408,7 @@ ipcMain.handle("pet:get-system-settings", () => ({
 ipcMain.handle("pet:get-action-preferences", () => readActionPreferences());
 ipcMain.handle("pet:save-action-preferences", (_event, value) => writeActionPreferences(value));
 ipcMain.handle("pet:get-custom-state-assets", () => readCustomStateAssets());
+ipcMain.handle("pet:get-custom-rule-assets", () => readCustomRuleAssets());
 ipcMain.handle("pet:choose-custom-gif", async (_event, state: string) => {
   if (!marketStates.has(state)) throw new Error("INVALID_MARKET_STATE");
   const owner = controlWindow || petWindow;
@@ -351,6 +434,38 @@ ipcMain.handle("pet:clear-custom-gif", (_event, state: string) => {
   if (existsSync(pathname)) unlinkSync(pathname);
   const assets = readCustomStateAssets();
   petWindow?.webContents.send("pet:custom-assets-changed", assets);
+  return assets;
+});
+ipcMain.handle("pet:choose-custom-rule-gif", async (_event, symbol: string, ruleId: string) => {
+  symbol = normalizeStockSymbol(symbol);
+  ruleId = String(ruleId || "").toLowerCase();
+  const groups = readActionPreferences().stockRuleGroups as Record<string, any[]>;
+  const group = groups?.[symbol] || [];
+  if (!symbol || !isValidRuleId(ruleId) || !group.some((rule: any) => rule.id === ruleId)) throw new Error("INVALID_ACTION_RULE");
+  const owner = controlWindow || petWindow;
+  const options: OpenDialogOptions = { title: "选择自定义动作 GIF", properties: ["openFile"], filters: [{ name: "GIF 动图", extensions: ["gif"] }] };
+  const selected = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+  if (selected.canceled || !selected.filePaths[0]) return readCustomRuleAssets();
+  const source = selected.filePaths[0];
+  if (statSync(source).size > 25 * 1024 * 1024) throw new Error("GIF_FILE_TOO_LARGE");
+  const header = readFileSync(source).subarray(0, 6).toString("ascii");
+  if (header !== "GIF87a" && header !== "GIF89a") throw new Error("INVALID_GIF_FILE");
+  mkdirSync(customRuleAssetDirectory(), { recursive: true, mode: 0o700 });
+  copyFileSync(source, customRuleAssetPath(symbol, ruleId));
+  const assets = readCustomRuleAssets();
+  petWindow?.webContents.send("pet:custom-rule-assets-changed", assets);
+  controlWindow?.webContents.send("pet:custom-rule-assets-changed", assets);
+  return assets;
+});
+ipcMain.handle("pet:clear-custom-rule-gif", (_event, symbol: string, ruleId: string) => {
+  symbol = normalizeStockSymbol(symbol);
+  ruleId = String(ruleId || "").toLowerCase();
+  if (!symbol || !isValidRuleId(ruleId)) throw new Error("INVALID_ACTION_RULE");
+  const pathname = customRuleAssetPath(symbol, ruleId);
+  if (existsSync(pathname)) unlinkSync(pathname);
+  const assets = readCustomRuleAssets();
+  petWindow?.webContents.send("pet:custom-rule-assets-changed", assets);
+  controlWindow?.webContents.send("pet:custom-rule-assets-changed", assets);
   return assets;
 });
 ipcMain.handle("pet:show-context-menu", () => {

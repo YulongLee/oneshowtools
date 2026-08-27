@@ -21,3 +21,5 @@ apps/**/dist-check/
 apps/**/dist/
 apps/**/dist-electron/
 apps/**/release/
+apps/**/artifacts/
+apps/**/design-qa.md

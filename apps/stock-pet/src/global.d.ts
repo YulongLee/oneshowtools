@@ -18,7 +18,11 @@ declare global { interface Window { stockPet: {
   getCustomStateAssets():Promise<Record<string,string>>;
   chooseCustomGif(state:string):Promise<Record<string,string>>;
   clearCustomGif(state:string):Promise<Record<string,string>>;
+  getCustomRuleAssets():Promise<Record<string,string>>;
+  chooseCustomRuleGif(symbol:string,ruleId:string):Promise<Record<string,string>>;
+  clearCustomRuleGif(symbol:string,ruleId:string):Promise<Record<string,string>>;
   onCustomAssetsChanged(handler:(assets:Record<string,string>)=>void):()=>void;
+  onCustomRuleAssetsChanged(handler:(assets:Record<string,string>)=>void):()=>void;
   showContextMenu():Promise<void>;
   onQuickAction(handler:(action:string)=>void):()=>void;
   onSessionChanged(handler:(session:any)=>void):()=>void;

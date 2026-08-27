@@ -7,19 +7,26 @@ import React, {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { ensureDevStockPet } from "./devStockPet";
 import {
+  ArrowDown,
+  ArrowUp,
   Bell,
   GearSix,
   MagnifyingGlass,
   Minus,
   Power,
+  Plus,
   SignOut,
   Sparkle,
   Star,
   TrendUp,
+  Trash,
   X,
 } from "@phosphor-icons/react";
 import "./renderer.css";
+
+ensureDevStockPet();
 
 const rendererMode = new URLSearchParams(window.location.search).get("mode") === "control" ? "control" : "pet";
 const initialControlPanel = (() => {
@@ -66,6 +73,21 @@ type Alert = {
 type HistoryRange = "1d" | "1m" | "3m" | "1y";
 type HistoryPoint = { time: string; open: number; close: number; high: number; low: number; volume?: number };
 type MotionPreset = "calm" | "float" | "bounce" | "power" | "rocket" | "sway" | "shiver" | "collapse" | "pulse" | "sleep";
+type ActionRuleTrigger = "daily_change" | "recent_change" | "price" | "market_state" | "time_range";
+type ActionRuleOperator = "gte" | "lte" | "between" | "equals";
+type ActionRule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: ActionRuleTrigger;
+  operator: ActionRuleOperator;
+  value: number;
+  endValue: number;
+  marketState: MarketState;
+  startTime: string;
+  endTime: string;
+  motion: MotionPreset;
+};
 type ActionPreferences = {
   speed: 0.75 | 1 | 1.25;
   sound: boolean;
@@ -75,6 +97,7 @@ type ActionPreferences = {
   locked: boolean;
   thresholds: { up: number; strongUp: number; down: number; strongDown: number };
   stateMotions: Record<MarketState, MotionPreset>;
+  stockRuleGroups: Record<string, ActionRule[]>;
 };
 const defaultActions: ActionPreferences = {
   speed: 1,
@@ -89,7 +112,9 @@ const defaultActions: ActionPreferences = {
     STRONG_UP: "power", LIMIT_UP: "rocket", DOWN: "sway",
     STRONG_DOWN: "shiver", LIMIT_DOWN: "collapse", ALERT: "pulse", CLOSED: "sleep",
   },
+  stockRuleGroups: {},
 };
+const ruleAssetKey = (symbol: string, ruleId: string) => `${symbol.trim().toUpperCase()}::${ruleId}`;
 const motionNames: Record<MotionPreset, string> = {
   calm: "轻轻呼吸", float: "悠闲漂浮", bounce: "开心弹跳", power: "蓄力冲刺",
   rocket: "冲上云霄", sway: "左右观察", shiver: "紧张发抖", collapse: "趴下休息",
@@ -145,6 +170,24 @@ function clientMarketState(quote: Quote | null, message: string, preferences: Ac
   if (value <= threshold.strongDown) return "STRONG_DOWN";
   if (value <= threshold.down) return "DOWN";
   return "FLAT";
+}
+
+function actionRuleMatches(rule: ActionRule, quote: Quote | null, state: MarketState, recentChange: number | null, now = new Date()) {
+  if (!rule.enabled) return false;
+  if (rule.trigger === "market_state") return state === rule.marketState;
+  if (rule.trigger === "time_range") {
+    const current = now.getHours() * 60 + now.getMinutes();
+    const parse = (value: string) => { const [hour, minute] = value.split(":").map(Number); return hour * 60 + minute; };
+    const start = parse(rule.startTime), end = parse(rule.endTime);
+    return start <= end ? current >= start && current <= end : current >= start || current <= end;
+  }
+  const candidate = rule.trigger === "recent_change" ? recentChange : rule.trigger === "price" ? quote?.price : quote?.changePercent;
+  if (candidate == null || !Number.isFinite(Number(candidate))) return false;
+  const value = Number(candidate), start = Math.min(rule.value, rule.endValue), end = Math.max(rule.value, rule.endValue);
+  if (rule.operator === "lte") return value <= rule.value;
+  if (rule.operator === "between") return value >= start && value <= end;
+  if (rule.operator === "equals") return Math.abs(value - rule.value) < 0.0001;
+  return value >= rule.value;
 }
 const copy: Record<MarketState, string> = {
   LOADING: "正在看盘…",
@@ -202,7 +245,7 @@ function App() {
   const [selected, setSelected] = useState(0),
     [panel, setPanel] = useState<"watch" | "chart" | "alerts" | "actions" | "settings">(initialControlPanel);
   const [actions, setActions] = useState<ActionPreferences>(defaultActions);
-  const [customAssets, setCustomAssets] = useState<Record<string, string>>({});
+  const [customRuleAssets, setCustomRuleAssets] = useState<Record<string, string>>({});
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1m");
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [intradayHistory, setIntradayHistory] = useState<HistoryPoint[]>([]);
@@ -260,9 +303,9 @@ function App() {
       window.stockPet.setOpacity(value.opacity);
       window.stockPet.setPositionLocked(value.locked);
     }).catch(() => undefined);
-    window.stockPet.getCustomStateAssets().then(setCustomAssets).catch(() => undefined);
+    window.stockPet.getCustomRuleAssets().then(setCustomRuleAssets).catch(() => undefined);
   }, []);
-  useEffect(() => window.stockPet.onCustomAssetsChanged(setCustomAssets), []);
+  useEffect(() => window.stockPet.onCustomRuleAssetsChanged(setCustomRuleAssets), []);
   useEffect(() => window.stockPet.onSessionChanged(setSession), []);
   useEffect(() => {
     const update = () => setVisible(!document.hidden);
@@ -348,6 +391,19 @@ function App() {
 
   const currentSymbol = watchlist[selected]?.symbol || quotes[selected]?.symbol || "";
   useEffect(() => {
+    const legacyRules = actions.stockRuleGroups?.__LEGACY__;
+    if (!currentSymbol || !legacyRules?.length || actions.stockRuleGroups[currentSymbol]?.length) return;
+    const nextGroups = { ...actions.stockRuleGroups, [currentSymbol]: legacyRules };
+    delete nextGroups.__LEGACY__;
+    window.stockPet.saveActionPreferences({ ...actions, stockRuleGroups: nextGroups })
+      .then((saved) => {
+        setActions(saved);
+        return window.stockPet.getCustomRuleAssets();
+      })
+      .then(setCustomRuleAssets)
+      .catch(() => undefined);
+  }, [actions, currentSymbol]);
+  useEffect(() => {
     if (!session?.authenticated || !session?.license?.entitled || !currentSymbol || !visible) return;
     let active = true;
     const loadIntraday = () => window.stockPet
@@ -372,6 +428,9 @@ function App() {
   const current = quotes[selected] || null,
     recentChange = useMemo(() => recentMomentum(intradayHistory, 5), [intradayHistory]),
     state: MarketState = clientMarketState(current, message, actions, recentChange);
+  const stockRules = actions.stockRuleGroups?.[currentSymbol] || [];
+  const matchedRule = useMemo(() => stockRules.find((rule) => actionRuleMatches(rule, current, state, recentChange)) || null, [stockRules, current, state, recentChange]);
+  const activeRule = matchedRule && customRuleAssets[ruleAssetKey(currentSymbol, matchedRule.id)] ? matchedRule : null;
   const title = current?.name || watchlist[selected]?.name || "添加第一只自选",
     change = Number(current?.changePercent || 0);
   const price = useMemo(
@@ -467,7 +526,8 @@ function App() {
     : ["DOWN", "STRONG_DOWN", "LIMIT_DOWN", "OFFLINE"].includes(state)
       ? "./niu-lai-le-down.png"
       : state === "CLOSED" ? "./niu-lai-le-sleep.png" : "./niu-lai-le-mascot.png";
-  const petAsset = customAssets[state] || defaultPetAsset;
+  const petAsset = (activeRule && customRuleAssets[ruleAssetKey(currentSymbol, activeRule.id)]) || defaultPetAsset;
+  const petMotion = activeRule?.motion || actions.stateMotions[state] || defaultActions.stateMotions[state];
 
   if (rendererMode === "pet") {
     const openManager = (target = "watch") => window.stockPet.openControl(target);
@@ -480,11 +540,11 @@ function App() {
     );
     return (
       <main className={`pet-only ${state.toLowerCase()}`} onContextMenu={(event) => { event.preventDefault(); window.stockPet.showContextMenu(); }}>
-        <div className={`pet-drag-region ${actions.animations ? `motion-${actions.stateMotions[state] || defaultActions.stateMotions[state]}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
+        <div className={`pet-drag-region ${actions.animations ? `motion-${petMotion}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
           <img draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
         </div>
         <button className="pet-quote-chip" title="点击查看行情走势" onClick={() => openManager("chart")}>
-          <span>{copy[state]}</span><b>{title}</b>{current && <strong className={change < 0 ? "negative" : ""}>{price} · {change >= 0 ? "+" : ""}{change.toFixed(2)}%</strong>}
+          <span>{activeRule ? activeRule.name : copy[state]}</span><b>{title}</b>{current && <strong className={change < 0 ? "negative" : ""}>{price} · {change >= 0 ? "+" : ""}{change.toFixed(2)}%</strong>}
         </button>
       </main>
     );
@@ -502,8 +562,8 @@ function App() {
     <main className="control-app">
       <header className="control-header"><div><img src="./niu-lai-le-mascot.png" alt="" /><span><b>牛来了</b><small>行情桌宠管理中心</small></span></div><button onClick={() => window.close()}><X /></button></header>
       <section className="control-summary">
-        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong>{recentChange !== null && <em className={recentChange < 0 ? "negative" : ""}>近 5 分钟 {recentChange >= 0 ? "+" : ""}{recentChange.toFixed(2)}% · 动作按短线走势更新</em>}</div>
-        {intradayHistory.length > 1 ? <QuoteSparkline values={intradayHistory.map((item) => item.close)} negative={(recentChange ?? change) < 0} /> : current?.trend && current.trend.length > 1 ? <QuoteSparkline values={current.trend} negative={change < 0} /> : null}
+        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong></div>
+        <div className={`summary-action-status ${activeRule ? "configured" : "default"}`}><Sparkle/><span><b>{activeRule ? activeRule.name : "默认小牛形象"}</b><small>{stockRules.length ? activeRule ? "已按该股票的规则触发" : matchedRule ? "命中规则但缺少 GIF，已安全兜底" : `该股票已配置 ${stockRules.length} 个动作` : "该股票尚未配置专属动作"}</small></span></div>
       </section>
       <nav className="control-tabs">
         {([['watch', <Star />, '自选行情'], ['chart', <TrendUp />, '行情走势'], ['alerts', <Bell />, '异动提醒'], ['actions', <Sparkle />, '场景动作'], ['settings', <GearSix />, '桌宠设置']] as const).map(([key, icon, label]) => <button key={key} className={panel === key ? "active" : ""} onClick={() => setPanel(key)}>{icon}{label}</button>)}
@@ -513,20 +573,12 @@ function App() {
         {panel === "watch" && <WatchPanel search={search} setSearch={setSearch} results={results} add={add} watchlist={watchlist} selected={selected} setSelected={setSelected} remove={remove} updateWatchlist={updateWatchlist} />}
         {panel === "chart" && <MarketChartPanel quote={current} range={historyRange} setRange={setHistoryRange} items={history} busy={historyBusy} message={historyMessage} />}
         {panel === "alerts" && <AlertPanel alerts={alerts} watchlist={watchlist} selected={selected} alertType={alertType} setAlertType={setAlertType} alertValue={alertValue} setAlertValue={setAlertValue} addAlert={addAlert} removeAlert={removeAlert} updateAlert={updateAlert} />}
-        {panel === "actions" && <ActionPanel state={state} preferences={actions} customAssets={customAssets} setCustomAssets={setCustomAssets} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作偏好已保存"); }} />}
+        {panel === "actions" && <ActionPanel state={state} activeRule={activeRule} preferences={actions} watchlist={watchlist} currentSymbol={currentSymbol} customRuleAssets={customRuleAssets} setCustomRuleAssets={setCustomRuleAssets} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作配置已保存"); }} />}
         {panel === "settings" && <SettingsPanel logout={async () => setSession(await window.stockPet.logout())} preferences={actions} onChange={async (next) => setActions(await window.stockPet.saveActionPreferences(next))} updateStatus={updateStatus} setUpdateStatus={setUpdateStatus} />}
       </section>
       <footer className="control-disclaimer">行情数据仅供信息展示，不构成投资建议或交易依据。</footer>
     </main>
   );
-}
-
-function QuoteSparkline({ values, negative }: { values: number[]; negative: boolean }) {
-  const safe = values.map(Number).filter(Number.isFinite).slice(-30);
-  if (safe.length < 2) return null;
-  const min = Math.min(...safe), max = Math.max(...safe), range = Math.max(max - min, 0.0001);
-  const points = safe.map((value, index) => `${(index / (safe.length - 1)) * 100},${28 - ((value - min) / range) * 24}`).join(" ");
-  return <svg className={`quote-sparkline ${negative ? "negative" : ""}`} viewBox="0 0 100 32" preserveAspectRatio="none" aria-label="分时趋势"><polyline points={points} /></svg>;
 }
 
 function formatChartPrice(value: number) {
@@ -634,52 +686,110 @@ function MarketChartPanel({ quote, range, setRange, items, busy, message }: {
   </div>;
 }
 
-function ActionPanel({ state, preferences, customAssets, setCustomAssets, onChange }: {
+function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol, customRuleAssets, setCustomRuleAssets, onChange }: {
   state: MarketState;
+  activeRule: ActionRule | null;
   preferences: ActionPreferences;
-  customAssets: Record<string, string>;
-  setCustomAssets: (value: Record<string, string>) => void;
+  watchlist: Watch[];
+  currentSymbol: string;
+  customRuleAssets: Record<string, string>;
+  setCustomRuleAssets: (value: Record<string, string>) => void;
   onChange: (value: ActionPreferences) => void;
 }) {
   const [assetMessage, setAssetMessage] = useState("");
-  const chooseGif = async (item: MarketState) => {
+  const [editingSymbol, setEditingSymbol] = useState(currentSymbol);
+  useEffect(() => { if (currentSymbol) setEditingSymbol(currentSymbol); }, [currentSymbol]);
+  const symbol = editingSymbol || currentSymbol;
+  const rules = preferences.stockRuleGroups?.[symbol] || [];
+  const stockName = watchlist.find((item) => item.symbol === symbol)?.name || symbol || "未选择股票";
+  const assetFor = (rule: ActionRule) => customRuleAssets[ruleAssetKey(symbol, rule.id)];
+  const saveRules = (nextRules: ActionRule[]) => onChange({
+    ...preferences,
+    stockRuleGroups: { ...preferences.stockRuleGroups, [symbol]: nextRules },
+  });
+  const chooseRuleGif = async (rule: ActionRule) => {
     try {
-      setCustomAssets(await window.stockPet.chooseCustomGif(item));
-      setAssetMessage(`${stateNames[item]}场景动图已保存`);
+      setCustomRuleAssets(await window.stockPet.chooseCustomRuleGif(symbol, rule.id));
+      setAssetMessage(`${rule.name}的动图已保存`);
     } catch (error: any) {
       const code = String(error?.message || error || "");
       setAssetMessage(code.includes("GIF_FILE_TOO_LARGE") ? "GIF 不能超过 25MB" : code.includes("INVALID_GIF_FILE") ? "请选择有效的 GIF 动图" : "动图保存失败，请重试");
     }
   };
+  const updateRule = (id: string, changes: Partial<ActionRule>) => saveRules(rules.map((rule) => rule.id === id ? { ...rule, ...changes } : rule));
+  const addRule = () => {
+    if (!symbol) return setAssetMessage("请先在自选行情中添加并选择一只股票");
+    if (rules.length >= 30) return setAssetMessage("每只股票最多配置 30 个动作");
+    saveRules([...rules, {
+      id: crypto.randomUUID(), name: `动作 ${rules.length + 1}`, enabled: true,
+      trigger: "daily_change", operator: "gte", value: 1, endValue: 3, marketState: "UP",
+      startTime: "09:30", endTime: "15:00", motion: "bounce",
+    }]);
+  };
+  const removeRule = async (rule: ActionRule) => {
+    if (assetFor(rule)) setCustomRuleAssets(await window.stockPet.clearCustomRuleGif(symbol, rule.id));
+    saveRules(rules.filter((item) => item.id !== rule.id));
+  };
+  const moveRule = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= rules.length) return;
+    const nextRules = [...rules];
+    [nextRules[index], nextRules[nextIndex]] = [nextRules[nextIndex], nextRules[index]];
+    saveRules(nextRules);
+  };
+  const clearStockRules = async () => {
+    if (!rules.length || !window.confirm(`确定清空 ${stockName} 的全部场景动作吗？`)) return;
+    let nextAssets = customRuleAssets;
+    for (const rule of rules) {
+      if (nextAssets[ruleAssetKey(symbol, rule.id)]) nextAssets = await window.stockPet.clearCustomRuleGif(symbol, rule.id);
+    }
+    setCustomRuleAssets(nextAssets);
+    saveRules([]);
+    setAssetMessage(`${stockName} 已恢复默认小牛形象`);
+  };
+  const triggerNames: Record<ActionRuleTrigger, string> = {
+    recent_change: "近 5 分钟涨跌幅", daily_change: "当日涨跌幅", price: "当前价格", market_state: "行情状态", time_range: "固定时间段",
+  };
+  const operatorNames: Record<ActionRuleOperator, string> = { gte: "大于等于", lte: "小于等于", between: "介于", equals: "等于" };
   return (
     <div className="action-panel">
       <div className="action-heading">
-        <span><b>行情场景与 GIF</b><small>当前场景：{stateNames[state]}。每个场景均可使用自己的 GIF 动图。</small></span>
+        <span><b>股票专属场景动作</b><small>每只股票拥有独立的一组 GIF；没有配置或素材缺失时使用默认小牛形象。</small></span>
+        <button className="primary-action" onClick={addRule}><Plus />新增动作</button>
       </div>
-      <label>
-        <span>动作速度</span>
-        <select value={preferences.speed} onChange={(event) => onChange({ ...preferences, speed: Number(event.target.value) as ActionPreferences["speed"] })}>
-          <option value="0.75">舒缓</option><option value="1">标准</option><option value="1.25">活泼</option>
-        </select>
-      </label>
-      <div className="scene-list">{(Object.keys(stateNames) as MarketState[]).map((item) => <div className={`scene-row ${state === item ? "current" : ""}`} key={item}>
-        <div className="scene-preview">{customAssets[item] ? <img src={customAssets[item]} alt=""/> : <Sparkle />}</div>
-        <span><b>{stateNames[item]}</b><small>{copy[item]}{customAssets[item] ? " · 已使用自定义 GIF" : " · 使用默认形象"}</small></span>
-        <select value={preferences.stateMotions[item]} onChange={(event) => onChange({ ...preferences, stateMotions: { ...preferences.stateMotions, [item]: event.target.value as MotionPreset } })}>{(Object.keys(motionNames) as MotionPreset[]).map((preset) => <option key={preset} value={preset}>{motionNames[preset]}</option>)}</select>
-        <button onClick={() => chooseGif(item)}>上传 GIF</button>
-        {customAssets[item] && <button className="secondary" onClick={async () => setCustomAssets(await window.stockPet.clearCustomGif(item))}>恢复默认</button>}
-      </div>)}</div>
+      <div className="stock-action-toolbar">
+        <label><span>配置股票</span><select value={symbol} onChange={(event) => { setEditingSymbol(event.target.value); setAssetMessage(""); }}>{watchlist.map((item) => <option key={item.id} value={item.symbol}>{item.name} · {item.symbol}</option>)}</select></label>
+        <label><span>动作速度</span><select value={preferences.speed} onChange={(event) => onChange({ ...preferences, speed: Number(event.target.value) as ActionPreferences["speed"] })}><option value="0.75">舒缓</option><option value="1">标准</option><option value="1.25">活泼</option></select></label>
+        <div className={`stock-action-state ${rules.some(assetFor) ? "ready" : "default"}`}><Sparkle/><span><b>{rules.some(assetFor) ? `${rules.filter(assetFor).length} 个 GIF 已就绪` : "使用默认小牛"}</b><small>{stockName} · 共 {rules.length} 条规则</small></span></div>
+      </div>
+      {rules.length ? <div className="custom-rule-list">{rules.map((rule, index) => <article className={`custom-rule-card ${activeRule?.id === rule.id && symbol === currentSymbol ? "current" : ""}`} key={rule.id}>
+        <div className="custom-rule-top">
+          <div className="rule-preview">{assetFor(rule) ? <img src={assetFor(rule)} alt=""/> : <img src="./niu-lai-le-mascot.png" alt="默认小牛"/>}</div>
+          <label className="rule-name"><small>动作 {index + 1}</small><input value={rule.name} maxLength={24} onChange={(event) => updateRule(rule.id, { name: event.target.value })}/></label>
+          {activeRule?.id === rule.id && symbol === currentSymbol && <span className="rule-live">正在执行</span>}
+          <label className="rule-switch"><input type="checkbox" checked={rule.enabled} onChange={(event) => updateRule(rule.id, { enabled: event.target.checked })}/><span>{rule.enabled ? "启用" : "停用"}</span></label>
+          <span className="rule-order-actions">
+            <button title="提高优先级" disabled={index === 0} onClick={() => moveRule(index, -1)}><ArrowUp /></button>
+            <button title="降低优先级" disabled={index === rules.length - 1} onClick={() => moveRule(index, 1)}><ArrowDown /></button>
+          </span>
+          <button className="icon-danger" title="删除动作" onClick={() => removeRule(rule)}><Trash /></button>
+        </div>
+        <div className="rule-fields">
+          <label><span>触发时机</span><select value={rule.trigger} onChange={(event) => updateRule(rule.id, { trigger: event.target.value as ActionRuleTrigger })}>{(Object.keys(triggerNames) as ActionRuleTrigger[]).map((value) => <option value={value} key={value}>{triggerNames[value]}</option>)}</select></label>
+          {rule.trigger === "market_state" ? <label><span>行情状态</span><select value={rule.marketState} onChange={(event) => updateRule(rule.id, { marketState: event.target.value as MarketState })}>{(Object.keys(stateNames) as MarketState[]).map((value) => <option value={value} key={value}>{stateNames[value]}</option>)}</select></label>
+          : rule.trigger === "time_range" ? <><label><span>开始时间</span><input type="time" value={rule.startTime} onChange={(event) => updateRule(rule.id, { startTime: event.target.value })}/></label><label><span>结束时间</span><input type="time" value={rule.endTime} onChange={(event) => updateRule(rule.id, { endTime: event.target.value })}/></label></>
+          : <><label><span>条件</span><select value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as ActionRuleOperator })}>{(Object.keys(operatorNames) as ActionRuleOperator[]).map((value) => <option value={value} key={value}>{operatorNames[value]}</option>)}</select></label><label><span>{rule.trigger === "price" ? "价格" : "数值 (%)"}</span><input type="number" step="0.1" value={rule.value} onChange={(event) => updateRule(rule.id, { value: Number(event.target.value) })}/></label>{rule.operator === "between" && <label><span>至</span><input type="number" step="0.1" value={rule.endValue} onChange={(event) => updateRule(rule.id, { endValue: Number(event.target.value) })}/></label>}</>}
+          <label><span>动作效果</span><select value={rule.motion} onChange={(event) => updateRule(rule.id, { motion: event.target.value as MotionPreset })}>{(Object.keys(motionNames) as MotionPreset[]).map((preset) => <option key={preset} value={preset}>{motionNames[preset]}</option>)}</select></label>
+        </div>
+        <div className="rule-actions"><button onClick={() => chooseRuleGif(rule)}>{assetFor(rule) ? "更换 GIF" : "上传 GIF"}</button>{assetFor(rule) && <button className="secondary" onClick={async () => setCustomRuleAssets(await window.stockPet.clearCustomRuleGif(symbol, rule.id))}>移除 GIF</button>}<small>{assetFor(rule) ? "GIF 已保存到本机，仅用于这只股票。" : "尚未上传 GIF，命中时会使用默认小牛。"}</small></div>
+      </article>)}</div> : <button className="empty-rule" onClick={addRule}><Plus/><b>为 {stockName} 添加第一个动作</b><span>上传 GIF，并设置涨跌幅、价格、行情状态或时间条件</span></button>}
       {assetMessage && <p className="asset-message">{assetMessage}</p>}
-      <p>建议 GIF 小于 25MB；切换行情状态时，桌宠会自动更换对应动图和动作。</p>
-      <div className="threshold-grid">
-        {([
-          ["up", "普通上涨"], ["strongUp", "明显上涨"],
-          ["down", "普通下跌"], ["strongDown", "明显下跌"],
-        ] as const).map(([key, label]) => (
-          <label key={key}><span>{label}</span><input type="number" step="0.1" value={preferences.thresholds[key]}
-            onChange={(event) => onChange({ ...preferences, thresholds: { ...preferences.thresholds, [key]: Number(event.target.value) } })} /></label>
-        ))}
+      <div className="action-safety-notes">
+        <span><b>按顺序匹配</b><small>从上到下检查规则，首个命中的动作立即执行。</small></span>
+        <span><b>安全兜底</b><small>未命中、GIF 缺失或加载失败时自动显示默认小牛。</small></span>
+        <span><b>本机私有</b><small>自定义 GIF 仅保存在当前电脑，不会上传云端。</small></span>
       </div>
+      {rules.length > 0 && <button className="clear-stock-actions" onClick={clearStockRules}>清空这只股票的动作配置</button>}
     </div>
   );
 }
