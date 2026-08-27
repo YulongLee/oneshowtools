@@ -97,7 +97,7 @@ if [[ "$DEPLOY_BOOTSTRAP" == "true" ]]; then
 fi
 
 "${SSH[@]}" "$REMOTE" \
-  "export PATH='$DEPLOY_NODE_ROOT/bin':\$PATH; cd '$REMOTE_STAGE'; npm ci --no-audit --no-fund; npm run build; npm run db:check"
+  "export PATH='$DEPLOY_NODE_ROOT/bin':\$PATH; export CI=1; export FFMPEG_BINARIES_URL='https://registry.npmmirror.com/-/binary/ffmpeg-static'; cd '$REMOTE_STAGE'; npm ci --no-audit --no-fund; npm run build; npm run db:check"
 
 "${SSH[@]}" "$REMOTE" bash -s -- \
   "$DEPLOY_APP_ROOT" "$REMOTE_STAGE" "$RELEASE_ID" "$DEPLOY_SERVICE" \
