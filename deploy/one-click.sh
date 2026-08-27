@@ -90,7 +90,8 @@ rsync -az --delete \
   -e "$RSYNC_SSH" ./ "$REMOTE:$REMOTE_STAGE/"
 
 if [[ "$DEPLOY_BOOTSTRAP" == "true" ]]; then
-  rsync -az --chmod=F600 -e "$RSYNC_SSH" "$DEPLOY_ENV_FILE" "$REMOTE:$REMOTE_STAGE/.production.env"
+  rsync -az -e "$RSYNC_SSH" "$DEPLOY_ENV_FILE" "$REMOTE:$REMOTE_STAGE/.production.env"
+  "${SSH[@]}" "$REMOTE" "chmod 600 '$REMOTE_STAGE/.production.env'"
   "${SSH[@]}" "$REMOTE" \
     "DEPLOY_APP_ROOT='$DEPLOY_APP_ROOT' DEPLOY_NODE_ROOT='$DEPLOY_NODE_ROOT' DEPLOY_SOURCE_DIR='$REMOTE_STAGE' DEPLOY_DOMAIN='$DEPLOY_DOMAIN' DEPLOY_LETSENCRYPT_EMAIL='$DEPLOY_LETSENCRYPT_EMAIL' bash '$REMOTE_STAGE/deploy/bootstrap-ubuntu.sh'"
 fi
