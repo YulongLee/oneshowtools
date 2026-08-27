@@ -76,6 +76,19 @@ EOF
       -d "$DOMAIN" -d "www.$DOMAIN"
   fi
 
+  # A certificate issued through the webroot plugin does not always install
+  # Certbot's shared Nginx TLS snippets on a fresh Ubuntu host. Install the
+  # packaged defaults before enabling the production virtual host.
+  if [[ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]]; then
+    install -m 0644 \
+      /usr/lib/python3/dist-packages/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf \
+      /etc/letsencrypt/options-ssl-nginx.conf
+  fi
+  if [[ ! -f /etc/letsencrypt/ssl-dhparams.pem ]]; then
+    install -m 0644 /usr/lib/python3/dist-packages/certbot/ssl-dhparams.pem \
+      /etc/letsencrypt/ssl-dhparams.pem
+  fi
+
   sed "s/oneshowtools\.com/$DOMAIN/g" \
     "$SOURCE_DIR/deploy/nginx/oneshowtools.conf" > /etc/nginx/sites-available/oneshowtools.conf
   nginx -t
