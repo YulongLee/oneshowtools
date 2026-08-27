@@ -8,7 +8,7 @@ function argument(name) {
   return index >= 0 ? process.argv[index + 1] : "";
 }
 
-const version = argument("version") || process.env.STOCK_PET_VERSION || "0.1.3";
+const version = argument("version") || process.env.STOCK_PET_VERSION || "0.1.4";
 const inputs = [
   ["windows", argument("windows")],
   ["macos", argument("macos")],
