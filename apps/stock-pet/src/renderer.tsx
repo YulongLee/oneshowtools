@@ -22,6 +22,10 @@ import {
 import "./renderer.css";
 
 const rendererMode = new URLSearchParams(window.location.search).get("mode") === "control" ? "control" : "pet";
+const initialControlPanel = (() => {
+  const value = new URLSearchParams(window.location.search).get("panel");
+  return value === "chart" || value === "alerts" || value === "actions" || value === "settings" ? value : "watch";
+})();
 
 type MarketState =
   | "LOADING"
@@ -196,7 +200,7 @@ function App() {
     [quotes, setQuotes] = useState<Quote[]>([]),
     [alerts, setAlerts] = useState<Alert[]>([]);
   const [selected, setSelected] = useState(0),
-    [panel, setPanel] = useState<"watch" | "chart" | "alerts" | "actions" | "settings">("watch");
+    [panel, setPanel] = useState<"watch" | "chart" | "alerts" | "actions" | "settings">(initialControlPanel);
   const [actions, setActions] = useState<ActionPreferences>(defaultActions);
   const [customAssets, setCustomAssets] = useState<Record<string, string>>({});
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1m");
@@ -525,31 +529,108 @@ function QuoteSparkline({ values, negative }: { values: number[]; negative: bool
   return <svg className={`quote-sparkline ${negative ? "negative" : ""}`} viewBox="0 0 100 32" preserveAspectRatio="none" aria-label="分时趋势"><polyline points={points} /></svg>;
 }
 
+function formatChartPrice(value: number) {
+  const digits = Math.abs(value) < 1 ? 4 : 2;
+  return value.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+function formatChartTime(value: string, compact = false) {
+  const raw = String(value || "").trim();
+  if (!raw) return "--";
+  const dateTime = raw.match(/^(\d{4})[-/]?(\d{2})[-/]?(\d{2})[ T]?(\d{2})?:?(\d{2})?/);
+  if (dateTime) {
+    const [, year, month, day, hour, minute] = dateTime;
+    if (hour && minute) return compact ? `${hour}:${minute}` : `${month}-${day} ${hour}:${minute}`;
+    return `${year}-${month}-${day}`;
+  }
+  const clock = raw.match(/^(\d{2}):?(\d{2})$/);
+  return clock ? `${clock[1]}:${clock[2]}` : raw;
+}
+
+function formatChartVolume(value?: number) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return "--";
+  if (amount >= 100_000_000) return `${(amount / 100_000_000).toFixed(2)}亿`;
+  if (amount >= 10_000) return `${(amount / 10_000).toFixed(1)}万`;
+  return amount.toLocaleString("zh-CN");
+}
+
 function MarketChartPanel({ quote, range, setRange, items, busy, message }: {
   quote: Quote | null; range: HistoryRange; setRange: (value: HistoryRange) => void;
   items: HistoryPoint[]; busy: boolean; message: string;
 }) {
-  const prices = items.map((item) => Number(item.close)).filter(Number.isFinite);
-  const min = prices.length ? Math.min(...prices) : 0;
-  const max = prices.length ? Math.max(...prices) : 0;
-  const spread = Math.max(max - min, Math.abs(max || 1) * .002);
-  const points = prices.map((value, index) => `${12 + (index / Math.max(prices.length - 1, 1)) * 576},${176 - ((value - min) / spread) * 142}`).join(" ");
-  const area = points ? `12,190 ${points} 588,190` : "";
-  const latest = items.at(-1);
-  const first = items[0];
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const chartItems = items.filter((item) => Number.isFinite(Number(item.close)));
+  const prices = chartItems.map((item) => Number(item.close));
+  const rawMin = prices.length ? Math.min(...prices) : 0;
+  const rawMax = prices.length ? Math.max(...prices) : 0;
+  const rawSpread = Math.max(rawMax - rawMin, Math.abs(rawMax || 1) * .002);
+  const padding = rawSpread * .12;
+  const min = rawMin - padding;
+  const max = rawMax + padding;
+  const spread = Math.max(max - min, .0001);
+  const width = 720, height = 270, left = 66, right = 650, top = 18, bottom = 218;
+  const xFor = (index: number) => left + (index / Math.max(chartItems.length - 1, 1)) * (right - left);
+  const yFor = (value: number) => bottom - ((value - min) / spread) * (bottom - top);
+  const points = chartItems.map((item, index) => `${xFor(index)},${yFor(Number(item.close))}`).join(" ");
+  const area = points ? `${left},${bottom} ${points} ${right},${bottom}` : "";
+  const latest = chartItems.at(-1);
+  const first = chartItems[0];
   const positive = Number(latest?.close || 0) >= Number(first?.close || 0);
+  const intervalChange = first?.close ? ((Number(latest?.close || 0) - Number(first.close)) / Number(first.close)) * 100 : 0;
+  const yTicks = Array.from({ length: 5 }, (_, index) => max - (spread * index) / 4);
+  const xTickIndexes = Array.from(new Set([0, .25, .5, .75, 1].map((ratio) => Math.round((chartItems.length - 1) * ratio))));
+  const hovered = hoverIndex === null ? null : chartItems[hoverIndex];
+  const hoveredX = hoverIndex === null ? 0 : xFor(hoverIndex);
+  const hoveredY = hovered ? yFor(Number(hovered.close)) : 0;
+  const tooltipX = Math.min(Math.max(hoveredX + 12, left + 4), right - 142);
+  const tooltipY = Math.min(Math.max(hoveredY - 88, top + 4), bottom - 86);
+  const latestY = latest ? yFor(Number(latest.close)) : 0;
+  const onChartMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const svgX = ((event.clientX - bounds.left) / bounds.width) * width;
+    const ratio = Math.min(1, Math.max(0, (svgX - left) / (right - left)));
+    setHoverIndex(Math.round(ratio * Math.max(chartItems.length - 1, 0)));
+  };
   return <div className="market-chart-panel">
     <header><div><h2>{quote?.name || quote?.symbol || "行情走势"}</h2><p>{quote?.symbol} · {quote?.sourceLabel || "行情数据"}</p></div><div className="range-tabs">{([['1d','日内'],['1m','1月'],['3m','3月'],['1y','1年']] as const).map(([value,label]) => <button key={value} className={range === value ? "active" : ""} onClick={() => setRange(value)}>{label}</button>)}</div></header>
-    {busy ? <div className="chart-state">正在加载历史行情…</div> : message ? <div className="chart-state error">{message}</div> : items.length < 2 ? <div className="chart-state">该市场暂时没有可展示的历史数据</div> : <>
-      <div className={`price-overview ${positive ? "positive" : "negative"}`}><strong>{latest?.close.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}</strong><span>区间最高 {max.toFixed(2)}</span><span>区间最低 {min.toFixed(2)}</span></div>
-      <svg className={`history-chart ${positive ? "positive" : "negative"}`} viewBox="0 0 600 210" role="img" aria-label={`${range} 价格走势`}>
-        <defs><linearGradient id="chartArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopOpacity=".28"/><stop offset="1" stopOpacity="0"/></linearGradient></defs>
-        {[45,90,135,180].map((y) => <line key={y} x1="12" y1={y} x2="588" y2={y} className="chart-grid" />)}
+    {busy ? <div className="chart-state">正在加载历史行情…</div> : message ? <div className="chart-state error">{message}</div> : chartItems.length < 2 ? <div className="chart-state">该市场暂时没有可展示的历史数据</div> : <>
+      <div className={`price-overview ${positive ? "positive" : "negative"}`}>
+        <strong>{formatChartPrice(Number(latest?.close || 0))}</strong>
+        <b>{intervalChange >= 0 ? "+" : ""}{intervalChange.toFixed(2)}%</b>
+        <span>最高 {formatChartPrice(rawMax)}</span><span>最低 {formatChartPrice(rawMin)}</span>
+      </div>
+      <svg className={`history-chart ${positive ? "positive" : "negative"}`} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${range} 价格走势`} onMouseMove={onChartMove} onMouseLeave={() => setHoverIndex(null)}>
+        <defs><linearGradient id="stockPetChartArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopOpacity=".28"/><stop offset="1" stopOpacity=".015"/></linearGradient></defs>
+        <line x1={left} y1={top} x2={left} y2={bottom} className="chart-axis-line" />
+        <line x1={left} y1={bottom} x2={right} y2={bottom} className="chart-axis-line" />
+        {yTicks.map((value) => {
+          const y = yFor(value);
+          return <g key={value}><line x1={left} y1={y} x2={right} y2={y} className="chart-grid"/><text x={left - 10} y={y + 4} textAnchor="end" className="chart-y-label">{formatChartPrice(value)}</text></g>;
+        })}
+        {xTickIndexes.map((index) => {
+          const x = xFor(index);
+          return <g key={index}><line x1={x} y1={top} x2={x} y2={bottom} className="chart-grid vertical"/><text x={x} y={bottom + 24} textAnchor={index === 0 ? "start" : index === chartItems.length - 1 ? "end" : "middle"} className="chart-x-label">{formatChartTime(chartItems[index]?.time || "", range === "1d")}</text></g>;
+        })}
         <polygon points={area} className="chart-area"/><polyline points={points} className="chart-line" />
+        <line x1={left} y1={latestY} x2={right} y2={latestY} className="chart-latest-guide"/>
+        <circle cx={right} cy={latestY} r="3.6" className="chart-latest-dot"/>
+        <rect x={right + 5} y={latestY - 11} width="62" height="22" rx="6" className="chart-latest-tag"/>
+        <text x={right + 36} y={latestY + 4} textAnchor="middle" className="chart-latest-text">{formatChartPrice(Number(latest?.close || 0))}</text>
+        {hovered && <g className="chart-hover">
+          <line x1={hoveredX} y1={top} x2={hoveredX} y2={bottom} className="chart-hover-line"/>
+          <line x1={left} y1={hoveredY} x2={right} y2={hoveredY} className="chart-hover-line horizontal"/>
+          <circle cx={hoveredX} cy={hoveredY} r="5" className="chart-hover-dot"/>
+          <rect x={tooltipX} y={tooltipY} width="138" height="78" rx="8" className="chart-tooltip"/>
+          <text x={tooltipX + 10} y={tooltipY + 17} className="chart-tooltip-title">{formatChartTime(hovered.time)}</text>
+          <text x={tooltipX + 10} y={tooltipY + 35} className="chart-tooltip-label">开 {formatChartPrice(Number(hovered.open))}　高 {formatChartPrice(Number(hovered.high))}</text>
+          <text x={tooltipX + 10} y={tooltipY + 52} className="chart-tooltip-label">低 {formatChartPrice(Number(hovered.low))}　收 {formatChartPrice(Number(hovered.close))}</text>
+          <text x={tooltipX + 10} y={tooltipY + 69} className="chart-tooltip-label">成交量 {formatChartVolume(hovered.volume)}</text>
+        </g>}
+        <rect x={left} y={top} width={right - left} height={bottom - top} className="chart-hit-area"/>
       </svg>
-      <div className="chart-axis"><span>{items[0]?.time}</span><span>{items[Math.floor(items.length / 2)]?.time}</span><span>{latest?.time}</span></div>
     </>}
-    <small className="chart-note">历史行情可能存在延迟，仅供信息展示，不构成投资建议。</small>
+    <small className="chart-note">数据源：{quote?.sourceLabel || "行情数据"} · 价格与成交数据可能存在延迟，仅供信息展示，不构成投资建议。</small>
   </div>;
 }
 

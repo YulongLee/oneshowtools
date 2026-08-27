@@ -184,9 +184,11 @@ async function api(pathname: string, options: { method?: string; body?: unknown;
   return payload;
 }
 
-function loadRenderer(target: BrowserWindow, mode: "pet" | "control") {
-  if (process.env.VITE_DEV_SERVER_URL) target.loadURL(`${process.env.VITE_DEV_SERVER_URL}?mode=${mode}`);
-  else target.loadFile(join(__dirname, "../dist/index.html"), { query: { mode } });
+function loadRenderer(target: BrowserWindow, mode: "pet" | "control", panel?: string) {
+  const query = new URLSearchParams({ mode });
+  if (panel) query.set("panel", panel);
+  if (process.env.VITE_DEV_SERVER_URL) target.loadURL(`${process.env.VITE_DEV_SERVER_URL}?${query.toString()}`);
+  else target.loadFile(join(__dirname, "../dist/index.html"), { query: Object.fromEntries(query) });
 }
 
 function createPetWindow() {
@@ -227,7 +229,7 @@ function openControlWindow(panel = "watch") {
   controlWindow.setMenuBarVisibility(false);
   controlWindow.once("ready-to-show", () => { controlWindow?.show(); controlWindow?.focus(); });
   controlWindow.on("closed", () => { controlWindow = null; });
-  loadRenderer(controlWindow, "control");
+  loadRenderer(controlWindow, "control", panel);
   controlWindow.webContents.once("did-finish-load", () => controlWindow?.webContents.send("pet:quick-action", panel));
 }
 
@@ -239,7 +241,8 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(customAssetPath(state)).href);
   });
   createPetWindow();
-  if (process.env.STOCK_PET_OPEN_CONTROL === "1") openControlWindow("watch");
+  if (process.env.STOCK_PET_OPEN_CONTROL === "1")
+    openControlWindow(process.env.STOCK_PET_OPEN_CONTROL_PANEL || "watch");
   tray = new Tray(nativeImage.createFromPath(join(__dirname, "../dist/niu-lai-le-mascot.png")).resize({ width: 18, height: 18 }));
   tray.setToolTip("牛来了");
   tray.setContextMenu(Menu.buildFromTemplate([

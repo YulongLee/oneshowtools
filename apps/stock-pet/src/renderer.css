@@ -581,17 +581,31 @@ body,
 .range-tabs { display: flex; padding: 3px; border-radius: 10px; background: #f2f4f9; }
 .range-tabs button { border: 0; background: transparent; color: #68738e; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
 .range-tabs button.active { background: #fff; color: #574ae2; box-shadow: 0 4px 12px rgba(51,57,108,.1); font-weight: 800; }
-.price-overview { display: flex; align-items: baseline; gap: 18px; margin-top: 16px; color: #e24d54; }
+.price-overview { display: flex; align-items: baseline; gap: 13px; margin-top: 16px; color: #e24d54; }
 .price-overview.negative { color: #16a36a; }
 .price-overview strong { font-size: 26px; }
+.price-overview b { padding: 3px 7px; border-radius: 7px; background: color-mix(in srgb, currentColor 9%, transparent); font-size: 12px; }
 .price-overview span { color: #79849d; font-size: 11px; }
-.history-chart { width: 100%; height: 220px; margin-top: 5px; overflow: visible; color: #e24d54; }
+.history-chart { width: 100%; height: 270px; margin-top: 2px; overflow: visible; color: #e24d54; cursor: crosshair; }
 .history-chart.negative { color: #16a36a; }
-.chart-grid { stroke: #edf0f7; stroke-width: 1; }
+.chart-axis-line { stroke: #dce2ed; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-grid { stroke: #e8ecf4; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-grid.vertical { stroke-dasharray: 3 5; opacity: .6; }
+.chart-y-label, .chart-x-label { fill: #7f899e; font-size: 9px; font-variant-numeric: tabular-nums; }
 .chart-line { fill: none; stroke: currentColor; stroke-width: 2.4; vector-effect: non-scaling-stroke; }
-.chart-area { fill: url(#chartArea); color: inherit; stroke: none; }
+.chart-area { fill: url(#stockPetChartArea); color: inherit; stroke: none; }
 .history-chart stop { stop-color: currentColor; }
-.chart-axis { display: flex; justify-content: space-between; color: #929bad; font-size: 9px; margin-top: -12px; }
+.chart-latest-guide { stroke: currentColor; stroke-width: 1; stroke-dasharray: 4 4; opacity: .58; vector-effect: non-scaling-stroke; }
+.chart-latest-dot { fill: #fff; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart-latest-tag { fill: currentColor; }
+.chart-latest-text { fill: #fff; font-size: 9px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.chart-hover-line { stroke: #65718b; stroke-width: 1; stroke-dasharray: 3 3; opacity: .55; vector-effect: non-scaling-stroke; pointer-events: none; }
+.chart-hover-line.horizontal { opacity: .3; }
+.chart-hover-dot { fill: #fff; stroke: currentColor; stroke-width: 2.4; vector-effect: non-scaling-stroke; pointer-events: none; }
+.chart-tooltip { fill: rgba(25,31,49,.94); stroke: rgba(255,255,255,.14); stroke-width: 1; filter: drop-shadow(0 5px 12px rgba(24,30,55,.2)); pointer-events: none; }
+.chart-tooltip-title { fill: #fff; font-size: 9px; font-weight: 800; pointer-events: none; }
+.chart-tooltip-label { fill: #d9dfeb; font-size: 8.5px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.chart-hit-area { fill: transparent; pointer-events: all; }
 .chart-state { min-height: 240px; display: grid; place-items: center; color: #7d879d; }
 .chart-state.error { color: #d6535d; }
 .chart-note { display: block; margin-top: 12px; color: #929bad; }
