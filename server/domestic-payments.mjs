@@ -204,16 +204,65 @@ function newOrderId() {
   return `OST${Date.now().toString(36).toUpperCase()}${randomBytes(7).toString("hex").toUpperCase()}`.slice(0, 32);
 }
 
+function shanghaiPeriod(timestamp = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit",
+  }).formatToParts(new Date(timestamp));
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const year = Number(value.year);
+  const month = Number(value.month);
+  return {
+    key: `${value.year}-${value.month}`,
+    start: Date.UTC(year, month - 1, 1) - 8 * 3600000,
+    end: Date.UTC(year, month, 1) - 8 * 3600000,
+  };
+}
+
+export function assertMembershipPurchaseAllowed(userId, timestamp = Date.now()) {
+  const active = db.prepare(`
+    SELECT 1 AS active FROM subscriptions
+    WHERE user_id=? AND status IN ('active','trialing')
+      AND (current_period_end IS NULL OR current_period_end>?) LIMIT 1
+  `).get(userId, timestamp) || db.prepare(`
+    SELECT 1 AS active FROM user_membership_overrides
+    WHERE user_id=? AND status='active' AND (expires_at IS NULL OR expires_at>?) LIMIT 1
+  `).get(userId, timestamp);
+  if (active) throw paymentError("MEMBERSHIP_ALREADY_ACTIVE", 409);
+  const period = shanghaiPeriod(timestamp);
+  const purchased = db.prepare(`
+    SELECT 1 AS purchased FROM commercial_orders
+    WHERE user_id=? AND kind='membership' AND status='paid'
+      AND updated_at>=? AND updated_at<? LIMIT 1
+  `).get(userId, period.start, period.end);
+  if (purchased) throw paymentError("MEMBERSHIP_ALREADY_PURCHASED_THIS_MONTH", 409);
+  const pending = db.prepare(`
+    SELECT 1 AS pending FROM commercial_orders
+    WHERE user_id=? AND kind='membership' AND status='pending'
+      AND created_at>? LIMIT 1
+  `).get(userId, timestamp - 900000);
+  if (pending) throw paymentError("MEMBERSHIP_ORDER_PENDING", 409);
+  return period;
+}
+
 function createOrder(userId, plan, provider) {
   const offer = billingPlanPayload(plan);
   const id = newOrderId();
   const timestamp = Date.now();
-  db.prepare(`INSERT INTO commercial_orders
-    (id,user_id,kind,status,amount_minor,currency,provider,idempotency_key,metadata_json,created_at,updated_at)
-    VALUES (?,?,?,'pending',?,?,?,?,?,?,?)`).run(
-    id, userId, plan.interval === "month" ? "membership" : "topup", plan.amount_minor,
-    plan.currency, provider, randomUUID(), JSON.stringify({ planId: plan.id, credits: offer.totalCredits }), timestamp, timestamp,
-  );
+  const kind = plan.interval === "month" ? "membership" : "topup";
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const period = kind === "membership" ? assertMembershipPurchaseAllowed(userId, timestamp) : null;
+    db.prepare(`INSERT INTO commercial_orders
+      (id,user_id,kind,status,amount_minor,currency,provider,idempotency_key,metadata_json,created_at,updated_at)
+      VALUES (?,?,?,'pending',?,?,?,?,?,?,?)`).run(
+      id, userId, kind, plan.amount_minor, plan.currency, provider, randomUUID(),
+      JSON.stringify({ planId: plan.id, credits: offer.totalCredits, membershipPeriod: period?.key || null }), timestamp, timestamp,
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   return { id, offer };
 }
 
@@ -252,18 +301,18 @@ export async function createDomesticCheckout({ provider, user, plan, appUrl, fet
       body: requestBody,
     });
   } catch {
-    db.prepare("UPDATE commercial_orders SET status='failed', updated_at=? WHERE id=?").run(Date.now(), order.id);
+    db.prepare("UPDATE commercial_orders SET status='failed', fulfillment_status='failed', failure_code='WECHAT_PAY_NETWORK_FAILED', updated_at=? WHERE id=?").run(Date.now(), order.id);
     throw paymentError("WECHAT_PAY_NETWORK_FAILED", 502);
   }
   const rawResponse = await response.text();
   if (!verifyWechatResponse(response, rawResponse, credentials)) {
-    db.prepare("UPDATE commercial_orders SET status='failed', updated_at=? WHERE id=?").run(Date.now(), order.id);
+    db.prepare("UPDATE commercial_orders SET status='failed', fulfillment_status='failed', failure_code='WECHAT_PAY_RESPONSE_SIGNATURE_INVALID', updated_at=? WHERE id=?").run(Date.now(), order.id);
     throw paymentError("WECHAT_PAY_RESPONSE_SIGNATURE_INVALID", 502);
   }
   let result = {};
   try { result = JSON.parse(rawResponse); } catch { /* handled as a provider failure below */ }
   if (!response.ok || !result.code_url) {
-    db.prepare("UPDATE commercial_orders SET status='failed', updated_at=? WHERE id=?").run(Date.now(), order.id);
+    db.prepare("UPDATE commercial_orders SET status='failed', fulfillment_status='failed', failure_code='WECHAT_PAY_ORDER_FAILED', updated_at=? WHERE id=?").run(Date.now(), order.id);
     throw paymentError("WECHAT_PAY_ORDER_FAILED", 502);
   }
   db.prepare("UPDATE commercial_orders SET provider_object_id=?, updated_at=? WHERE id=?").run(result.code_url, Date.now(), order.id);
@@ -286,7 +335,26 @@ function settlePaidOrder({ provider, orderId, providerTransactionId, amountMinor
       (id,order_id,provider,provider_event_id,event_type,status,payload_hash,occurred_at,created_at)
       VALUES (?,?,?,?,?,'processed',?,?,?)`).run(randomUUID(), order.id, provider, eventId, "payment.succeeded", payloadHash, occurredAt, timestamp);
     if (!eventInsert.changes) { db.exec("ROLLBACK"); return { duplicate: true, orderId }; }
-    db.prepare("UPDATE commercial_orders SET status='paid',provider_object_id=?,updated_at=? WHERE id=?").run(providerTransactionId, timestamp, order.id);
+    if (plan.interval === "month") {
+      const periodKey = metadata.membershipPeriod || shanghaiPeriod(timestamp).key;
+      const periodInsert = db.prepare(`INSERT OR IGNORE INTO membership_purchase_periods
+        (user_id,period_key,order_id,plan_id,provider,created_at) VALUES (?,?,?,?,?,?)`)
+        .run(order.user_id, periodKey, order.id, plan.id, provider, timestamp);
+      if (!periodInsert.changes) {
+        const owner = db.prepare("SELECT order_id AS orderId FROM membership_purchase_periods WHERE user_id=? AND period_key=?").get(order.user_id, periodKey);
+        if (owner?.orderId !== order.id) {
+          db.prepare("UPDATE commercial_orders SET status='paid',provider_object_id=?,fulfillment_status='review_required',failure_code='MEMBERSHIP_PERIOD_DUPLICATE',updated_at=? WHERE id=?")
+            .run(providerTransactionId, timestamp, order.id);
+          db.prepare(`INSERT INTO operational_alerts
+            (id,severity,kind,title,target_type,target_id,status,correlation_id,details_json,created_at)
+            VALUES (?,'critical','payment_fulfillment','重复会员付款需要退款审核','commercial_order',?,'open',?,?,?)`)
+            .run(randomUUID(), order.id, eventId, JSON.stringify({ existingOrderId: owner?.orderId, periodKey, userId: order.user_id }), timestamp);
+          db.exec("COMMIT");
+          return { duplicate: false, orderId, reviewRequired: true };
+        }
+      }
+    }
+    db.prepare("UPDATE commercial_orders SET status='paid',provider_object_id=?,fulfillment_status='fulfilled',failure_code=NULL,updated_at=? WHERE id=?").run(providerTransactionId, timestamp, order.id);
     const credits = Number(metadata.credits || 0);
     if (credits > 0) db.prepare(`INSERT OR IGNORE INTO credit_ledger
       (id,user_id,type,amount,description_zh,description_en,reference_type,reference_id,created_at)
@@ -294,7 +362,8 @@ function settlePaidOrder({ provider, orderId, providerTransactionId, amountMinor
     if (plan.interval === "month") db.prepare(`INSERT INTO subscriptions
       (id,user_id,plan_id,provider,provider_subscription_id,status,current_period_end,cancel_at_period_end,created_at,updated_at)
       VALUES (?,?,?,?,?,'active',?,1,?,?)
-      ON CONFLICT(provider,provider_subscription_id) DO UPDATE SET status='active',current_period_end=excluded.current_period_end,updated_at=excluded.updated_at`)
+      ON CONFLICT(id) DO UPDATE SET status='active',plan_id=excluded.plan_id,
+        current_period_end=excluded.current_period_end,cancel_at_period_end=1,updated_at=excluded.updated_at`)
       .run(`${provider}:${order.id}`, order.user_id, plan.id, provider, order.id, timestamp + 30 * 86400000, timestamp, timestamp);
     db.prepare(`INSERT OR IGNORE INTO invoices
       (id,user_id,provider,provider_invoice_id,status,amount_paid,currency,hosted_url,created_at)
@@ -353,12 +422,55 @@ export async function handleWechatNotification(request) {
   return { accepted: true };
 }
 
-export function domesticOrderStatus(orderId, userId) {
-  let order = db.prepare("SELECT id,status,provider,amount_minor AS amountMinor,currency,created_at AS createdAt,updated_at AS updatedAt FROM commercial_orders WHERE id=? AND user_id=?").get(text(orderId), userId);
-  if (!order) throw paymentError("PAYMENT_ORDER_NOT_FOUND", 404);
-  if (order.status === "pending" && Date.now() - order.createdAt > 900000) {
-    db.prepare("UPDATE commercial_orders SET status='expired',updated_at=? WHERE id=? AND status='pending'").run(Date.now(), order.id);
-    order = { ...order, status: "expired", updatedAt: Date.now() };
+async function queryWechatOrder(order, fetchImpl = fetch) {
+  const config = rawConfiguration("wechat_pay");
+  if (!config) return null;
+  const credentials = credentialsFor(config);
+  validateCredentials("wechat_pay", credentials);
+  const requestTarget = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}?mchid=${encodeURIComponent(config.merchant_id)}`;
+  const response = await fetchImpl(`${config.gateway_url}${requestTarget}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json", "Accept-Language": "zh-CN",
+      Authorization: wechatAuthorization({ method: "GET", pathname: requestTarget, body: "", mchId: config.merchant_id, serialNo: credentials.merchantSerialNo, privateKey: credentials.merchantPrivateKey }),
+    },
+  });
+  const rawResponse = await response.text();
+  if (!verifyWechatResponse(response, rawResponse, credentials)) throw paymentError("WECHAT_PAY_RESPONSE_SIGNATURE_INVALID", 502);
+  let result = {};
+  try { result = JSON.parse(rawResponse); } catch { throw paymentError("WECHAT_PAY_QUERY_INVALID", 502); }
+  if (!response.ok) throw paymentError("WECHAT_PAY_QUERY_FAILED", 502);
+  if (result.appid !== config.app_id || result.mchid !== config.merchant_id || result.out_trade_no !== order.id) {
+    throw paymentError("PAYMENT_MERCHANT_MISMATCH", 400);
   }
-  return order;
+  if (result.trade_state === "SUCCESS") {
+    settlePaidOrder({
+      provider: "wechat_pay", orderId: order.id, providerTransactionId: result.transaction_id,
+      amountMinor: result.amount?.total, currency: result.amount?.currency || "CNY",
+      eventId: `query:${result.transaction_id}`, occurredAt: Date.parse(result.success_time) || Date.now(),
+    });
+  } else if (["CLOSED", "REVOKED", "PAYERROR"].includes(result.trade_state)) {
+    db.prepare("UPDATE commercial_orders SET status='failed',fulfillment_status='failed',failure_code=?,updated_at=? WHERE id=? AND status='pending'")
+      .run(`WECHAT_${result.trade_state}`, Date.now(), order.id);
+  }
+  return result.trade_state || null;
+}
+
+export async function domesticOrderStatus(orderId, userId, { fetchImpl = fetch } = {}) {
+  let order = db.prepare(`SELECT id,status,provider,amount_minor AS amountMinor,currency,
+    fulfillment_status AS fulfillmentStatus,failure_code AS failureCode,
+    provider_checked_at AS providerCheckedAt,created_at AS createdAt,updated_at AS updatedAt
+    FROM commercial_orders WHERE id=? AND user_id=?`).get(text(orderId), userId);
+  if (!order) throw paymentError("PAYMENT_ORDER_NOT_FOUND", 404);
+  const timestamp = Date.now();
+  const age = timestamp - order.createdAt;
+  if (order.status === "pending" && age > 900000) {
+    db.prepare("UPDATE commercial_orders SET status='expired',fulfillment_status='expired',failure_code='PAYMENT_EXPIRED',updated_at=? WHERE id=? AND status='pending'").run(timestamp, order.id);
+  } else if (order.status === "pending" && order.provider === "wechat_pay" && age >= 4000 && timestamp - Number(order.providerCheckedAt || 0) >= 5000) {
+    db.prepare("UPDATE commercial_orders SET provider_checked_at=? WHERE id=? AND status='pending'").run(timestamp, order.id);
+    try { await queryWechatOrder(order, fetchImpl); } catch { /* callbacks remain authoritative; polling retries later */ }
+  }
+  return db.prepare(`SELECT id,status,provider,amount_minor AS amountMinor,currency,
+    fulfillment_status AS fulfillmentStatus,failure_code AS failureCode,
+    created_at AS createdAt,updated_at AS updatedAt FROM commercial_orders WHERE id=? AND user_id=?`).get(order.id, userId);
 }

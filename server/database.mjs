@@ -363,11 +363,18 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0029_favorites_library.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0030_workspace_projects_and_preferences.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0031_stock_market_provider.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0032_commercial_payment_lifecycle.sql"), "utf8"));
   const taskColumns = new Set(db.prepare("PRAGMA table_info(tasks)").all().map((item) => item.name));
   if (!taskColumns.has("deleted_at")) db.exec("ALTER TABLE tasks ADD COLUMN deleted_at INTEGER");
   db.exec("CREATE INDEX IF NOT EXISTS tasks_user_visible_created_idx ON tasks(user_id, deleted_at, created_at DESC)");
   const planColumns = new Set(db.prepare("PRAGMA table_info(plans)").all().map((item) => item.name));
   if (!planColumns.has("file_limit")) db.exec("ALTER TABLE plans ADD COLUMN file_limit INTEGER NOT NULL DEFAULT 100");
+  const subscriptionColumns = new Set(db.prepare("PRAGMA table_info(subscriptions)").all().map((item) => item.name));
+  if (!subscriptionColumns.has("cancel_at_period_end")) db.exec("ALTER TABLE subscriptions ADD COLUMN cancel_at_period_end INTEGER NOT NULL DEFAULT 0");
+  const commercialOrderColumns = new Set(db.prepare("PRAGMA table_info(commercial_orders)").all().map((item) => item.name));
+  if (!commercialOrderColumns.has("provider_checked_at")) db.exec("ALTER TABLE commercial_orders ADD COLUMN provider_checked_at INTEGER");
+  if (!commercialOrderColumns.has("fulfillment_status")) db.exec("ALTER TABLE commercial_orders ADD COLUMN fulfillment_status TEXT NOT NULL DEFAULT 'pending'");
+  if (!commercialOrderColumns.has("failure_code")) db.exec("ALTER TABLE commercial_orders ADD COLUMN failure_code TEXT");
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_membership_overrides (
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

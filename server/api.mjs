@@ -63,6 +63,7 @@ import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import { billingPlanPayload } from "./billing-catalog.mjs";
 import {
   activePaymentProviders,
+  assertMembershipPurchaseAllowed,
   createDomesticCheckout,
   domesticOrderStatus,
   handleAlipayNotification,
@@ -1942,6 +1943,13 @@ async function billingCheckout(request, user) {
     return fail("BILLING_NOT_CONFIGURED", 503);
   const offer = billingPlanPayload(plan);
   const subscription = plan.interval === "month";
+  if (subscription) {
+    try {
+      assertMembershipPurchaseAllowed(user.id);
+    } catch (error) {
+      return fail(error.code || "MEMBERSHIP_PURCHASE_NOT_ALLOWED", error.status || 409);
+    }
+  }
   const Stripe = (await import("stripe")).default;
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const appUrl = process.env.APP_URL || new URL(request.url).origin;
@@ -3333,7 +3341,7 @@ export async function handleApi(request) {
   if (billingOrderMatch && request.method === "GET") {
     try {
       return json({
-        order: domesticOrderStatus(
+        order: await domesticOrderStatus(
           decodeURIComponent(billingOrderMatch[1]),
           user.id,
         ),

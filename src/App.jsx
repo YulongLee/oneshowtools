@@ -1682,6 +1682,7 @@ function Billing({ plans, status, credits, user, tasks = [], locale, onCheckout,
   const [showLedger, setShowLedger] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [qrPayment, setQrPayment] = useState(null);
+  const [qrPaymentState, setQrPaymentState] = useState("pending");
   const [paymentNotice, setPaymentNotice] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   useEffect(() => {
@@ -1689,8 +1690,9 @@ function Billing({ plans, status, credits, user, tasks = [], locale, onCheckout,
     const timer = setInterval(async () => {
       try {
         const result = await api(`/api/billing/orders/${encodeURIComponent(qrPayment.orderId)}`);
-        if (result.order?.status === "paid") location.assign("/?view=plans&billing=success");
-        if (["failed", "cancelled", "expired"].includes(result.order?.status)) setQrPayment(null);
+        if (result.order?.status === "paid" && result.order?.fulfillmentStatus === "fulfilled") location.assign("/?view=plans&billing=success");
+        if (result.order?.fulfillmentStatus === "review_required") setQrPaymentState("review_required");
+        else if (["failed", "cancelled", "expired"].includes(result.order?.status)) setQrPaymentState(result.order.status);
       } catch { /* transient polling errors do not alter payment state */ }
     }, 2500);
     return () => clearInterval(timer);
@@ -1726,7 +1728,7 @@ function Billing({ plans, status, credits, user, tasks = [], locale, onCheckout,
     try {
       const result = await onCheckout(plan.id, provider);
       setSelectedPlan(null);
-      if (result?.presentation === "qr") setQrPayment({ ...result, plan });
+      if (result?.presentation === "qr") { setQrPaymentState("pending"); setQrPayment({ ...result, plan }); }
     } finally { setCheckoutBusy(false); }
   };
   const openCheckout = (plan) => {
@@ -1767,7 +1769,7 @@ function Billing({ plans, status, credits, user, tasks = [], locale, onCheckout,
   </main><aside className="billing-side"><article className="billing-account surface"><h2>{billingCopy.account}</h2><span className="credits-avatar">{user?.name?.slice(0,1).toUpperCase() || "U"}</span><h3>{user?.name}</h3><p>{user?.email}</p><strong><Crown size={15} weight="fill" />{currentPlan}</strong><button onClick={() => onNavigate?.("settings")}>{billingCopy.accountSettings}</button>{status.subscription?.provider === "stripe" ? <button className="billing-account-manage" onClick={onPortal}>{billingCopy.manage}</button> : null}</article><article className="billing-side-topup"><div><h2>{billingCopy.needMore}</h2><p>{billingCopy.needMoreBody}</p><button onClick={() => selectBillingMode("topup")}>{copy.topup}</button></div><img src="/credits/credits-wallet.webp" alt="" aria-hidden="true" /></article><article className="billing-reasons surface"><h2>{billingCopy.reasons}</h2>{[[ArrowsClockwise,billingCopy.durable,billingCopy.durableSub],[ShieldCheck,billingCopy.secure,billingCopy.secureSub],[ChartLineUp,billingCopy.value,billingCopy.valueSub]].map(([Icon,title,body]) => <div key={title}><span><Icon size={16} weight="duotone" /></span><p><strong>{title}</strong><small>{body}</small></p></div>)}</article><article className="billing-recent surface"><header><h2>{billingCopy.recent}</h2><button onClick={() => setShowLedger(true)}>{billingCopy.details}<ArrowRight size={13} /></button></header>{recentSpend.length ? recentSpend.map((entry) => <div key={entry.id}><p><strong>{isEn ? entry.descriptionEn : entry.descriptionZh}</strong><small>{formatDate(entry.createdAt,locale)}</small></p><em>{entry.amount.toLocaleString()}</em></div>) : <p className="account-empty">{billingCopy.noSpend}</p>}</article></aside>
   {paymentNotice && <div className="modal-backdrop"><section className="payment-method-dialog surface" role="dialog" aria-modal="true" aria-labelledby="payment-notice-title"><button className="modal-close icon-button" aria-label={isEn ? "Close" : "关闭"} onClick={() => setPaymentNotice(false)}><X size={20} /></button><ShieldCheck size={30} weight="duotone" /><h2 id="payment-notice-title">{copy.paymentNoticeTitle || "Payment is not available yet"}</h2><p>{copy.paymentNoticeBody || copy.paymentPending}</p><button className="primary-button full" onClick={() => setPaymentNotice(false)}>{copy.paymentNoticeAction || (isEn ? "Got it" : "我知道了")}</button></section></div>}
   {selectedPlan && <div className="modal-backdrop"><section className="payment-method-dialog surface"><button className="modal-close icon-button" onClick={() => setSelectedPlan(null)}><X size={20} /></button><ShieldCheck size={30} weight="duotone" /><h2>{isEn ? "Choose payment method" : "选择支付方式"}</h2><p>{isEn ? `${isEn ? selectedPlan.nameEn : selectedPlan.nameZh} · ${price(selectedPlan)}` : `${selectedPlan.nameZh} · ${price(selectedPlan)}`}</p><div>{paymentProviders.map((provider) => <button key={provider.id} disabled={checkoutBusy} onClick={() => beginCheckout(selectedPlan, provider.id)}><CreditCard size={21} weight="duotone" /><strong>{provider.id === "alipay" ? "支付宝" : provider.id === "wechat_pay" ? "微信支付" : "银行卡"}</strong><ArrowRight size={17} /></button>)}</div><small>{isEn ? "Credits are granted only after the provider confirms payment." : "支付结果以支付平台的安全通知为准，确认后积分自动到账。"}</small></section></div>}
-  {qrPayment && <div className="modal-backdrop"><section className="payment-qr-dialog surface"><button className="modal-close icon-button" onClick={() => setQrPayment(null)}><X size={20} /></button><h2>{isEn ? "Scan with WeChat" : "微信扫码支付"}</h2><p>{qrPayment.plan?.nameZh} · {price(qrPayment.plan)}</p><img src={qrPayment.qrCode} alt={isEn ? "WeChat Pay QR code" : "微信支付二维码"} /><strong>{isEn ? "Waiting for secure payment confirmation…" : "正在等待支付平台安全确认…"}</strong><small>{isEn ? "Do not close this window until payment is confirmed." : "支付完成前请不要关闭窗口，请勿重复支付。"}</small></section></div>}
+  {qrPayment && <div className="modal-backdrop"><section className="payment-qr-dialog surface"><button className="modal-close icon-button" onClick={() => setQrPayment(null)}><X size={20} /></button><h2>{isEn ? "Scan with WeChat" : "微信扫码支付"}</h2><p>{qrPayment.plan?.nameZh} · {price(qrPayment.plan)}</p>{qrPaymentState === "pending" ? <><img src={qrPayment.qrCode} alt={isEn ? "WeChat Pay QR code" : "微信支付二维码"} /><strong>{isEn ? "Waiting for secure payment confirmation…" : "正在等待支付平台确认并自动开通…"}</strong><small>{isEn ? "The order is also checked actively if the callback is delayed. Do not pay twice." : "即使支付通知延迟，系统也会主动查询订单；请勿重复支付。"}</small></> : <><ShieldCheck size={38} weight="duotone" /><strong>{qrPaymentState === "expired" ? (isEn ? "The QR code has expired" : "支付二维码已过期") : qrPaymentState === "review_required" ? (isEn ? "Payment received and under review" : "已收到付款，订单正在审核") : (isEn ? "The payment was not completed" : "支付未完成")}</strong><small>{qrPaymentState === "review_required" ? (isEn ? "No duplicate benefit was granted. The order has been recorded for review." : "系统未重复发放权益，订单已自动记录等待处理。") : (isEn ? "Close this window and create a new order if you still want to purchase." : "请关闭窗口后重新创建订单，本次不会重复扣款。")}</small><button className="secondary-button" onClick={() => setQrPayment(null)}>{isEn ? "Close" : "关闭"}</button></>}</section></div>}
   </div>;
 }
 
@@ -2616,12 +2618,18 @@ export function App() {
       WECHAT_PAY_NETWORK_FAILED: "WeChat Pay is temporarily unreachable. No charge was recorded.",
       WECHAT_PAY_RESPONSE_SIGNATURE_INVALID: "The WeChat Pay response could not be verified. No charge was recorded.",
       PAYMENT_CREDENTIAL_DECRYPTION_FAILED: "The payment credential cannot be read. Ask an administrator to rotate it.",
+      MEMBERSHIP_ALREADY_ACTIVE: "Your membership is already active. You cannot buy the same monthly membership again.",
+      MEMBERSHIP_ALREADY_PURCHASED_THIS_MONTH: "A membership has already been purchased for this account this month.",
+      MEMBERSHIP_ORDER_PENDING: "A membership order is still awaiting payment. Complete or wait for that order before creating another.",
     } : {
       PAYMENT_PROVIDER_NOT_CONFIGURED: "该支付通道尚未启用，请选择其他支付方式。",
       WECHAT_PAY_ORDER_FAILED: "微信支付下单失败，请检查商户配置或稍后重试。",
       WECHAT_PAY_NETWORK_FAILED: "暂时无法连接微信支付，本次未扣款，请稍后重试。",
       WECHAT_PAY_RESPONSE_SIGNATURE_INVALID: "微信支付响应验签失败，本次未记账，请联系管理员检查微信支付公钥。",
       PAYMENT_CREDENTIAL_DECRYPTION_FAILED: "支付密钥读取失败，请管理员在后台重新配置密钥。",
+      MEMBERSHIP_ALREADY_ACTIVE: "当前账号的会员仍在有效期内，本月不能重复购买会员。",
+      MEMBERSHIP_ALREADY_PURCHASED_THIS_MONTH: "当前账号本月已经购买过一次会员，不能重复购买。",
+      MEMBERSHIP_ORDER_PENDING: "当前账号已有待支付的会员订单，请先完成或等待该订单过期。",
     };
     setToast(paymentErrors[error.message] || t.billingUnavailable); return null;
   } };

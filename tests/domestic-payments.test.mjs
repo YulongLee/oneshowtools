@@ -166,13 +166,91 @@ test("invalid Alipay callback signatures are rejected", async () => {
   await assert.rejects(() => handleAlipayNotification(response), (error) => error.code === "PAYMENT_WEBHOOK_SIGNATURE_INVALID");
 });
 
+test("membership payment activates the plan once and blocks another monthly purchase", async () => {
+  const member = { id: "payment-member-user" };
+  db.prepare(`INSERT INTO users
+    (id,name,email,password_hash,locale,email_verified,status,created_at,updated_at)
+    VALUES (?,?,?,'unused','zh-CN',1,'active',?,?)`).run(member.id, "Member Test", "member-payments@example.com", timestamp, timestamp);
+  const application = pair();
+  const alipay = pair();
+  savePaymentProviderConfiguration("alipay", {
+    mode: "production", appId: "2026000000000002", appPrivateKey: application.privateKey,
+    alipayPublicKey: alipay.publicKey, status: "active",
+  }, member.id);
+  const membershipPlan = db.prepare("SELECT * FROM plans WHERE id='plan_pro'").get();
+  const checkout = await createDomesticCheckout({ provider: "alipay", user: member, plan: membershipPlan, appUrl: "https://example.com" });
+  const form = signAlipayForm({
+    notify_id: "alipay-member-notify-1", app_id: "2026000000000002", trade_status: "TRADE_SUCCESS",
+    out_trade_no: checkout.orderId, trade_no: "alipay-member-transaction-1", total_amount: "39.90",
+    gmt_payment: "2026-08-20 12:00:00",
+  }, alipay.privateKey);
+  await handleAlipayNotification(new Request("https://example.com/api/billing/webhooks/alipay", {
+    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form.toString(),
+  }));
+  const subscription = db.prepare("SELECT status,cancel_at_period_end AS cancelAtPeriodEnd FROM subscriptions WHERE user_id=?").get(member.id);
+  assert.equal(subscription.status, "active");
+  assert.equal(subscription.cancelAtPeriodEnd, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM membership_purchase_periods WHERE user_id=?").get(member.id).count, 1);
+  assert.equal(db.prepare("SELECT fulfillment_status AS status FROM commercial_orders WHERE id=?").get(checkout.orderId).status, "fulfilled");
+  await assert.rejects(
+    () => createDomesticCheckout({ provider: "alipay", user: member, plan: membershipPlan, appUrl: "https://example.com" }),
+    (error) => error.code === "MEMBERSHIP_ALREADY_ACTIVE" && error.status === 409,
+  );
+});
+
+test("pending WeChat order is actively reconciled when the callback is delayed", async () => {
+  const merchant = pair();
+  const platform = pair();
+  const apiV3Key = "fedcba9876543210fedcba9876543210";
+  savePaymentProviderConfiguration("wechat_pay", {
+    mode: "production", appId: "wx-query-test", merchantId: "1900000002",
+    merchantPrivateKey: merchant.privateKey, merchantSerialNo: "MERCHANT-SERIAL-2",
+    apiV3Key, wechatpayPublicKey: platform.publicKey, wechatpayPublicKeyId: "PUB_KEY_ID_2",
+    status: "active",
+  }, user.id);
+  const signedResponse = (body) => {
+    const responseTimestamp = Math.floor(Date.now() / 1000).toString();
+    const responseNonce = randomBytes(8).toString("hex");
+    const responseSignature = cryptoSign("RSA-SHA256", Buffer.from(`${responseTimestamp}\n${responseNonce}\n${body}\n`), platform.privateKey).toString("base64");
+    return new Response(body, { status: 200, headers: {
+      "content-type": "application/json", "wechatpay-timestamp": responseTimestamp,
+      "wechatpay-nonce": responseNonce, "wechatpay-signature": responseSignature,
+      "wechatpay-serial": "PUB_KEY_ID_2",
+    } });
+  };
+  const checkout = await createDomesticCheckout({
+    provider: "wechat_pay", user, plan, appUrl: "https://example.com",
+    fetchImpl: async () => signedResponse(JSON.stringify({ code_url: "weixin://wxpay/bizpayurl?pr=query-test" })),
+  });
+  db.prepare("UPDATE commercial_orders SET created_at=? WHERE id=?").run(Date.now() - 5000, checkout.orderId);
+  const status = await domesticOrderStatus(checkout.orderId, user.id, {
+    fetchImpl: async () => signedResponse(JSON.stringify({
+      appid: "wx-query-test", mchid: "1900000002", out_trade_no: checkout.orderId,
+      transaction_id: "wechat-query-transaction-1", trade_state: "SUCCESS",
+      amount: { total: 1990, currency: "CNY" }, success_time: "2026-08-20T12:00:00+08:00",
+    })),
+  });
+  assert.equal(status.status, "paid");
+  assert.equal(status.fulfillmentStatus, "fulfilled");
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM credit_ledger WHERE reference_id=?").get(checkout.orderId).count, 1);
+});
+
 test("stale pending QR orders are exposed as expired instead of polling forever", async () => {
   const staleId = "OSTSTALEPAYMENTORDER";
   db.prepare(`INSERT INTO commercial_orders
     (id,user_id,kind,status,amount_minor,currency,provider,idempotency_key,metadata_json,created_at,updated_at)
     VALUES (?,?,'topup','pending',1990,'CNY','wechat_pay',?,'{}',?,?)`)
     .run(staleId, user.id, "stale-payment-idempotency", Date.now() - 901000, Date.now() - 901000);
-  assert.equal(domesticOrderStatus(staleId, user.id).status, "expired");
+  assert.equal((await domesticOrderStatus(staleId, user.id)).status, "expired");
+});
+
+test("payment lifecycle migration exposes required commercial columns", () => {
+  const subscriptionColumns = new Set(db.prepare("PRAGMA table_info(subscriptions)").all().map((column) => column.name));
+  const orderColumns = new Set(db.prepare("PRAGMA table_info(commercial_orders)").all().map((column) => column.name));
+  assert.equal(subscriptionColumns.has("cancel_at_period_end"), true);
+  assert.equal(orderColumns.has("fulfillment_status"), true);
+  assert.equal(orderColumns.has("failure_code"), true);
+  assert.equal(orderColumns.has("provider_checked_at"), true);
 });
 
 test.after(async () => rm(dataDirectory, { recursive: true, force: true }));
