@@ -2340,6 +2340,14 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .payment-provider-editor > header small { color: #2768eb; font-size: 8px; font-weight: 800; letter-spacing: .12em; }
 .payment-provider-editor > header h2 { margin: 5px 0 3px; color: #1c2b43; font-size: 16px; }
 .payment-provider-editor > header p { margin: 0; color: #8491a3; font-size: 8px; }
+.payment-channel-control { display: flex; align-items: center; gap: 10px; color: #708198; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.payment-channel-switch { position: relative; display: inline-flex; width: 42px; height: 24px; flex: 0 0 auto; }
+.payment-channel-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.payment-channel-switch i { width: 100%; height: 100%; border-radius: 999px; background: #d7dfeb; box-shadow: inset 0 0 0 1px #cbd5e3; cursor: pointer; transition: background .2s ease, box-shadow .2s ease; }
+.payment-channel-switch i::after { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px #72829a55; transition: transform .2s ease; }
+.payment-channel-switch input:checked + i { background: #20aa72; box-shadow: inset 0 0 0 1px #15945f; }
+.payment-channel-switch input:checked + i::after { transform: translateX(18px); }
+.payment-channel-switch input:disabled + i { opacity: .5; cursor: not-allowed; }
 .payment-provider-form { padding: 16px 18px 18px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
 .payment-provider-form label { min-width: 0; display: grid; gap: 6px; color: #66768d; font-size: 8px; font-weight: 750; }
 .payment-provider-form .wide { grid-column: 1 / -1; }

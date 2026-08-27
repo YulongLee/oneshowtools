@@ -14,7 +14,8 @@ process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64")
 const { db } = await import("../server/database.mjs");
 const {
   createDomesticCheckout, domesticOrderStatus, handleAlipayNotification, handleWechatNotification,
-  paymentProviderConfiguration, savePaymentProviderConfiguration,
+  activePaymentProviders, paymentProviderConfiguration, savePaymentProviderConfiguration,
+  setPaymentProviderEnabled,
 } = await import(`../server/domestic-payments.mjs?payments=${Date.now()}`);
 
 const pair = () => {
@@ -49,6 +50,23 @@ function encryptWechatResource(payment, apiV3Key) {
   return { algorithm: "AEAD_AES_256_GCM", ciphertext, nonce, associated_data: associatedData };
 }
 
+test("payment channels are independently disabled until configured and explicitly enabled", () => {
+  assert.equal(paymentProviderConfiguration("alipay").enabled, false);
+  assert.throws(() => setPaymentProviderEnabled("alipay", true, user.id), (error) => error.code === "PAYMENT_PROVIDER_NOT_CONFIGURED");
+  const application = pair();
+  const alipay = pair();
+  savePaymentProviderConfiguration("alipay", {
+    mode: "production", appId: "2026000000000000", appPrivateKey: application.privateKey,
+    alipayPublicKey: alipay.publicKey, status: "disabled",
+  }, user.id);
+  assert.equal(activePaymentProviders().some((item) => item.id === "alipay"), false);
+  assert.equal(setPaymentProviderEnabled("alipay", true, user.id).enabled, true);
+  assert.equal(activePaymentProviders().some((item) => item.id === "alipay"), true);
+  savePaymentProviderConfiguration("alipay", { mode: "production", appId: "2026000000000000" }, user.id);
+  assert.equal(paymentProviderConfiguration("alipay").enabled, true);
+  assert.equal(setPaymentProviderEnabled("alipay", false, user.id).enabled, false);
+});
+
 test("Alipay checkout uses RSA2 and a verified callback grants credits once", async () => {
   const application = pair();
   const alipay = pair();
@@ -76,6 +94,7 @@ test("Alipay checkout uses RSA2 and a verified callback grants credits once", as
   const callback = () => new Request("https://example.com/api/billing/webhooks/alipay", {
     method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form.toString(),
   });
+  setPaymentProviderEnabled("alipay", false, user.id);
   await handleAlipayNotification(callback());
   await handleAlipayNotification(callback());
   assert.equal(db.prepare("SELECT status FROM commercial_orders WHERE id=?").get(checkout.orderId).status, "paid");

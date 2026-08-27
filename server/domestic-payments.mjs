@@ -61,7 +61,9 @@ function normalizeConfiguration(provider, data, existing = null) {
   const mode = data.mode === "sandbox" ? "sandbox" : "production";
   const appId = text(data.appId || existing?.app_id);
   const merchantId = text(data.merchantId || existing?.merchant_id);
-  const status = data.status === "active" ? "active" : "disabled";
+  const status = data.status === undefined
+    ? (existing?.status === "active" ? "active" : "disabled")
+    : (data.status === "active" ? "active" : "disabled");
   if (!appId) throw paymentError("PAYMENT_APP_ID_REQUIRED");
   if (provider === "wechat_pay" && !merchantId) throw paymentError("WECHAT_MERCHANT_ID_REQUIRED");
   const gatewayUrl = provider === "alipay"
@@ -140,6 +142,17 @@ export function savePaymentProviderConfiguration(provider, data, actorUserId) {
   `).run(provider, normalized.mode, normalized.appId, normalized.merchantId || null,
     normalized.gatewayUrl, encrypted.ciphertext, encrypted.iv, encrypted.tag, credentialHint,
     version, normalized.status, timestamp, actorUserId || null, existing?.created_at || timestamp, timestamp);
+  return paymentProviderConfiguration(provider);
+}
+
+export function setPaymentProviderEnabled(provider, enabled, actorUserId) {
+  provider = assertProvider(provider);
+  const existing = rawConfiguration(provider);
+  if (!existing) throw paymentError("PAYMENT_PROVIDER_NOT_CONFIGURED", 409);
+  if (Boolean(enabled)) validateCredentials(provider, credentialsFor(existing));
+  db.prepare(`UPDATE payment_provider_configs
+    SET status=?, updated_by=?, updated_at=? WHERE provider=?`)
+    .run(enabled ? "active" : "disabled", actorUserId || null, Date.now(), provider);
   return paymentProviderConfiguration(provider);
 }
 
@@ -292,7 +305,9 @@ function settlePaidOrder({ provider, orderId, providerTransactionId, amountMinor
 
 export async function handleAlipayNotification(request) {
   const config = rawConfiguration("alipay");
-  if (!config || config.status !== "active") throw paymentError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
+  // Disabling a channel stops new orders, but a valid callback for an order that
+  // was already created must still be settled after signature verification.
+  if (!config) throw paymentError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
   const form = new URLSearchParams(await request.text());
   const credentials = credentialsFor(config);
   if (!verifyAlipayForm(form, credentials.alipayPublicKey)) throw paymentError("PAYMENT_WEBHOOK_SIGNATURE_INVALID", 400);
@@ -325,7 +340,7 @@ function decryptWechatResource(resource, apiV3Key) {
 
 export async function handleWechatNotification(request) {
   const config = rawConfiguration("wechat_pay");
-  if (!config || config.status !== "active") throw paymentError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
+  if (!config) throw paymentError("PAYMENT_PROVIDER_NOT_CONFIGURED", 503);
   const rawBody = await request.text();
   const credentials = credentialsFor(config);
   if (!verifyWechatNotification(request, rawBody, credentials)) throw paymentError("PAYMENT_WEBHOOK_SIGNATURE_INVALID", 400);

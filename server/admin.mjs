@@ -37,7 +37,7 @@ import {
 } from "./singing-provider.mjs";
 import {
   paymentProviderConfiguration, paymentProviderConfigurations,
-  savePaymentProviderConfiguration, testPaymentProviderConfiguration,
+  savePaymentProviderConfiguration, setPaymentProviderEnabled, testPaymentProviderConfiguration,
 } from "./domestic-payments.mjs";
 import {
   adminSupportConversation, adminSupportOverview, replyToSupportConversation, resolveSupportConversation,
@@ -1727,6 +1727,19 @@ export function createAdminHandler(dependencies) {
         richAudit({ request, actor: context.user, roles: context.roles, permission: "billing.manage", action: "admin.payment_provider.test", targetType: "payment_provider", targetId: paymentProviderMatch[1], after: result });
         return json(result);
       } catch (error) { return fail(error?.code || "PAYMENT_PROVIDER_TEST_FAILED", error?.status || 502); }
+    }
+    paymentProviderMatch = path.match(/^\/api\/admin\/v1\/payment-providers\/(alipay|wechat_pay)\/status$/);
+    if (paymentProviderMatch && request.method === "PATCH") {
+      const denied = requirePermission(context, "billing.manage"); if (denied) return denied;
+      const data = await parseBody(request);
+      if (typeof data.enabled !== "boolean") return fail("PAYMENT_PROVIDER_STATUS_REQUIRED");
+      if (!String(data.reason || "").trim()) return fail("REASON_REQUIRED");
+      try {
+        const before = paymentProviderConfiguration(paymentProviderMatch[1]);
+        const configuration = setPaymentProviderEnabled(paymentProviderMatch[1], data.enabled, context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "billing.manage", action: "admin.payment_provider.status", targetType: "payment_provider", targetId: paymentProviderMatch[1], reason: String(data.reason), before, after: configuration });
+        return json({ configuration });
+      } catch (error) { return fail(error?.code || "PAYMENT_PROVIDER_STATUS_UPDATE_FAILED", error?.status || 502); }
     }
     paymentProviderMatch = path.match(/^\/api\/admin\/v1\/payment-providers\/(alipay|wechat_pay)$/);
     if (paymentProviderMatch && request.method === "PUT") {

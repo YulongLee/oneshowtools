@@ -957,26 +957,31 @@ function SupportCenterView({ data, detail, locale, status, onStatus, onSelect, o
   </div>;
 }
 
-function PaymentProviderEditor({ provider, locale, canManage, onTest, onSave }) {
+function PaymentProviderEditor({ provider, locale, canManage, onTest, onSave, onToggle }) {
   const isAlipay = provider.id === "alipay";
   const [draft, setDraft] = useState({});
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [tested, setTested] = useState(false);
   useEffect(() => {
     setDraft({
       mode: provider.mode || "production", appId: provider.appId || "", merchantId: provider.merchantId || "",
       appPrivateKey: "", alipayPublicKey: "", merchantPrivateKey: "", merchantSerialNo: "",
-      apiV3Key: "", wechatpayPublicKey: "", wechatpayPublicKeyId: "",
-      status: provider.enabled ? "active" : "disabled", reason: "",
+      apiV3Key: "", wechatpayPublicKey: "", wechatpayPublicKeyId: "", reason: "",
     });
     setTested(false);
   }, [provider.updatedAt, provider.configured]);
   const change = (key) => (event) => { setDraft((current) => ({ ...current, [key]: event.target.value })); setTested(false); };
   const test = async () => { setTesting(true); try { const result = await onTest(provider.id, draft); setTested(Boolean(result?.ok)); } finally { setTesting(false); } };
   const save = async (event) => { event.preventDefault(); setSaving(true); try { if (await onSave(provider.id, draft)) setDraft((current) => ({ ...current, reason: "", appPrivateKey: "", alipayPublicKey: "", merchantPrivateKey: "", apiV3Key: "", wechatpayPublicKey: "" })); } finally { setSaving(false); } };
+  const toggle = async (event) => {
+    const enabled = event.target.checked;
+    setToggling(true);
+    try { await onToggle(provider.id, enabled); } finally { setToggling(false); }
+  };
   return <article className="admin-v2-panel payment-provider-editor">
-    <header><div><small>{isAlipay ? "ALIPAY RSA2" : "WECHAT PAY API V3"}</small><h2>{isAlipay ? "支付宝" : "微信支付"}</h2><p>{locale === "en" ? "Credentials are encrypted and never returned to the browser." : "密钥加密保存，保存后不会再次返回浏览器。"}</p></div><span className={`admin-badge ${provider.enabled ? "published" : "retired"}`}>{provider.enabled ? (locale === "en" ? "Enabled" : "已启用") : (locale === "en" ? "Disabled" : "未启用")}</span></header>
+    <header><div><small>{isAlipay ? "ALIPAY RSA2" : "WECHAT PAY API V3"}</small><h2>{isAlipay ? "支付宝" : "微信支付"}</h2><p>{locale === "en" ? "Credentials are encrypted and never returned to the browser." : "密钥加密保存，保存后不会再次返回浏览器。"}</p></div><div className="payment-channel-control"><span>{provider.enabled ? (locale === "en" ? "Accepting payments" : "允许收款") : provider.configured ? (locale === "en" ? "New orders disabled" : "已停止新订单") : (locale === "en" ? "Configure first" : "请先完成配置")}</span><label className="payment-channel-switch" title={!provider.configured ? (locale === "en" ? "Save credentials before enabling" : "保存支付配置后才能启用") : ""}><input type="checkbox" checked={Boolean(provider.enabled)} onChange={toggle} disabled={!canManage || !provider.configured || toggling} /><i /></label></div></header>
     <form className="payment-provider-form" onSubmit={save}>
       <label>{locale === "en" ? "Environment" : "环境"}<select value={draft.mode || "production"} onChange={change("mode")} disabled={!canManage}><option value="production">{locale === "en" ? "Production" : "正式环境"}</option>{isAlipay && <option value="sandbox">{locale === "en" ? "Sandbox" : "沙箱环境"}</option>}</select></label>
       <label>{isAlipay ? "支付宝 App ID" : "微信 App ID"}<input value={draft.appId || ""} onChange={change("appId")} disabled={!canManage} required /></label>
@@ -991,7 +996,6 @@ function PaymentProviderEditor({ provider, locale, canManage, onTest, onSave }) 
         <label className="wide">{locale === "en" ? "WeChat Pay public key" : "微信支付公钥"}<textarea rows="4" value={draft.wechatpayPublicKey || ""} onChange={change("wechatpayPublicKey")} disabled={!canManage} placeholder={provider.configured ? (locale === "en" ? "Leave blank to keep current key" : "留空则保留当前密钥") : "-----BEGIN PUBLIC KEY-----"} required={!provider.configured} /></label>
         <label className="wide">API v3 Key<input type="password" autoComplete="new-password" value={draft.apiV3Key || ""} onChange={change("apiV3Key")} disabled={!canManage} placeholder={provider.configured ? (locale === "en" ? "Leave blank to keep current key" : "留空则保留当前密钥") : (locale === "en" ? "Exactly 32 bytes" : "必须为 32 字节")} required={!provider.configured} /></label>
       </>}
-      <label>{locale === "en" ? "Channel status" : "通道状态"}<select value={draft.status || "disabled"} onChange={change("status")} disabled={!canManage}><option value="disabled">{locale === "en" ? "Disabled" : "关闭"}</option><option value="active">{locale === "en" ? "Enabled" : "启用"}</option></select></label>
       <label>{locale === "en" ? "Change reason" : "变更原因"}<input value={draft.reason || ""} onChange={change("reason")} disabled={!canManage} required /></label>
       {tested && <div className="platform-model-test healthy wide"><CheckCircle size={17} /><span>{locale === "en" ? "Key format and required settings verified" : "密钥格式及必要配置验证通过"}</span></div>}
       {canManage && <div className="platform-model-actions wide"><button type="button" onClick={test} disabled={testing}>{testing ? <SpinnerGap className="spin" size={16} /> : <Pulse size={16} />}{locale === "en" ? "Verify settings" : "验证配置"}</button><button className="admin-primary" disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <LockKey size={16} />}{locale === "en" ? "Save securely" : "安全保存"}</button></div>}
@@ -999,13 +1003,13 @@ function PaymentProviderEditor({ provider, locale, canManage, onTest, onSave }) 
   </article>;
 }
 
-function CommerceView({ data, locale, onApprove, canManage, onProviderTest, onProviderSave }) {
+function CommerceView({ data, locale, onApprove, canManage, onProviderTest, onProviderSave, onProviderToggle }) {
   const t = copy[locale];
   const [tab, setTab] = useState("channels");
   const sections = { approvals: data?.approvals, subscriptions: data?.subscriptions, invoices: data?.invoices, orders: data?.orders, refunds: data?.refunds, disputes: data?.disputes, exceptions: data?.exceptions };
   return <div className="admin-page-stack"><div className="admin-provider-strip">{data?.providers?.map((provider) => <div key={provider.id}><span className={provider.enabled ? "ok" : provider.configured ? "warn" : "off"} /><strong>{provider.id}</strong><small>{provider.enabled ? "enabled" : provider.configured ? "configured" : "not configured"}</small></div>)}</div>
     <section className="admin-v2-panel admin-table-panel"><nav className="admin-section-tabs"><button className={tab === "channels" ? "active" : ""} onClick={() => setTab("channels")}>{locale === "en" ? "Payment channels" : "支付通道"} <span>{data?.providers?.filter((item) => item.enabled).length || 0}</span></button>{Object.keys(sections).map((key) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{t[key]} <span>{sections[key]?.length || 0}</span></button>)}</nav>
-      {tab === "channels" ? <div className="payment-provider-grid">{(data?.providers || []).filter((item) => item.id !== "stripe").map((provider) => <PaymentProviderEditor key={provider.id} provider={provider} locale={locale} canManage={canManage} onTest={onProviderTest} onSave={onProviderSave} />)}<article className="admin-v2-panel payment-provider-note"><ShieldCheck size={25} /><h3>{locale === "en" ? "Commercial safeguards" : "商业支付安全规则"}</h3><ul><li>{locale === "en" ? "Channels are disabled by default" : "支付通道默认关闭"}</li><li>{locale === "en" ? "Credits are granted only after verified server notifications" : "只有服务端验签成功后才发放积分"}</li><li>{locale === "en" ? "Duplicate callbacks never grant twice" : "重复回调不会重复到账"}</li><li>{locale === "en" ? "Domestic memberships are one-month purchases until recurring agreements are enabled" : "未开通代扣协议前，国内会员按单月购买处理"}</li></ul></article></div> : <div className="admin-v2-table-wrap"><table><thead><tr><th>ID / {t.account}</th><th>{t.status}</th><th>{t.provider}</th><th>{t.time}</th><th /></tr></thead><tbody>
+      {tab === "channels" ? <div className="payment-provider-grid">{(data?.providers || []).filter((item) => item.id !== "stripe").map((provider) => <PaymentProviderEditor key={provider.id} provider={provider} locale={locale} canManage={canManage} onTest={onProviderTest} onSave={onProviderSave} onToggle={onProviderToggle} />)}<article className="admin-v2-panel payment-provider-note"><ShieldCheck size={25} /><h3>{locale === "en" ? "Commercial safeguards" : "商业支付安全规则"}</h3><ul><li>{locale === "en" ? "Channels are disabled by default" : "支付通道默认关闭，配置完成后再单独开启"}</li><li>{locale === "en" ? "Disabling stops new orders without losing valid pending callbacks" : "关闭开关只停止新订单，已有订单仍可安全到账"}</li><li>{locale === "en" ? "Credits are granted only after verified server notifications" : "只有服务端验签成功后才发放积分"}</li><li>{locale === "en" ? "Duplicate callbacks never grant twice" : "重复回调不会重复到账"}</li></ul></article></div> : <div className="admin-v2-table-wrap"><table><thead><tr><th>ID / {t.account}</th><th>{t.status}</th><th>{t.provider}</th><th>{t.time}</th><th /></tr></thead><tbody>
         {(sections[tab] || []).map((item) => <tr key={item.id}><td><strong>{item.email || item.requesterEmail || item.target_id || item.id}</strong><small>{item.id}</small></td><td><span className={`admin-badge ${item.status}`}>{item.status}</span></td><td>{item.provider || item.action || "—"}</td><td>{date(item.createdAt || item.created_at, locale)}</td><td>{tab === "approvals" && item.status === "pending" && <button className="admin-link" onClick={() => onApprove(item.id)}>{t.approve}</button>}</td></tr>)}
         {!sections[tab]?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>}</section></div>;
 }
@@ -1409,6 +1413,14 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/payment-providers/${provider}`, json("PUT", draft)); await loadView(); showToast(); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const togglePaymentProvider = async (provider, enabled) => {
+    try {
+      await api(`/api/admin/v1/payment-providers/${provider}/status`, json("PATCH", {
+        enabled, reason: enabled ? "管理员启用支付通道" : "管理员关闭支付通道",
+      }));
+      await loadView(); showToast(); return true;
+    } catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -1437,7 +1449,7 @@ export function AdminApp() {
     models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onWorkspaceTest={testModelStudioWorkspace} onWorkspaceSave={saveModelStudioWorkspace} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} onStockMarketTest={testStockMarketProvider} onStockMarketSave={saveStockMarketProvider} />,
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
-    commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} />,
+    commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} onProviderToggle={togglePaymentProvider} />,
     tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
