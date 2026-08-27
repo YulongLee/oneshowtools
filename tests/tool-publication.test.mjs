@@ -34,6 +34,45 @@ test("publication settings survive database reinitialization", async () => {
   assert.equal(db.prepare("SELECT active FROM tools WHERE slug = 'lyrics-generator'").get().active, 1);
 });
 
+test("operator-managed tool and billing settings survive database reinitialization", async () => {
+  db.prepare(`
+    UPDATE tools SET name_zh = ?, name_en = ?, description_zh = ?, description_en = ?,
+      category = ?, icon = ?, credit_cost = ?, active = ? WHERE slug = 'stock-pet'
+  `).run(
+    "运营名称", "Operator name", "运营简介", "Operator description",
+    "startup", "OperatorIcon", 2345, 0,
+  );
+  db.prepare(`
+    UPDATE plans SET name_zh = ?, name_en = ?, amount_minor = ?, recurring_credits = ?,
+      file_limit = ?, active = ? WHERE code = 'pro-monthly'
+  `).run("运营套餐", "Operator plan", 4567, 9876, 765, 0);
+
+  const { initializeDatabase } = await import("../server/database.mjs");
+  initializeDatabase();
+
+  assert.deepEqual(
+    { ...db.prepare(`
+      SELECT name_zh, name_en, description_zh, description_en, category, icon, credit_cost, active
+      FROM tools WHERE slug = 'stock-pet'
+    `).get() },
+    {
+      name_zh: "运营名称", name_en: "Operator name", description_zh: "运营简介",
+      description_en: "Operator description", category: "startup", icon: "OperatorIcon",
+      credit_cost: 2345, active: 0,
+    },
+  );
+  assert.deepEqual(
+    { ...db.prepare(`
+      SELECT name_zh, name_en, amount_minor, recurring_credits, file_limit, active
+      FROM plans WHERE code = 'pro-monthly'
+    `).get() },
+    {
+      name_zh: "运营套餐", name_en: "Operator plan", amount_minor: 4567,
+      recurring_credits: 9876, file_limit: 765, active: 0,
+    },
+  );
+});
+
 test.after(async () => {
   await rm(testDataDirectory, { recursive: true, force: true });
 });

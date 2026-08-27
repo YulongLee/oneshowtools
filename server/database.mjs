@@ -575,16 +575,9 @@ export function initializeDatabase() {
       credit_cost, runtime_kind, runtime_status, active, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
-      name_zh = excluded.name_zh,
-      name_en = excluded.name_en,
-      description_zh = excluded.description_zh,
-      description_en = excluded.description_en,
-      category = excluded.category,
-      icon = excluded.icon,
-      credit_cost = excluded.credit_cost,
       runtime_kind = excluded.runtime_kind,
-      runtime_status = excluded.runtime_status,
       updated_at = excluded.updated_at
+    WHERE tools.runtime_kind <> excluded.runtime_kind
   `);
   for (const tool of tools) insertTool.run(...tool, "configuration_required", timestamp, timestamp);
 
@@ -634,10 +627,7 @@ export function initializeDatabase() {
   const insertPlan = db.prepare(`
     INSERT INTO plans (id, code, name_zh, name_en, amount_minor, currency, interval, recurring_credits, file_limit, active)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    ON CONFLICT(id) DO UPDATE SET name_zh = excluded.name_zh, name_en = excluded.name_en,
-      amount_minor = excluded.amount_minor, currency = excluded.currency,
-      interval = excluded.interval, recurring_credits = excluded.recurring_credits,
-      file_limit = excluded.file_limit
+    ON CONFLICT(id) DO NOTHING
   `);
   for (const plan of plans) insertPlan.run(...plan);
 
