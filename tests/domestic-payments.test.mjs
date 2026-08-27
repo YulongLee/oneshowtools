@@ -114,10 +114,12 @@ test("WeChat Native checkout returns a QR code and verified API v3 callback sett
   }, user.id);
 
   let authorization = "";
+  let acceptLanguage = "";
   const checkout = await createDomesticCheckout({
     provider: "wechat_pay", user, plan, appUrl: "https://example.com",
     fetchImpl: async (_url, options) => {
       authorization = options.headers.Authorization;
+      acceptLanguage = options.headers["Accept-Language"];
       const body = JSON.stringify({ code_url: "weixin://wxpay/bizpayurl?pr=test" });
       const responseTimestamp = Math.floor(Date.now() / 1000).toString();
       const responseNonce = "response-nonce";
@@ -130,6 +132,7 @@ test("WeChat Native checkout returns a QR code and verified API v3 callback sett
     },
   });
   assert.match(authorization, /^WECHATPAY2-SHA256-RSA2048 /);
+  assert.equal(acceptLanguage, "zh-CN");
   assert.equal(checkout.presentation, "qr");
   assert.match(checkout.qrCode, /^data:image\/png;base64,/);
 

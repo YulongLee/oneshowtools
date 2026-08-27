@@ -247,6 +247,7 @@ export async function createDomesticCheckout({ provider, user, plan, appUrl, fet
   try {
     response = await fetchImpl(`${config.gateway_url}${pathname}`, {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json",
+        "Accept-Language": "zh-CN",
         Authorization: wechatAuthorization({ method: "POST", pathname, body: requestBody, mchId: config.merchant_id, serialNo: credentials.merchantSerialNo, privateKey: credentials.merchantPrivateKey }) },
       body: requestBody,
     });
