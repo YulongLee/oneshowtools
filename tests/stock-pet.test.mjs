@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
-import { isAShareTradingSession, isMarketTradingSession, stockMarketState } from "../server/stock-pet.mjs";
+import {
+  isAShareTradingSession,
+  isMarketTradingSession,
+  STOCK_PET_DOWNLOAD_TTL_SECONDS,
+  stockMarketState,
+} from "../server/stock-pet.mjs";
 import {
   MarketDataService,
   TencentFinanceMarketDataProvider,
@@ -209,4 +215,31 @@ test("stock pet downloads are signed only after confirming the OSS object exists
   assert.equal(calls[0][0], "head");
   assert.equal(calls[1][0], "sign");
   assert.equal(calls[1][2], 90);
+});
+
+test("stock pet commercial downloads use a short-lived private link", () => {
+  assert.equal(STOCK_PET_DOWNLOAD_TTL_SECONDS, 60);
+});
+
+test("stock pet ships optimized transparent one-shot GIFs for every default action", async () => {
+  const assetNames = [
+    "alert.gif", "closed.gif", "confused.gif", "down.gif", "flat.gif",
+    "limit-up.gif", "slight-loss.gif", "strong-up.gif", "up.gif",
+  ];
+  for (const assetName of assetNames) {
+    const assetPath = new URL(`../apps/stock-pet/public/default-actions/${assetName}`, import.meta.url);
+    const [buffer, details] = await Promise.all([readFile(assetPath), stat(assetPath)]);
+    assert.equal(buffer.subarray(0, 6).toString("ascii"), "GIF89a", assetName);
+    assert.equal(buffer.readUInt16LE(6), 480, `${assetName} width`);
+    assert.equal(buffer.readUInt16LE(8), 480, `${assetName} height`);
+    assert.ok(details.size > 500_000 && details.size < 7_000_000, `${assetName} optimized size`);
+    assert.equal(buffer.includes(Buffer.from("NETSCAPE2.0")), false, `${assetName} must not jump-loop`);
+    let hasTransparency = false;
+    for (let index = 0; index < buffer.length - 4; index += 1) {
+      if (buffer[index] === 0x21 && buffer[index + 1] === 0xf9 && buffer[index + 2] === 0x04) {
+        hasTransparency ||= Boolean(buffer[index + 3] & 0x01);
+      }
+    }
+    assert.equal(hasTransparency, true, `${assetName} transparent background`);
+  }
 });

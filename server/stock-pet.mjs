@@ -11,6 +11,7 @@ import { objectStorageStatus, signStockPetRelease } from "./object-storage.mjs";
 export const STOCK_PET_PRODUCT_CODE = "stock_pet";
 export const STOCK_PET_PRICE = 1000;
 export const STOCK_PET_DEVICE_LIMIT = 3;
+export const STOCK_PET_DOWNLOAD_TTL_SECONDS = 60;
 
 function shanghaiDate(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -124,7 +125,7 @@ export function stockPetPublicProduct() {
       windows: releaseStorageReady || Boolean(process.env.STOCK_PET_WINDOWS_DOWNLOAD_URL),
       macos: releaseStorageReady || Boolean(process.env.STOCK_PET_MACOS_DOWNLOAD_URL),
     },
-    version: process.env.STOCK_PET_VERSION || "0.1.7",
+    version: process.env.STOCK_PET_VERSION || "0.1.8",
   };
 }
 
@@ -566,5 +567,10 @@ export async function stockPetDownload(userId, platform) {
     });
   }
   if (configuredUrl) return { url: configuredUrl, platform, expiresAt: null };
-  return signStockPetRelease(platform);
+  // Keep the private OSS address useful only long enough for the browser to
+  // start the transfer. Product access is enforced again by the desktop
+  // license/device handshake, so sharing an installer never shares ownership.
+  return signStockPetRelease(platform, {
+    expires: STOCK_PET_DOWNLOAD_TTL_SECONDS,
+  });
 }

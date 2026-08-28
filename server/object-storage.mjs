@@ -316,7 +316,7 @@ function safeReleaseVersion(version) {
   return normalized;
 }
 
-export function stockPetReleaseObject(platform, version = process.env.STOCK_PET_VERSION || "0.1.7", env = process.env) {
+export function stockPetReleaseObject(platform, version = process.env.STOCK_PET_VERSION || "0.1.8", env = process.env) {
   const file = stockPetReleaseFiles[platform];
   if (!file) throw storageError("DOWNLOAD_PLATFORM_INVALID", 400);
   const releaseVersion = safeReleaseVersion(version);
@@ -355,7 +355,7 @@ export async function putStockPetRelease({ platform, version, filePath, env = pr
 }
 
 export async function signStockPetRelease(platform, {
-  version = process.env.STOCK_PET_VERSION || "0.1.7",
+  version = process.env.STOCK_PET_VERSION || "0.1.8",
   expires = 900,
   env = process.env,
 } = {}, clientFactory) {

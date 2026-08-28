@@ -196,6 +196,19 @@ const stateNames: Record<MarketState, string> = {
   STRONG_UP: "明显上涨", LIMIT_UP: "涨停", DOWN: "普通下跌",
   STRONG_DOWN: "明显下跌", LIMIT_DOWN: "跌停", ALERT: "异动提醒", CLOSED: "收盘休息",
 };
+const defaultPetAssets: Record<MarketState, string> = {
+  LOADING: "./default-actions/confused.gif",
+  OFFLINE: "./default-actions/confused.gif",
+  FLAT: "./default-actions/flat.gif",
+  UP: "./default-actions/up.gif",
+  STRONG_UP: "./default-actions/strong-up.gif",
+  LIMIT_UP: "./default-actions/limit-up.gif",
+  DOWN: "./default-actions/slight-loss.gif",
+  STRONG_DOWN: "./default-actions/down.gif",
+  LIMIT_DOWN: "./default-actions/down.gif",
+  ALERT: "./default-actions/alert.gif",
+  CLOSED: "./default-actions/closed.gif",
+};
 const errors: Record<string, string> = {
   INVALID_CREDENTIALS: "邮箱或密码不正确",
   EMAIL_UNVERIFIED: "请先完成邮箱验证",
@@ -584,16 +597,11 @@ function App() {
     setAlerts(payload.items || []);
   };
 
-  const defaultPetAsset = ["UP", "STRONG_UP", "LIMIT_UP"].includes(state)
-    ? "./niu-lai-le-up.png"
-    : ["DOWN", "STRONG_DOWN", "LIMIT_DOWN", "OFFLINE"].includes(state)
-      ? "./niu-lai-le-down.png"
-      : state === "CLOSED" ? "./niu-lai-le-sleep.png" : "./niu-lai-le-mascot.png";
+  const defaultPetAsset = defaultPetAssets[state];
   const activeCustomGif = activeRule ? customRuleAssets[ruleAssetKey(currentSymbol, activeRule.id)] : "";
   const petAsset = activeCustomGif || defaultPetAsset;
-  // A user-provided GIF already contains the complete animation. Applying a
-  // CSS motion preset on top of it makes the result shake, jump or drift twice.
-  // Keep presets only as the fallback animation for the built-in mascot.
+  // GIF assets already contain the complete animation. Applying a CSS motion
+  // preset on top makes the result shake, jump or drift twice.
   const petMotion = actions.stateMotions[state] || defaultActions.stateMotions[state];
 
   if (rendererMode === "pet") {
@@ -607,8 +615,8 @@ function App() {
     );
     return (
       <main className={`pet-only ${state.toLowerCase()}`} onContextMenu={(event) => { event.preventDefault(); window.stockPet.showContextMenu(); }}>
-        <div className={`pet-drag-region ${actions.animations && !activeCustomGif ? `motion-${petMotion}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
-          <img draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
+        <div className={`pet-drag-region ${actions.animations && !petAsset.toLowerCase().endsWith(".gif") ? `motion-${petMotion}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
+          <img key={`${state}:${activeRule?.id || "default"}:${petAsset}`} draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
         </div>
         <button className="pet-quote-chip" title="点击查看行情走势" onClick={() => openManager("chart")}>
           <b>{title}</b>

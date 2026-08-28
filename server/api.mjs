@@ -2577,9 +2577,28 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/products/stock-pet/download" && request.method === "GET") {
+    const platform = url.searchParams.get("platform");
+    if (rateLimited(request, "stock-pet-download", user.id, 6, 60 * 60 * 1000)) {
+      securityEvent(request, "stock_pet_download", "rate_limited", user.id, {
+        platform,
+      });
+      return fail("DOWNLOAD_RATE_LIMITED", 429);
+    }
     try {
-      return json(await stockPetDownload(user.id, url.searchParams.get("platform")));
+      const result = await stockPetDownload(user.id, platform);
+      securityEvent(request, "stock_pet_download", "issued", user.id, {
+        platform,
+        expiresAt: result.expiresAt,
+      });
+      return json(result, 200, {
+        "cache-control": "private, no-store, max-age=0",
+        pragma: "no-cache",
+      });
     } catch (error) {
+      securityEvent(request, "stock_pet_download", "denied", user.id, {
+        platform,
+        code: error.code || "DOWNLOAD_NOT_CONFIGURED",
+      });
       return fail(error.code || "DOWNLOAD_NOT_CONFIGURED", error.status || 503);
     }
   }
