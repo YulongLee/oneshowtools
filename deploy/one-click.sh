@@ -10,7 +10,7 @@ if [[ -f .deploy.env ]]; then
   source .deploy.env
 fi
 
-DEPLOY_HOST="${DEPLOY_HOST:-47.84.65.103}"
+DEPLOY_HOST="${DEPLOY_HOST:-47.101.208.144}"
 DEPLOY_USER="${DEPLOY_USER:-root}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_SSH_KEY="${DEPLOY_SSH_KEY:-$HOME/.ssh/id_ed25519_oneshowtools_server}"

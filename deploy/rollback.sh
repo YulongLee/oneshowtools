@@ -6,7 +6,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 [[ -f .deploy.env ]] && source .deploy.env
 
-DEPLOY_HOST="${DEPLOY_HOST:-47.84.65.103}"
+DEPLOY_HOST="${DEPLOY_HOST:-47.101.208.144}"
 DEPLOY_USER="${DEPLOY_USER:-root}"
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 DEPLOY_SSH_KEY="${DEPLOY_SSH_KEY:-$HOME/.ssh/id_ed25519_oneshowtools_server}"
@@ -26,4 +26,3 @@ ssh -i "$DEPLOY_SSH_KEY" -p "$DEPLOY_PORT" -o BatchMode=yes -o ConnectTimeout=15
   "$DEPLOY_USER@$DEPLOY_HOST" bash -s -- \
   "$DEPLOY_APP_ROOT" "$RELEASE_ID" "$DEPLOY_SERVICE" "$DEPLOY_NODE_ROOT" \
   "$DEPLOY_HEALTH_URL" < "$SCRIPT_DIR/remote-rollback.sh"
-
