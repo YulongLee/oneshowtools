@@ -48,7 +48,7 @@ type MarketState =
   | "LIMIT_DOWN"
   | "ALERT"
   | "CLOSED";
-type Watch = { id: string; symbol: string; name: string; isPrimary?: boolean };
+type Watch = { id: string; symbol: string; code?: string; name: string; market?: "A" | "HK" | "US"; isPrimary?: boolean };
 type Quote = {
   symbol: string;
   code?: string;
@@ -119,11 +119,6 @@ const defaultActions: ActionPreferences = {
   stockRuleGroups: {},
 };
 const ruleAssetKey = (symbol: string, ruleId: string) => `${symbol.trim().toUpperCase()}::${ruleId}`;
-const motionNames: Record<MotionPreset, string> = {
-  calm: "轻轻呼吸", float: "悠闲漂浮", bounce: "开心弹跳", power: "蓄力冲刺",
-  rocket: "冲上云霄", sway: "左右观察", shiver: "紧张发抖", collapse: "趴下休息",
-  pulse: "异动提醒", sleep: "收盘睡觉",
-};
 function recentMomentum(items: HistoryPoint[], minutes = 5) {
   const points = items.filter((item) => Number.isFinite(Number(item.close)));
   if (points.length < 2) return null;
@@ -541,11 +536,14 @@ function App() {
     await loadQuotes(items);
   };
   const updateWatchlist = async (body: { orderedIds?: string[]; primaryId?: string }) => {
+    const selectedId = watchlist[selected]?.id;
     const payload = await window.stockPet.api("/api/products/stock-pet/watchlist", { method: "PATCH", body });
     const items: Watch[] = payload.items || [];
     setWatchlist(items);
+    const preferredId = body.primaryId || selectedId;
+    const preferred = items.findIndex((item) => item.id === preferredId);
     const primary = items.findIndex((item) => item.isPrimary);
-    setSelected(primary >= 0 ? primary : 0);
+    setSelected(preferred >= 0 ? preferred : primary >= 0 ? primary : 0);
     await loadQuotes(items);
   };
   const addAlert = async (event: FormEvent) => {
@@ -591,8 +589,12 @@ function App() {
     : ["DOWN", "STRONG_DOWN", "LIMIT_DOWN", "OFFLINE"].includes(state)
       ? "./niu-lai-le-down.png"
       : state === "CLOSED" ? "./niu-lai-le-sleep.png" : "./niu-lai-le-mascot.png";
-  const petAsset = (activeRule && customRuleAssets[ruleAssetKey(currentSymbol, activeRule.id)]) || defaultPetAsset;
-  const petMotion = activeRule?.motion || actions.stateMotions[state] || defaultActions.stateMotions[state];
+  const activeCustomGif = activeRule ? customRuleAssets[ruleAssetKey(currentSymbol, activeRule.id)] : "";
+  const petAsset = activeCustomGif || defaultPetAsset;
+  // A user-provided GIF already contains the complete animation. Applying a
+  // CSS motion preset on top of it makes the result shake, jump or drift twice.
+  // Keep presets only as the fallback animation for the built-in mascot.
+  const petMotion = actions.stateMotions[state] || defaultActions.stateMotions[state];
 
   if (rendererMode === "pet") {
     const openManager = (target = "watch") => window.stockPet.openControl(target);
@@ -605,7 +607,7 @@ function App() {
     );
     return (
       <main className={`pet-only ${state.toLowerCase()}`} onContextMenu={(event) => { event.preventDefault(); window.stockPet.showContextMenu(); }}>
-        <div className={`pet-drag-region ${actions.animations ? `motion-${petMotion}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
+        <div className={`pet-drag-region ${actions.animations && !activeCustomGif ? `motion-${petMotion}` : "motion-off"}`} style={{ "--motion-speed": actions.speed } as React.CSSProperties}>
           <img draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
         </div>
         <button className="pet-quote-chip" title="点击查看行情走势" onClick={() => openManager("chart")}>
@@ -636,7 +638,7 @@ function App() {
     <main className="control-app">
       <header className="control-header"><div><img src="./niu-lai-le-mascot.png" alt="" /><span><b>牛来了</b><small>行情桌宠管理中心</small></span></div><button onClick={() => window.close()}><X /></button></header>
       <section className="control-summary">
-        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><p className="quote-meta">{current?.sourceLabel || "行情数据"} · 更新于 {quoteUpdatedAt}</p></div>
+        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><p className="quote-meta">更新于 {quoteUpdatedAt}</p></div>
         <div className={`summary-action-status ${activeRule ? "configured" : "default"}`}><Sparkle/><span><b>{activeRule ? activeRule.name : "默认按今日涨跌幅"}</b><small>{stockRules.length ? activeRule ? customRuleAssets[activeRuleKey] ? "已按该股票的自定义规则触发" : "自定义规则已触发，使用默认小牛形象" : `今日状态生效；另有 ${stockRules.length} 条自定义规则待匹配` : "按今日涨跌幅自动切换动作，可为每只股票单独配置"}</small></span></div>
       </section>
       <nav className="control-tabs">
@@ -644,7 +646,7 @@ function App() {
       </nav>
       <section className="control-content">
         {message && <p className="message">{message}</p>}
-        {panel === "watch" && <WatchPanel search={search} setSearch={setSearch} results={results} add={add} watchlist={watchlist} selected={selected} setSelected={setSelected} remove={remove} updateWatchlist={updateWatchlist} />}
+        {panel === "watch" && <WatchPanel search={search} setSearch={setSearch} results={results} add={add} watchlist={watchlist} quotes={quotes} selected={selected} setSelected={setSelected} remove={remove} updateWatchlist={updateWatchlist} />}
         {panel === "chart" && <MarketChartPanel quote={current} range={historyRange} setRange={setHistoryRange} items={history} busy={historyBusy} message={historyMessage} />}
         {panel === "alerts" && <AlertPanel alerts={alerts} watchlist={watchlist} selected={selected} alertType={alertType} setAlertType={setAlertType} alertValue={alertValue} setAlertValue={setAlertValue} addAlert={addAlert} removeAlert={removeAlert} updateAlert={updateAlert} />}
         {panel === "actions" && <ActionPanel state={state} activeRule={activeRule} preferences={actions} watchlist={watchlist} currentSymbol={currentSymbol} customRuleAssets={customRuleAssets} setCustomRuleAssets={setCustomRuleAssets} customRuleAudioAssets={customRuleAudioAssets} setCustomRuleAudioAssets={setCustomRuleAudioAssets} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作配置已保存"); }} />}
@@ -719,7 +721,7 @@ function MarketChartPanel({ quote, range, setRange, items, busy, message }: {
     setHoverIndex(Math.round(ratio * Math.max(chartItems.length - 1, 0)));
   };
   return <div className="market-chart-panel">
-    <header><div><h2>{quote?.name || quote?.symbol || "行情走势"}</h2><p>{quote?.symbol} · {quote?.sourceLabel || "行情数据"}</p></div><div className="range-tabs">{([['1d','日内'],['1m','1月'],['3m','3月'],['1y','1年']] as const).map(([value,label]) => <button key={value} className={range === value ? "active" : ""} onClick={() => setRange(value)}>{label}</button>)}</div></header>
+    <header><div><h2>{quote?.name || quote?.symbol || "行情走势"}</h2><p>{quote?.symbol || "选择自选行情查看走势"}</p></div><div className="range-tabs">{([['1d','日内'],['1m','1月'],['3m','3月'],['1y','1年']] as const).map(([value,label]) => <button key={value} className={range === value ? "active" : ""} onClick={() => setRange(value)}>{label}</button>)}</div></header>
     {busy ? <div className="chart-state">正在加载历史行情…</div> : message ? <div className="chart-state error">{message}</div> : chartItems.length < 2 ? <div className="chart-state">该市场暂时没有可展示的历史数据</div> : <>
       <div className={`price-overview ${positive ? "positive" : "negative"}`}>
         <strong>{formatChartPrice(Number(latest?.close || 0))}</strong>
@@ -756,7 +758,7 @@ function MarketChartPanel({ quote, range, setRange, items, busy, message }: {
         <rect x={left} y={top} width={right - left} height={bottom - top} className="chart-hit-area"/>
       </svg>
     </>}
-    <small className="chart-note">数据源：{quote?.sourceLabel || "行情数据"} · 价格与成交数据可能存在延迟，仅供信息展示，不构成投资建议。</small>
+    <small className="chart-note">价格与成交数据可能存在延迟，仅供信息展示，不构成投资建议。</small>
   </div>;
 }
 
@@ -898,7 +900,7 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
       </div>
       <div className="stock-action-toolbar">
         <label><span>配置股票</span><select value={symbol} onChange={(event) => { setEditingSymbol(event.target.value); setAssetMessage(""); }}>{watchlist.map((item) => <option key={item.id} value={item.symbol}>{item.name} · {item.symbol}</option>)}</select></label>
-        <label><span>动作速度</span><select value={preferences.speed} onChange={(event) => onChange({ ...preferences, speed: Number(event.target.value) as ActionPreferences["speed"] })}><option value="0.75">舒缓</option><option value="1">标准</option><option value="1.25">活泼</option></select></label>
+        <label><span>默认小牛速度</span><select value={preferences.speed} onChange={(event) => onChange({ ...preferences, speed: Number(event.target.value) as ActionPreferences["speed"] })}><option value="0.75">舒缓</option><option value="1">标准</option><option value="1.25">活泼</option></select></label>
         <label className="action-volume"><span>声音音量 <b>{Math.round(preferences.volume * 100)}%</b></span><div><input aria-label="声音音量" type="range" min="0" max="1" step="0.05" value={preferences.volume} onChange={(event) => onChange({ ...preferences, volume: Number(event.target.value), sound: true })}/><button type="button" className={preferences.sound ? "enabled" : ""} onClick={() => onChange({ ...preferences, sound: !preferences.sound })}>{preferences.sound ? "已开启" : "已静音"}</button></div></label>
         <div className={`stock-action-state ${rules.some(assetFor) || rules.some(audioFor) ? "ready" : "default"}`}><Sparkle/><span><b>{rules.some(assetFor) || rules.some(audioFor) ? `${rules.filter(assetFor).length} 个动图 · ${rules.filter(audioFor).length} 个声音` : "使用默认小牛"}</b><small>{stockName} · 共 {rules.length} 条规则</small></span></div>
       </div>
@@ -919,7 +921,6 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
           {rule.trigger === "market_state" ? <label><span>行情状态</span><select value={rule.marketState} onChange={(event) => updateRule(rule.id, { marketState: event.target.value as MarketState })}>{(Object.keys(stateNames) as MarketState[]).map((value) => <option value={value} key={value}>{stateNames[value]}</option>)}</select></label>
           : rule.trigger === "time_range" ? <><label><span>开始时间</span><input type="time" value={rule.startTime} onChange={(event) => updateRule(rule.id, { startTime: event.target.value })}/></label><label><span>结束时间</span><input type="time" value={rule.endTime} onChange={(event) => updateRule(rule.id, { endTime: event.target.value })}/></label></>
           : <><label><span>条件</span><select value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as ActionRuleOperator })}>{(Object.keys(operatorNames) as ActionRuleOperator[]).map((value) => <option value={value} key={value}>{operatorNames[value]}</option>)}</select></label><label><span>{rule.trigger === "price" ? "价格" : "数值 (%)"}</span><input type="number" step="0.1" value={rule.value} onChange={(event) => updateRule(rule.id, { value: Number(event.target.value) })}/></label>{rule.operator === "between" && <label><span>至</span><input type="number" step="0.1" value={rule.endValue} onChange={(event) => updateRule(rule.id, { endValue: Number(event.target.value) })}/></label>}</>}
-          <label><span>动作效果</span><select value={rule.motion} onChange={(event) => updateRule(rule.id, { motion: event.target.value as MotionPreset })}>{(Object.keys(motionNames) as MotionPreset[]).map((preset) => <option key={preset} value={preset}>{motionNames[preset]}</option>)}</select></label>
         </div>
         <div className="rule-actions">
           <div className="rule-media-group"><span>动作画面</span><button onClick={() => chooseRuleGif(rule)}>{assetFor(rule) ? "更换 GIF" : "上传 GIF"}</button>{assetFor(rule) && <button className="secondary" onClick={async () => setCustomRuleAssets(await window.stockPet.clearCustomRuleGif(symbol, rule.id))}>移除</button>}</div>
@@ -930,7 +931,7 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
             <button onClick={() => chooseRuleAudio(rule)}>{audioFor(rule) ? "更换" : "上传声音"}</button>
             {audioFor(rule) && <button className="secondary" onClick={() => clearRuleAudio(rule)}>移除</button>}
           </div>
-          <small>{assetFor(rule) || audioFor(rule) ? "素材已保存在本机；规则命中时将同步触发。" : "尚未上传素材，命中时会使用默认小牛。"}</small>
+          <small>{assetFor(rule) ? "GIF 将按原动画直接播放，不叠加内置动作效果；声音会在规则命中时同步触发。" : audioFor(rule) ? "声音已保存在本机；规则命中时会播放声音，并显示默认小牛。" : "尚未上传素材，命中时会使用默认小牛。"}</small>
         </div>
       </article>)}</div> : <button className="empty-rule" onClick={addRule}><Plus/><b>为 {stockName} 添加第一个动作</b><span>上传 GIF，并设置涨跌幅、价格、行情状态或时间条件</span></button>}
       {assetMessage && <p className="asset-message">{assetMessage}</p>}
@@ -951,12 +952,14 @@ function WatchPanel({
   results,
   add,
   watchlist,
+  quotes,
   selected,
   setSelected,
   remove,
   updateWatchlist,
 }: any) {
   const [draggedId, setDraggedId] = useState("");
+  const [pendingPrimaryId, setPendingPrimaryId] = useState("");
   const reorder = (targetId: string) => {
     if (!draggedId || draggedId === targetId) return;
     const items = [...watchlist];
@@ -988,34 +991,58 @@ function WatchPanel({
           ))}
         </div>
       )}
-      <div className="watchlist">
-        {watchlist.map((item: Watch, index: number) => (
-          <button
+      <div className="watch-toolbar">
+        <span>
+          <b>我的自选</b>
+          <small>点击卡片切换行情，点亮星标设为桌宠主行情</small>
+        </span>
+        <em>{watchlist.length} / 20</em>
+      </div>
+      <div className="watchlist" aria-label="我的自选行情">
+        {watchlist.map((item: Watch, index: number) => {
+          const quote = (quotes as Quote[]).find((entry) => entry.symbol === item.symbol);
+          const itemChange = Number(quote?.changePercent || 0);
+          const itemPrice = quote?.price == null ? "--" : Number(quote.price).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+          return (
+          <article
             key={item.id}
-            className={selected === index ? "active" : ""}
+            className={`watch-card ${selected === index ? "active" : ""}`}
             draggable
             onDragStart={() => setDraggedId(item.id)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={() => reorder(item.id)}
-            onClick={() => setSelected(index)}
           >
-            <Star
-              weight={item.isPrimary ? "fill" : "regular"}
-              className={item.isPrimary ? "primary-star" : ""}
-              onClick={(event) => {
-                event.stopPropagation();
-                updateWatchlist({ primaryId: item.id });
-              }}
-            />
-            <span>{item.name}</span>
-            <X
-              onClick={(event) => {
-                event.stopPropagation();
-                remove(item.id);
-              }}
-            />
-          </button>
-        ))}
+            <button className="watch-select" type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}>
+              <span className="watch-name"><b>{item.name}</b><small>{quote?.code || item.code || item.symbol}</small></span>
+              <span className={`watch-price ${itemChange < 0 ? "negative" : ""}`}><b>{itemPrice}</b><small>{quote ? `${itemChange >= 0 ? "+" : ""}${itemChange.toFixed(2)}%` : "等待行情"}</small></span>
+            </button>
+            <div className="watch-actions">
+              <button
+                type="button"
+                className={`watch-primary ${item.isPrimary ? "active" : ""}`}
+                aria-label={item.isPrimary ? `${item.name}是桌宠主行情` : `将${item.name}设为桌宠主行情`}
+                title={item.isPrimary ? "当前桌宠主行情" : "设为桌宠主行情"}
+                disabled={pendingPrimaryId === item.id}
+                onClick={async () => {
+                  setSelected(index);
+                  setPendingPrimaryId(item.id);
+                  try { await updateWatchlist({ primaryId: item.id }); }
+                  finally { setPendingPrimaryId(""); }
+                }}
+              >
+                <Star weight={item.isPrimary ? "fill" : "regular"} />
+              </button>
+              <button type="button" className="watch-remove" aria-label={`删除${item.name}`} title="移出自选" onClick={() => remove(item.id)}><X /></button>
+            </div>
+          </article>
+        )})}
+        {watchlist.length === 0 && (
+          <div className="watch-empty">
+            <Star />
+            <b>还没有自选行情</b>
+            <span>在上方搜索股票名称或代码后添加</span>
+          </div>
+        )}
       </div>
     </>
   );

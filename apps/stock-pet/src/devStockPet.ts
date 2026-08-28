@@ -19,8 +19,8 @@ export function ensureDevStockPet() {
     },
     stockRuleGroups: {},
   };
-  const watch = [{ id: "demo-watch", symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A" }];
-  const quote = { symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A", price: 2.708, changePercent: 0.48, state: "OPEN", sourceLabel: "腾讯财经", updatedAt: Date.now() };
+  let watch = [{ id: "demo-watch", symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A", isPrimary: false }];
+  const quote = { symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A", price: 2.708, changePercent: 0.48, state: "OPEN", sourceLabel: "行情服务", updatedAt: Date.now() };
   const history = Array.from({ length: 18 }, (_, index) => ({ time: Date.now() - (17 - index) * 60_000, price: 2.68 + index * 0.0018 }));
 
   window.stockPet = {
@@ -28,8 +28,13 @@ export function ensureDevStockPet() {
     session: async () => ({ authenticated: true, license: { entitled: true }, user: { name: "本地预览" } }),
     login: async () => ({ authenticated: true, license: { entitled: true } }),
     logout: async () => ({ authenticated: false }),
-    api: async (path: string) => {
-      if (path.includes("/watchlist")) return { items: watch };
+    api: async (path: string, init: any = {}) => {
+      if (path.includes("/watchlist")) {
+        if (init.method === "PATCH" && init.body?.primaryId) {
+          watch = watch.map((item) => ({ ...item, isPrimary: item.id === init.body.primaryId }));
+        }
+        return { items: watch };
+      }
       if (path.includes("/quotes")) return { quotes: [quote] };
       if (path.includes("/history")) return { items: history };
       if (path.includes("/alerts")) return { items: [] };
