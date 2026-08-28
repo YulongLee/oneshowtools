@@ -6,22 +6,21 @@ export function ensureDevStockPet() {
   let actions: any = {
     speed: 1,
     sound: true,
+    volume: 0.85,
+    animations: true,
     opacity: 1,
     locked: false,
     refreshSeconds: 60,
     thresholds: { up: 1, strongUp: 3, down: -1, strongDown: -3 },
     stateMotions: {
-      LOADING: "breathe", OFFLINE: "breathe", FLAT: "breathe", UP: "bounce",
-      STRONG_UP: "rush", LIMIT_UP: "rush", DOWN: "droop", STRONG_DOWN: "shake",
-      LIMIT_DOWN: "shake", CLOSED: "sleep",
+      LOADING: "calm", OFFLINE: "shiver", FLAT: "float", UP: "bounce",
+      STRONG_UP: "power", LIMIT_UP: "rocket", DOWN: "sway", STRONG_DOWN: "shiver",
+      LIMIT_DOWN: "collapse", ALERT: "pulse", CLOSED: "sleep",
     },
-    stockRuleGroups: { "513500.SS": [
-      { id: "rule-fast-rise", name: "5 分钟快速上涨", enabled: true, trigger: "recent_change", operator: "gte", value: 0.5, endValue: 1, marketState: "UP", startTime: "09:30", endTime: "15:00", motion: "rush" },
-      { id: "rule-close", name: "收盘休息", enabled: true, trigger: "market_state", operator: "equals", value: 0, endValue: 0, marketState: "CLOSED", startTime: "15:00", endTime: "09:30", motion: "sleep" },
-    ] },
+    stockRuleGroups: {},
   };
   const watch = [{ id: "demo-watch", symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A" }];
-  const quote = { symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A", price: 2.708, changePercent: 0.48, state: "OPEN" };
+  const quote = { symbol: "513500.SS", code: "513500", name: "标普500ETF博时", market: "A", price: 2.708, changePercent: 0.48, state: "OPEN", sourceLabel: "腾讯财经", updatedAt: Date.now() };
   const history = Array.from({ length: 18 }, (_, index) => ({ time: Date.now() - (17 - index) * 60_000, price: 2.68 + index * 0.0018 }));
 
   window.stockPet = {
@@ -52,8 +51,13 @@ export function ensureDevStockPet() {
     getCustomRuleAssets: async () => ({}),
     chooseCustomRuleGif: async () => ({}),
     clearCustomRuleGif: async () => ({}),
+    getCustomRuleAudioAssets: async () => ({}),
+    chooseCustomRuleAudio: async () => ({}),
+    clearCustomRuleAudio: async () => ({}),
     onCustomAssetsChanged: noOp,
     onCustomRuleAssetsChanged: noOp,
+    onCustomRuleAudioAssetsChanged: noOp,
+    onActionPreferencesChanged: noOp,
     showContextMenu: async () => undefined,
     onQuickAction: noOp,
     onSessionChanged: noOp,

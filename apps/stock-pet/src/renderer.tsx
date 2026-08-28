@@ -16,10 +16,12 @@ import {
   MagnifyingGlass,
   Minus,
   Power,
+  Play,
   Plus,
   SignOut,
   Sparkle,
   Star,
+  Stop,
   TrendUp,
   Trash,
   X,
@@ -91,6 +93,7 @@ type ActionRule = {
 type ActionPreferences = {
   speed: 0.75 | 1 | 1.25;
   sound: boolean;
+  volume: number;
   animations: boolean;
   refreshSeconds: 15 | 20 | 30 | 60;
   opacity: number;
@@ -102,6 +105,7 @@ type ActionPreferences = {
 const defaultActions: ActionPreferences = {
   speed: 1,
   sound: false,
+  volume: 0.85,
   animations: true,
   refreshSeconds: 20,
   opacity: 1,
@@ -146,24 +150,14 @@ function recentMomentum(items: HistoryPoint[], minutes = 5) {
   return ((end - start) / start) * 100;
 }
 
-function clientMarketState(quote: Quote | null, message: string, preferences: ActionPreferences, recentChange: number | null): MarketState {
+function clientMarketState(quote: Quote | null, message: string, preferences: ActionPreferences): MarketState {
   if (!quote) return message ? "OFFLINE" : "LOADING";
   if (["CLOSED", "OFFLINE", "LOADING", "ALERT", "LIMIT_UP", "LIMIT_DOWN"].includes(String(quote.state)))
     return quote.state as MarketState;
   const threshold = preferences.thresholds;
-  // The configured values describe a full trading day. A five-minute move is
-  // meaningful at roughly one eighth of those thresholds, with a noise floor
-  // so the pet does not flicker between states on every tick.
-  if (recentChange !== null) {
-    const recentUp = Math.max(.08, Math.abs(threshold.up) * .12);
-    const recentStrongUp = Math.max(.3, Math.abs(threshold.strongUp) * .12);
-    const recentDown = -Math.max(.08, Math.abs(threshold.down) * .12);
-    const recentStrongDown = -Math.max(.3, Math.abs(threshold.strongDown) * .12);
-    if (recentChange >= recentStrongUp) return "STRONG_UP";
-    if (recentChange >= recentUp) return "UP";
-    if (recentChange <= recentStrongDown) return "STRONG_DOWN";
-    if (recentChange <= recentDown) return "DOWN";
-  }
+  // The default pet state is deliberately stable and follows the current
+  // trading day's percentage change. Short-term momentum remains available as
+  // an explicit per-stock custom rule instead of silently overriding defaults.
   const value = Number(quote.changePercent || 0);
   if (value >= threshold.strongUp) return "STRONG_UP";
   if (value >= threshold.up) return "UP";
@@ -246,6 +240,7 @@ function App() {
     [panel, setPanel] = useState<"watch" | "chart" | "alerts" | "actions" | "settings">(initialControlPanel);
   const [actions, setActions] = useState<ActionPreferences>(defaultActions);
   const [customRuleAssets, setCustomRuleAssets] = useState<Record<string, string>>({});
+  const [customRuleAudioAssets, setCustomRuleAudioAssets] = useState<Record<string, string>>({});
   const [historyRange, setHistoryRange] = useState<HistoryRange>("1m");
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [intradayHistory, setIntradayHistory] = useState<HistoryPoint[]>([]);
@@ -262,13 +257,20 @@ function App() {
   const [alertType, setAlertType] = useState<Alert["type"]>("change_above"),
     [alertValue, setAlertValue] = useState("3");
   const triggered = useRef(new Map<string, number>());
+  const playedRule = useRef("");
+  const playingRuleAudio = useRef<HTMLAudioElement | null>(null);
 
   const loadWatchlist = useCallback(async () => {
     const payload = await window.stockPet.api(
       "/api/products/stock-pet/watchlist",
     );
-    setWatchlist(payload.items || []);
-    return payload.items || [];
+    const items: Watch[] = payload.items || [];
+    setWatchlist(items);
+    setSelected((previous) => {
+      const primary = items.findIndex((item) => item.isPrimary);
+      return rendererMode === "pet" && primary >= 0 ? primary : Math.min(previous, Math.max(0, items.length - 1));
+    });
+    return items;
   }, []);
   const loadAlerts = useCallback(async () => {
     const payload = await window.stockPet.api("/api/products/stock-pet/alerts");
@@ -304,8 +306,18 @@ function App() {
       window.stockPet.setPositionLocked(value.locked);
     }).catch(() => undefined);
     window.stockPet.getCustomRuleAssets().then(setCustomRuleAssets).catch(() => undefined);
+    window.stockPet.getCustomRuleAudioAssets().then(setCustomRuleAudioAssets).catch(() => undefined);
   }, []);
   useEffect(() => window.stockPet.onCustomRuleAssetsChanged(setCustomRuleAssets), []);
+  useEffect(() => window.stockPet.onCustomRuleAudioAssetsChanged(setCustomRuleAudioAssets), []);
+  useEffect(() => window.stockPet.onActionPreferencesChanged((value) => {
+    const next = value as ActionPreferences;
+    setActions(next);
+    if (rendererMode === "pet") {
+      window.stockPet.setOpacity(next.opacity);
+      window.stockPet.setPositionLocked(next.locked);
+    }
+  }), []);
   useEffect(() => window.stockPet.onSessionChanged(setSession), []);
   useEffect(() => {
     const update = () => setVisible(!document.hidden);
@@ -389,7 +401,8 @@ function App() {
     });
   }, [quotes, alerts, actions.sound]);
 
-  const currentSymbol = watchlist[selected]?.symbol || quotes[selected]?.symbol || "";
+  const currentWatch = watchlist[selected] || watchlist.find((item) => item.isPrimary) || watchlist[0] || null;
+  const currentSymbol = currentWatch?.symbol || "";
   useEffect(() => {
     const legacyRules = actions.stockRuleGroups?.__LEGACY__;
     if (!currentSymbol || !legacyRules?.length || actions.stockRuleGroups[currentSymbol]?.length) return;
@@ -425,13 +438,15 @@ function App() {
     return () => { active = false; };
   }, [panel, currentSymbol, historyRange]);
 
-  const current = quotes[selected] || null,
+  const current = quotes.find((quote) => quote.symbol === currentSymbol) || null,
     recentChange = useMemo(() => recentMomentum(intradayHistory, 5), [intradayHistory]),
-    state: MarketState = clientMarketState(current, message, actions, recentChange);
+    state: MarketState = clientMarketState(current, message, actions);
   const stockRules = actions.stockRuleGroups?.[currentSymbol] || [];
   const matchedRule = useMemo(() => stockRules.find((rule) => actionRuleMatches(rule, current, state, recentChange)) || null, [stockRules, current, state, recentChange]);
-  const activeRule = matchedRule && customRuleAssets[ruleAssetKey(currentSymbol, matchedRule.id)] ? matchedRule : null;
-  const title = current?.name || watchlist[selected]?.name || "添加第一只自选",
+  const activeRule = matchedRule;
+  const activeRuleKey = activeRule ? ruleAssetKey(currentSymbol, activeRule.id) : "";
+  const activeRuleAudio = activeRuleKey ? customRuleAudioAssets[activeRuleKey] : "";
+  const title = current?.name || currentWatch?.name || "添加第一只自选",
     change = Number(current?.changePercent || 0);
   const price = useMemo(
     () =>
@@ -442,6 +457,52 @@ function App() {
           }),
     [current],
   );
+  const priceChange = Number(current?.change);
+  const changeAmount = current && Number.isFinite(priceChange)
+    ? priceChange
+    : current?.price != null && Number.isFinite(change) && change > -100
+      ? Number(current.price) - (Number(current.price) / (1 + change / 100))
+      : null;
+  const formattedChangeAmount = changeAmount == null
+    ? "--"
+    : `${changeAmount >= 0 ? "+" : ""}${changeAmount.toLocaleString("zh-CN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 3,
+      })}`;
+  const quoteUpdatedAt = current?.updatedAt
+    ? new Date(current.updatedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+    : "等待首次更新";
+  useEffect(() => {
+    if (rendererMode !== "pet") return;
+    if (!activeRuleKey) {
+      playedRule.current = "";
+      playingRuleAudio.current?.pause();
+      playingRuleAudio.current = null;
+      return;
+    }
+    if (!actions.sound || !activeRuleAudio) {
+      playedRule.current = "";
+      playingRuleAudio.current?.pause();
+      playingRuleAudio.current = null;
+      return;
+    }
+    const playbackKey = `${activeRuleKey}::${activeRuleAudio}`;
+    if (playedRule.current === playbackKey) return;
+    playedRule.current = playbackKey;
+    playingRuleAudio.current?.pause();
+    playingRuleAudio.current = null;
+    const audio = new Audio(activeRuleAudio);
+    audio.volume = actions.volume;
+    playingRuleAudio.current = audio;
+    audio.play().catch(() => undefined);
+    return () => {
+      audio.pause();
+      if (playingRuleAudio.current === audio) playingRuleAudio.current = null;
+    };
+  }, [activeRuleKey, activeRuleAudio, actions.sound]);
+  useEffect(() => {
+    if (playingRuleAudio.current) playingRuleAudio.current.volume = actions.volume;
+  }, [actions.volume]);
   const login = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -473,19 +534,23 @@ function App() {
       `/api/products/stock-pet/watchlist/${id}`,
       { method: "DELETE" },
     );
-    setWatchlist(payload.items);
-    setQuotes((items) => items.filter((_, index) => index !== selected));
-    setSelected(0);
+    const items: Watch[] = payload.items || [];
+    setWatchlist(items);
+    const primary = items.findIndex((item) => item.isPrimary);
+    setSelected(primary >= 0 ? primary : 0);
+    await loadQuotes(items);
   };
   const updateWatchlist = async (body: { orderedIds?: string[]; primaryId?: string }) => {
     const payload = await window.stockPet.api("/api/products/stock-pet/watchlist", { method: "PATCH", body });
-    setWatchlist(payload.items || []);
-    setSelected(0);
-    await loadQuotes(payload.items || []);
+    const items: Watch[] = payload.items || [];
+    setWatchlist(items);
+    const primary = items.findIndex((item) => item.isPrimary);
+    setSelected(primary >= 0 ? primary : 0);
+    await loadQuotes(items);
   };
   const addAlert = async (event: FormEvent) => {
     event.preventDefault();
-    const symbol = watchlist[selected]?.symbol;
+    const symbol = currentWatch?.symbol;
     if (!symbol) return setMessage("请先选择一只自选");
     try {
       const payload = await window.stockPet.api(
@@ -544,7 +609,16 @@ function App() {
           <img draggable={false} src={petAsset} alt={`牛来了：${copy[state]}`} />
         </div>
         <button className="pet-quote-chip" title="点击查看行情走势" onClick={() => openManager("chart")}>
-          <span>{activeRule ? activeRule.name : copy[state]}</span><b>{title}</b>{current && <strong className={change < 0 ? "negative" : ""}>{price} · {change >= 0 ? "+" : ""}{change.toFixed(2)}%</strong>}
+          <b>{title}</b>
+          <span>{activeRule ? activeRule.name : copy[state]}</span>
+          {current ? (
+            <strong className={change < 0 ? "negative" : ""}>
+              <em>{price}</em>
+              <i>今日 {formattedChangeAmount}（{change >= 0 ? "+" : ""}{change.toFixed(2)}%）</i>
+            </strong>
+          ) : (
+            <strong className="quote-loading"><em>--</em><i>行情加载中</i></strong>
+          )}
         </button>
       </main>
     );
@@ -562,8 +636,8 @@ function App() {
     <main className="control-app">
       <header className="control-header"><div><img src="./niu-lai-le-mascot.png" alt="" /><span><b>牛来了</b><small>行情桌宠管理中心</small></span></div><button onClick={() => window.close()}><X /></button></header>
       <section className="control-summary">
-        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong></div>
-        <div className={`summary-action-status ${activeRule ? "configured" : "default"}`}><Sparkle/><span><b>{activeRule ? activeRule.name : "默认小牛形象"}</b><small>{stockRules.length ? activeRule ? "已按该股票的规则触发" : matchedRule ? "命中规则但缺少 GIF，已安全兜底" : `该股票已配置 ${stockRules.length} 个动作` : "该股票尚未配置专属动作"}</small></span></div>
+        <div><small>{copy[state]}</small><h1>{title}</h1><strong className={change < 0 ? "negative" : ""}>{price}{current && `  ${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><p className="quote-meta">{current?.sourceLabel || "行情数据"} · 更新于 {quoteUpdatedAt}</p></div>
+        <div className={`summary-action-status ${activeRule ? "configured" : "default"}`}><Sparkle/><span><b>{activeRule ? activeRule.name : "默认按今日涨跌幅"}</b><small>{stockRules.length ? activeRule ? customRuleAssets[activeRuleKey] ? "已按该股票的自定义规则触发" : "自定义规则已触发，使用默认小牛形象" : `今日状态生效；另有 ${stockRules.length} 条自定义规则待匹配` : "按今日涨跌幅自动切换动作，可为每只股票单独配置"}</small></span></div>
       </section>
       <nav className="control-tabs">
         {([['watch', <Star />, '自选行情'], ['chart', <TrendUp />, '行情走势'], ['alerts', <Bell />, '异动提醒'], ['actions', <Sparkle />, '场景动作'], ['settings', <GearSix />, '桌宠设置']] as const).map(([key, icon, label]) => <button key={key} className={panel === key ? "active" : ""} onClick={() => setPanel(key)}>{icon}{label}</button>)}
@@ -573,7 +647,7 @@ function App() {
         {panel === "watch" && <WatchPanel search={search} setSearch={setSearch} results={results} add={add} watchlist={watchlist} selected={selected} setSelected={setSelected} remove={remove} updateWatchlist={updateWatchlist} />}
         {panel === "chart" && <MarketChartPanel quote={current} range={historyRange} setRange={setHistoryRange} items={history} busy={historyBusy} message={historyMessage} />}
         {panel === "alerts" && <AlertPanel alerts={alerts} watchlist={watchlist} selected={selected} alertType={alertType} setAlertType={setAlertType} alertValue={alertValue} setAlertValue={setAlertValue} addAlert={addAlert} removeAlert={removeAlert} updateAlert={updateAlert} />}
-        {panel === "actions" && <ActionPanel state={state} activeRule={activeRule} preferences={actions} watchlist={watchlist} currentSymbol={currentSymbol} customRuleAssets={customRuleAssets} setCustomRuleAssets={setCustomRuleAssets} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作配置已保存"); }} />}
+        {panel === "actions" && <ActionPanel state={state} activeRule={activeRule} preferences={actions} watchlist={watchlist} currentSymbol={currentSymbol} customRuleAssets={customRuleAssets} setCustomRuleAssets={setCustomRuleAssets} customRuleAudioAssets={customRuleAudioAssets} setCustomRuleAudioAssets={setCustomRuleAudioAssets} onChange={async (next) => { const saved = await window.stockPet.saveActionPreferences(next); setActions(saved); setMessage("动作配置已保存"); }} />}
         {panel === "settings" && <SettingsPanel logout={async () => setSession(await window.stockPet.logout())} preferences={actions} onChange={async (next) => setActions(await window.stockPet.saveActionPreferences(next))} updateStatus={updateStatus} setUpdateStatus={setUpdateStatus} />}
       </section>
       <footer className="control-disclaimer">行情数据仅供信息展示，不构成投资建议或交易依据。</footer>
@@ -686,7 +760,7 @@ function MarketChartPanel({ quote, range, setRange, items, busy, message }: {
   </div>;
 }
 
-function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol, customRuleAssets, setCustomRuleAssets, onChange }: {
+function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol, customRuleAssets, setCustomRuleAssets, customRuleAudioAssets, setCustomRuleAudioAssets, onChange }: {
   state: MarketState;
   activeRule: ActionRule | null;
   preferences: ActionPreferences;
@@ -694,15 +768,24 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
   currentSymbol: string;
   customRuleAssets: Record<string, string>;
   setCustomRuleAssets: (value: Record<string, string>) => void;
+  customRuleAudioAssets: Record<string, string>;
+  setCustomRuleAudioAssets: (value: Record<string, string>) => void;
   onChange: (value: ActionPreferences) => void;
 }) {
   const [assetMessage, setAssetMessage] = useState("");
   const [editingSymbol, setEditingSymbol] = useState(currentSymbol);
+  const [previewingRuleId, setPreviewingRuleId] = useState("");
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => { if (currentSymbol) setEditingSymbol(currentSymbol); }, [currentSymbol]);
+  useEffect(() => () => {
+    previewAudioRef.current?.pause();
+    previewAudioRef.current = null;
+  }, []);
   const symbol = editingSymbol || currentSymbol;
   const rules = preferences.stockRuleGroups?.[symbol] || [];
   const stockName = watchlist.find((item) => item.symbol === symbol)?.name || symbol || "未选择股票";
   const assetFor = (rule: ActionRule) => customRuleAssets[ruleAssetKey(symbol, rule.id)];
+  const audioFor = (rule: ActionRule) => customRuleAudioAssets[ruleAssetKey(symbol, rule.id)];
   const saveRules = (nextRules: ActionRule[]) => onChange({
     ...preferences,
     stockRuleGroups: { ...preferences.stockRuleGroups, [symbol]: nextRules },
@@ -716,6 +799,56 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
       setAssetMessage(code.includes("GIF_FILE_TOO_LARGE") ? "GIF 不能超过 25MB" : code.includes("INVALID_GIF_FILE") ? "请选择有效的 GIF 动图" : "动图保存失败，请重试");
     }
   };
+  const chooseRuleAudio = async (rule: ActionRule) => {
+    try {
+      setCustomRuleAudioAssets(await window.stockPet.chooseCustomRuleAudio(symbol, rule.id));
+      if (!preferences.sound) await onChange({ ...preferences, sound: true });
+      setAssetMessage(`${rule.name}的声音已保存，命中规则时会按当前音量播放`);
+    } catch (error: any) {
+      const code = String(error?.message || error || "");
+      setAssetMessage(code.includes("AUDIO_FILE_TOO_LARGE") ? "声音文件不能超过 15MB" : code.includes("INVALID_AUDIO_FILE") ? "请选择 MP3、WAV、M4A、AAC 或 OGG 文件" : "声音保存失败，请重试");
+    }
+  };
+  const previewRuleAudio = (rule: ActionRule) => {
+    const source = audioFor(rule);
+    if (!source) return;
+    if (previewingRuleId === rule.id && previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current.currentTime = 0;
+      previewAudioRef.current = null;
+      setPreviewingRuleId("");
+      setAssetMessage(`${rule.name}的声音已停止`);
+      return;
+    }
+    previewAudioRef.current?.pause();
+    const audio = new Audio(source);
+    audio.volume = preferences.volume;
+    audio.onended = () => {
+      previewAudioRef.current = null;
+      setPreviewingRuleId("");
+    };
+    audio.onerror = () => {
+      previewAudioRef.current = null;
+      setPreviewingRuleId("");
+      setAssetMessage("声音预览失败，请确认文件格式后重新上传");
+    };
+    previewAudioRef.current = audio;
+    setPreviewingRuleId(rule.id);
+    audio.play().then(() => setAssetMessage(`正在试听 ${rule.name} 的触发声音`)).catch(() => {
+      previewAudioRef.current = null;
+      setPreviewingRuleId("");
+      setAssetMessage("声音预览失败，请确认文件格式后重新上传");
+    });
+  };
+  const clearRuleAudio = async (rule: ActionRule) => {
+    if (previewingRuleId === rule.id && previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+      setPreviewingRuleId("");
+    }
+    setCustomRuleAudioAssets(await window.stockPet.clearCustomRuleAudio(symbol, rule.id));
+    setAssetMessage(`${rule.name}的声音已移除`);
+  };
   const updateRule = (id: string, changes: Partial<ActionRule>) => saveRules(rules.map((rule) => rule.id === id ? { ...rule, ...changes } : rule));
   const addRule = () => {
     if (!symbol) return setAssetMessage("请先在自选行情中添加并选择一只股票");
@@ -728,6 +861,7 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
   };
   const removeRule = async (rule: ActionRule) => {
     if (assetFor(rule)) setCustomRuleAssets(await window.stockPet.clearCustomRuleGif(symbol, rule.id));
+    if (audioFor(rule)) setCustomRuleAudioAssets(await window.stockPet.clearCustomRuleAudio(symbol, rule.id));
     saveRules(rules.filter((item) => item.id !== rule.id));
   };
   const moveRule = (index: number, direction: -1 | 1) => {
@@ -744,6 +878,11 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
       if (nextAssets[ruleAssetKey(symbol, rule.id)]) nextAssets = await window.stockPet.clearCustomRuleGif(symbol, rule.id);
     }
     setCustomRuleAssets(nextAssets);
+    let nextAudioAssets = customRuleAudioAssets;
+    for (const rule of rules) {
+      if (nextAudioAssets[ruleAssetKey(symbol, rule.id)]) nextAudioAssets = await window.stockPet.clearCustomRuleAudio(symbol, rule.id);
+    }
+    setCustomRuleAudioAssets(nextAudioAssets);
     saveRules([]);
     setAssetMessage(`${stockName} 已恢复默认小牛形象`);
   };
@@ -754,13 +893,14 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
   return (
     <div className="action-panel">
       <div className="action-heading">
-        <span><b>股票专属场景动作</b><small>每只股票拥有独立的一组 GIF；没有配置或素材缺失时使用默认小牛形象。</small></span>
+        <span><b>股票专属场景动作</b><small>默认动作依据今日涨跌幅；你也可以为每只股票配置短周期、价格、状态或时间规则。</small></span>
         <button className="primary-action" onClick={addRule}><Plus />新增动作</button>
       </div>
       <div className="stock-action-toolbar">
         <label><span>配置股票</span><select value={symbol} onChange={(event) => { setEditingSymbol(event.target.value); setAssetMessage(""); }}>{watchlist.map((item) => <option key={item.id} value={item.symbol}>{item.name} · {item.symbol}</option>)}</select></label>
         <label><span>动作速度</span><select value={preferences.speed} onChange={(event) => onChange({ ...preferences, speed: Number(event.target.value) as ActionPreferences["speed"] })}><option value="0.75">舒缓</option><option value="1">标准</option><option value="1.25">活泼</option></select></label>
-        <div className={`stock-action-state ${rules.some(assetFor) ? "ready" : "default"}`}><Sparkle/><span><b>{rules.some(assetFor) ? `${rules.filter(assetFor).length} 个 GIF 已就绪` : "使用默认小牛"}</b><small>{stockName} · 共 {rules.length} 条规则</small></span></div>
+        <label className="action-volume"><span>声音音量 <b>{Math.round(preferences.volume * 100)}%</b></span><div><input aria-label="声音音量" type="range" min="0" max="1" step="0.05" value={preferences.volume} onChange={(event) => onChange({ ...preferences, volume: Number(event.target.value), sound: true })}/><button type="button" className={preferences.sound ? "enabled" : ""} onClick={() => onChange({ ...preferences, sound: !preferences.sound })}>{preferences.sound ? "已开启" : "已静音"}</button></div></label>
+        <div className={`stock-action-state ${rules.some(assetFor) || rules.some(audioFor) ? "ready" : "default"}`}><Sparkle/><span><b>{rules.some(assetFor) || rules.some(audioFor) ? `${rules.filter(assetFor).length} 个动图 · ${rules.filter(audioFor).length} 个声音` : "使用默认小牛"}</b><small>{stockName} · 共 {rules.length} 条规则</small></span></div>
       </div>
       {rules.length ? <div className="custom-rule-list">{rules.map((rule, index) => <article className={`custom-rule-card ${activeRule?.id === rule.id && symbol === currentSymbol ? "current" : ""}`} key={rule.id}>
         <div className="custom-rule-top">
@@ -781,15 +921,26 @@ function ActionPanel({ state, activeRule, preferences, watchlist, currentSymbol,
           : <><label><span>条件</span><select value={rule.operator} onChange={(event) => updateRule(rule.id, { operator: event.target.value as ActionRuleOperator })}>{(Object.keys(operatorNames) as ActionRuleOperator[]).map((value) => <option value={value} key={value}>{operatorNames[value]}</option>)}</select></label><label><span>{rule.trigger === "price" ? "价格" : "数值 (%)"}</span><input type="number" step="0.1" value={rule.value} onChange={(event) => updateRule(rule.id, { value: Number(event.target.value) })}/></label>{rule.operator === "between" && <label><span>至</span><input type="number" step="0.1" value={rule.endValue} onChange={(event) => updateRule(rule.id, { endValue: Number(event.target.value) })}/></label>}</>}
           <label><span>动作效果</span><select value={rule.motion} onChange={(event) => updateRule(rule.id, { motion: event.target.value as MotionPreset })}>{(Object.keys(motionNames) as MotionPreset[]).map((preset) => <option key={preset} value={preset}>{motionNames[preset]}</option>)}</select></label>
         </div>
-        <div className="rule-actions"><button onClick={() => chooseRuleGif(rule)}>{assetFor(rule) ? "更换 GIF" : "上传 GIF"}</button>{assetFor(rule) && <button className="secondary" onClick={async () => setCustomRuleAssets(await window.stockPet.clearCustomRuleGif(symbol, rule.id))}>移除 GIF</button>}<small>{assetFor(rule) ? "GIF 已保存到本机，仅用于这只股票。" : "尚未上传 GIF，命中时会使用默认小牛。"}</small></div>
+        <div className="rule-actions">
+          <div className="rule-media-group"><span>动作画面</span><button onClick={() => chooseRuleGif(rule)}>{assetFor(rule) ? "更换 GIF" : "上传 GIF"}</button>{assetFor(rule) && <button className="secondary" onClick={async () => setCustomRuleAssets(await window.stockPet.clearCustomRuleGif(symbol, rule.id))}>移除</button>}</div>
+          <div className={`rule-media-group audio-media-group ${audioFor(rule) ? "has-asset" : ""}`}>
+            <span>触发声音</span>
+            {audioFor(rule) && <em className="media-ready-dot">已上传</em>}
+            {audioFor(rule) && <button className={`preview-audio ${previewingRuleId === rule.id ? "playing" : ""}`} onClick={() => previewRuleAudio(rule)}>{previewingRuleId === rule.id ? <Stop /> : <Play />}{previewingRuleId === rule.id ? "停止" : "试听"}</button>}
+            <button onClick={() => chooseRuleAudio(rule)}>{audioFor(rule) ? "更换" : "上传声音"}</button>
+            {audioFor(rule) && <button className="secondary" onClick={() => clearRuleAudio(rule)}>移除</button>}
+          </div>
+          <small>{assetFor(rule) || audioFor(rule) ? "素材已保存在本机；规则命中时将同步触发。" : "尚未上传素材，命中时会使用默认小牛。"}</small>
+        </div>
       </article>)}</div> : <button className="empty-rule" onClick={addRule}><Plus/><b>为 {stockName} 添加第一个动作</b><span>上传 GIF，并设置涨跌幅、价格、行情状态或时间条件</span></button>}
       {assetMessage && <p className="asset-message">{assetMessage}</p>}
       <div className="action-safety-notes">
-        <span><b>按顺序匹配</b><small>从上到下检查规则，首个命中的动作立即执行。</small></span>
-        <span><b>安全兜底</b><small>未命中、GIF 缺失或加载失败时自动显示默认小牛。</small></span>
-        <span><b>本机私有</b><small>自定义 GIF 仅保存在当前电脑，不会上传云端。</small></span>
+        <span><b>默认稳定</b><small>没有命中自定义规则时，始终按今日涨跌幅切换动作，不受分钟噪声干扰。</small></span>
+        <span><b>按顺序匹配</b><small>自定义规则从上到下检查，首个命中的动作立即执行。</small></span>
+        <span><b>安全兜底</b><small>未命中或 GIF 缺失时自动显示默认小牛，不影响行情。</small></span>
+        <span><b>本机私有</b><small>自定义 GIF 与声音仅保存在当前电脑，不会上传云端。</small></span>
       </div>
-      {rules.length > 0 && <button className="clear-stock-actions" onClick={clearStockRules}>清空这只股票的动作配置</button>}
+      {rules.length > 0 && <button className="clear-stock-actions" onClick={clearStockRules}><Trash/><span><b>清空当前股票动作</b><small>删除 {stockName} 的全部规则、GIF 和声音</small></span></button>}
     </div>
   );
 }
@@ -962,6 +1113,7 @@ function SettingsPanel({ logout, preferences, onChange, updateStatus, setUpdateS
   useEffect(() => { window.stockPet.getSystemSettings().then(setSystem).catch(() => undefined); }, []);
   return (
     <div className="settings-panel">
+      <div className="settings-grid">
       <label>
         <span>始终置顶</span>
         <input
@@ -1006,7 +1158,8 @@ function SettingsPanel({ logout, preferences, onChange, updateStatus, setUpdateS
         onChange({ ...preferences, locked: event.target.checked });
       }} /></label>
       <label><span>桌宠动画</span><input type="checkbox" checked={preferences.animations} onChange={(event) => onChange({ ...preferences, animations: event.target.checked })} /></label>
-      <label><span>提醒声音</span><input type="checkbox" checked={preferences.sound} onChange={(event) => onChange({ ...preferences, sound: event.target.checked })} /></label>
+      <label><span>场景与提醒声音</span><input type="checkbox" checked={preferences.sound} onChange={(event) => onChange({ ...preferences, sound: event.target.checked })} /></label>
+      <label><span>声音音量 · {Math.round(preferences.volume * 100)}%</span><input aria-label="声音音量" type="range" min="0" max="1" step="0.05" value={preferences.volume} onChange={(event) => onChange({ ...preferences, volume: Number(event.target.value) })} /></label>
       <label><span>透明度</span><input type="range" min="0.55" max="1" step="0.05" value={preferences.opacity} onChange={(event) => {
         const opacity = Number(event.target.value);
         window.stockPet.setOpacity(opacity);
@@ -1015,15 +1168,18 @@ function SettingsPanel({ logout, preferences, onChange, updateStatus, setUpdateS
       <label><span>交易时刷新</span><select value={preferences.refreshSeconds} onChange={(event) => onChange({ ...preferences, refreshSeconds: Number(event.target.value) as ActionPreferences["refreshSeconds"] })}>
         <option value="15">15 秒</option><option value="20">20 秒</option><option value="30">30 秒</option><option value="60">60 秒</option>
       </select></label>
+      </div>
+      <div className="settings-actions">
       <button onClick={async () => {
         if (updateStatus === "ready") return window.stockPet.installUpdate();
         const result = await window.stockPet.checkUpdates();
         setUpdateStatus(result.status);
       }}>{({ idle: "检查更新", checking: "正在检查…", downloading: "正在下载更新…", current: "已是最新版本", ready: "重启并安装更新", unavailable: "正式版发布后可更新", error: "更新检查失败，点击重试" } as Record<string,string>)[updateStatus] || "检查更新"}</button>
-      <button onClick={logout}>
+      <button className="logout-action" onClick={logout}>
         <SignOut />
         退出登录
       </button>
+      </div>
       <small>行情仅供信息展示，不构成投资建议。</small>
     </div>
   );

@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, protocol, safeStorage, screen, shell, Tray } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { hostname, platform } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { autoUpdater } from "electron-updater";
 
@@ -20,6 +20,7 @@ const preferencesPath = () => join(app.getPath("userData"), "action-preferences.
 const windowStatePath = () => join(app.getPath("userData"), "window-state.json");
 const customAssetDirectory = () => join(app.getPath("userData"), "state-gifs");
 const customRuleAssetDirectory = () => join(app.getPath("userData"), "rule-gifs");
+const customRuleAudioAssetDirectory = () => join(app.getPath("userData"), "rule-audio");
 protocol.registerSchemesAsPrivileged([{ scheme: "stockpet-asset", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const motionPresets = new Set(["calm", "float", "bounce", "power", "rocket", "sway", "shiver", "collapse", "pulse", "sleep"]);
 const marketStates = new Set(["LOADING", "OFFLINE", "FLAT", "UP", "STRONG_UP", "LIMIT_UP", "DOWN", "STRONG_DOWN", "LIMIT_DOWN", "ALERT", "CLOSED"]);
@@ -28,6 +29,7 @@ const ruleOperators = new Set(["gte", "lte", "between", "equals"]);
 const defaultActionPreferences = {
   speed: 1,
   sound: false,
+  volume: 0.85,
   animations: true,
   refreshSeconds: 20,
   opacity: 1,
@@ -94,6 +96,7 @@ function sanitizeActionPreferences(input: any) {
   return {
     speed,
     sound: Boolean(input?.sound),
+    volume: Math.max(0, Math.min(1, Number.isFinite(Number(input?.volume)) ? Number(input.volume) : 0.85)),
     animations: input?.animations !== false,
     refreshSeconds: [15, 20, 30, 60].includes(Number(input?.refreshSeconds)) ? Number(input.refreshSeconds) : 20,
     opacity: Math.max(0.55, Math.min(1, Number(input?.opacity) || 1)),
@@ -146,6 +149,33 @@ function customRuleAssetPath(symbol: string, ruleId: string) {
   return join(customRuleAssetDirectory(), `${symbolHash}-${ruleId}.gif`);
 }
 
+const supportedAudioExtensions = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg"]);
+const audioMimeTypes: Record<string, string> = {
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".ogg": "audio/ogg",
+};
+
+function customRuleAudioPrefix(symbol: string, ruleId: string) {
+  const symbolHash = createHash("sha256").update(normalizeStockSymbol(symbol)).digest("hex").slice(0, 16);
+  return `${symbolHash}-${ruleId}`;
+}
+
+function findCustomRuleAudioPath(symbol: string, ruleId: string) {
+  const directory = customRuleAudioAssetDirectory();
+  if (!existsSync(directory)) return "";
+  const prefix = customRuleAudioPrefix(symbol, ruleId);
+  const filename = readdirSync(directory).find((item) => item.startsWith(`${prefix}.`) && supportedAudioExtensions.has(extname(item).toLowerCase()));
+  return filename ? join(directory, filename) : "";
+}
+
+function removeCustomRuleAudio(symbol: string, ruleId: string) {
+  const pathname = findCustomRuleAudioPath(symbol, ruleId);
+  if (pathname && existsSync(pathname)) unlinkSync(pathname);
+}
+
 function isValidRuleId(ruleId: string) {
   return /^[a-z0-9-]{8,64}$/.test(ruleId);
 }
@@ -162,6 +192,19 @@ function readCustomRuleAssets() {
       }
       const key = customRuleAssetKey(symbol, rule.id);
       if (existsSync(pathname)) result[key] = `stockpet-asset://rule/${encodeURIComponent(symbol)}/${rule.id}?v=${Math.floor(statSync(pathname).mtimeMs)}`;
+    }
+  }
+  return result;
+}
+
+function readCustomRuleAudioAssets() {
+  const result: Record<string, string> = {};
+  for (const [symbol, rules] of Object.entries(readActionPreferences().stockRuleGroups || {})) {
+    if (symbol === "__LEGACY__") continue;
+    for (const rule of rules as any[]) {
+      const pathname = findCustomRuleAudioPath(symbol, rule.id);
+      if (!pathname) continue;
+      result[customRuleAssetKey(symbol, rule.id)] = `stockpet-asset://rule-audio/${encodeURIComponent(symbol)}/${rule.id}?v=${Math.floor(statSync(pathname).mtimeMs)}`;
     }
   }
   return result;
@@ -311,6 +354,39 @@ function openControlWindow(panel = "watch") {
 app.whenReady().then(() => {
   protocol.handle("stockpet-asset", (request) => {
     const url = new URL(request.url);
+    if (url.hostname === "rule-audio") {
+      const [rawSymbol, rawRuleId] = url.pathname.slice(1).split("/");
+      const symbol = normalizeStockSymbol(decodeURIComponent(rawSymbol || ""));
+      const ruleId = String(rawRuleId || "").toLowerCase();
+      const pathname = symbol && isValidRuleId(ruleId) ? findCustomRuleAudioPath(symbol, ruleId) : "";
+      if (!pathname) return new Response("Not found", { status: 404 });
+      const file = readFileSync(pathname);
+      const mimeType = audioMimeTypes[extname(pathname).toLowerCase()] || "application/octet-stream";
+      const range = request.headers.get("range")?.match(/bytes=(\d*)-(\d*)/i);
+      if (range) {
+        const start = Math.max(0, Number(range[1] || 0));
+        const requestedEnd = range[2] ? Number(range[2]) : file.length - 1;
+        const end = Math.min(file.length - 1, Math.max(start, requestedEnd));
+        return new Response(file.subarray(start, end + 1), {
+          status: 206,
+          headers: {
+            "Accept-Ranges": "bytes",
+            "Content-Length": String(end - start + 1),
+            "Content-Range": `bytes ${start}-${end}/${file.length}`,
+            "Content-Type": mimeType,
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+      return new Response(file, {
+        headers: {
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(file.length),
+          "Content-Type": mimeType,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
     if (url.hostname === "rule") {
       const [rawSymbol, rawRuleId] = url.pathname.slice(1).split("/");
       const symbol = normalizeStockSymbol(decodeURIComponent(rawSymbol || ""));
@@ -406,9 +482,15 @@ ipcMain.handle("pet:get-system-settings", () => ({
   launchAtLogin: app.getLoginItemSettings().openAtLogin,
 }));
 ipcMain.handle("pet:get-action-preferences", () => readActionPreferences());
-ipcMain.handle("pet:save-action-preferences", (_event, value) => writeActionPreferences(value));
+ipcMain.handle("pet:save-action-preferences", (_event, value) => {
+  const saved = writeActionPreferences(value);
+  petWindow?.webContents.send("pet:action-preferences-changed", saved);
+  controlWindow?.webContents.send("pet:action-preferences-changed", saved);
+  return saved;
+});
 ipcMain.handle("pet:get-custom-state-assets", () => readCustomStateAssets());
 ipcMain.handle("pet:get-custom-rule-assets", () => readCustomRuleAssets());
+ipcMain.handle("pet:get-custom-rule-audio-assets", () => readCustomRuleAudioAssets());
 ipcMain.handle("pet:choose-custom-gif", async (_event, state: string) => {
   if (!marketStates.has(state)) throw new Error("INVALID_MARKET_STATE");
   const owner = controlWindow || petWindow;
@@ -466,6 +548,42 @@ ipcMain.handle("pet:clear-custom-rule-gif", (_event, symbol: string, ruleId: str
   const assets = readCustomRuleAssets();
   petWindow?.webContents.send("pet:custom-rule-assets-changed", assets);
   controlWindow?.webContents.send("pet:custom-rule-assets-changed", assets);
+  return assets;
+});
+ipcMain.handle("pet:choose-custom-rule-audio", async (_event, symbol: string, ruleId: string) => {
+  symbol = normalizeStockSymbol(symbol);
+  ruleId = String(ruleId || "").toLowerCase();
+  const groups = readActionPreferences().stockRuleGroups as Record<string, any[]>;
+  const group = groups?.[symbol] || [];
+  if (!symbol || !isValidRuleId(ruleId) || !group.some((rule: any) => rule.id === ruleId)) throw new Error("INVALID_ACTION_RULE");
+  const owner = controlWindow || petWindow;
+  const options: OpenDialogOptions = {
+    title: "选择动作声音",
+    properties: ["openFile"],
+    filters: [{ name: "音频文件", extensions: ["mp3", "wav", "m4a", "aac", "ogg"] }],
+  };
+  const selected = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+  if (selected.canceled || !selected.filePaths[0]) return readCustomRuleAudioAssets();
+  const source = selected.filePaths[0];
+  const extension = extname(source).toLowerCase();
+  if (!supportedAudioExtensions.has(extension)) throw new Error("INVALID_AUDIO_FILE");
+  if (statSync(source).size > 15 * 1024 * 1024) throw new Error("AUDIO_FILE_TOO_LARGE");
+  mkdirSync(customRuleAudioAssetDirectory(), { recursive: true, mode: 0o700 });
+  removeCustomRuleAudio(symbol, ruleId);
+  copyFileSync(source, join(customRuleAudioAssetDirectory(), `${customRuleAudioPrefix(symbol, ruleId)}${extension}`));
+  const assets = readCustomRuleAudioAssets();
+  petWindow?.webContents.send("pet:custom-rule-audio-assets-changed", assets);
+  controlWindow?.webContents.send("pet:custom-rule-audio-assets-changed", assets);
+  return assets;
+});
+ipcMain.handle("pet:clear-custom-rule-audio", (_event, symbol: string, ruleId: string) => {
+  symbol = normalizeStockSymbol(symbol);
+  ruleId = String(ruleId || "").toLowerCase();
+  if (!symbol || !isValidRuleId(ruleId)) throw new Error("INVALID_ACTION_RULE");
+  removeCustomRuleAudio(symbol, ruleId);
+  const assets = readCustomRuleAudioAssets();
+  petWindow?.webContents.send("pet:custom-rule-audio-assets-changed", assets);
+  controlWindow?.webContents.send("pet:custom-rule-audio-assets-changed", assets);
   return assets;
 });
 ipcMain.handle("pet:show-context-menu", () => {

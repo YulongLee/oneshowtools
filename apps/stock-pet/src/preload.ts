@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld("stockPet", {
   getCustomRuleAssets: () => ipcRenderer.invoke("pet:get-custom-rule-assets"),
   chooseCustomRuleGif: (symbol: string, ruleId: string) => ipcRenderer.invoke("pet:choose-custom-rule-gif", symbol, ruleId),
   clearCustomRuleGif: (symbol: string, ruleId: string) => ipcRenderer.invoke("pet:clear-custom-rule-gif", symbol, ruleId),
+  getCustomRuleAudioAssets: () => ipcRenderer.invoke("pet:get-custom-rule-audio-assets"),
+  chooseCustomRuleAudio: (symbol: string, ruleId: string) => ipcRenderer.invoke("pet:choose-custom-rule-audio", symbol, ruleId),
+  clearCustomRuleAudio: (symbol: string, ruleId: string) => ipcRenderer.invoke("pet:clear-custom-rule-audio", symbol, ruleId),
   onCustomAssetsChanged: (handler: (assets: Record<string, string>) => void) => {
     const listener = (_event: unknown, assets: Record<string, string>) => handler(assets);
     ipcRenderer.on("pet:custom-assets-changed", listener);
@@ -30,6 +33,16 @@ contextBridge.exposeInMainWorld("stockPet", {
     const listener = (_event: unknown, assets: Record<string, string>) => handler(assets);
     ipcRenderer.on("pet:custom-rule-assets-changed", listener);
     return () => ipcRenderer.removeListener("pet:custom-rule-assets-changed", listener);
+  },
+  onCustomRuleAudioAssetsChanged: (handler: (assets: Record<string, string>) => void) => {
+    const listener = (_event: unknown, assets: Record<string, string>) => handler(assets);
+    ipcRenderer.on("pet:custom-rule-audio-assets-changed", listener);
+    return () => ipcRenderer.removeListener("pet:custom-rule-audio-assets-changed", listener);
+  },
+  onActionPreferencesChanged: (handler: (preferences: unknown) => void) => {
+    const listener = (_event: unknown, preferences: unknown) => handler(preferences);
+    ipcRenderer.on("pet:action-preferences-changed", listener);
+    return () => ipcRenderer.removeListener("pet:action-preferences-changed", listener);
   },
   showContextMenu: () => ipcRenderer.invoke("pet:show-context-menu"),
   onQuickAction: (handler: (action: string) => void) => {
