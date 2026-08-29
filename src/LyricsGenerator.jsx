@@ -7,7 +7,7 @@ import {
 async function request(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(payload.error || "REQUEST_FAILED"), { status: response.status });
+  if (!response.ok) throw Object.assign(new Error(payload?.error?.code || "REQUEST_FAILED"), { status: response.status });
   return payload;
 }
 const json = (value) => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) });
@@ -35,7 +35,7 @@ const copies = {
 
 const initial = { mode: "original", topic: "", sourceLyrics: "", language: "简体中文", genre: "流行", mood: "真挚", audience: "", perspective: "第一人称", structure: "pop", rhyme: "自然押韵", customInstructions: "" };
 
-export function LyricsGenerator({ tool, task, historyTasks = [], locale = "zh-CN", authenticated, runtime, onBack, onAuth, onCompleted, onModelChange }) {
+export function LyricsGenerator({ tool, task, historyTasks = [], locale = "zh-CN", authenticated, runtime, onBack, onAuth, onCompleted, onModelChange, embedded = false, onUseLyrics }) {
   const t = copies[locale] || copies["zh-CN"];
   const zh = locale !== "en";
   const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
@@ -71,11 +71,16 @@ export function LyricsGenerator({ tool, task, historyTasks = [], locale = "zh-CN
   };
   const copy = async () => { await navigator.clipboard.writeText(result?.lyricsMarkdown || ""); setCopied(true); setTimeout(() => setCopied(false), 1400); };
   const download = () => { const blob = new Blob([`# ${result?.title || t.result}\n\n${result?.lyricsMarkdown || ""}`], { type: "text/markdown;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${result?.title || "lyrics"}.md`; anchor.click(); URL.revokeObjectURL(url); };
-  const compose = () => { sessionStorage.setItem("oneshow-music-lyrics-draft", JSON.stringify({ title: result?.title || "", lyrics: result?.lyricsMarkdown || "", idea: result?.creativeNote || "" })); location.assign("/tools/ai-music-studio"); };
+  const compose = () => {
+    const payload = { title: result?.title || "", lyrics: result?.lyricsMarkdown || "", idea: result?.creativeNote || "" };
+    if (onUseLyrics) return onUseLyrics(payload);
+    sessionStorage.setItem("oneshow-music-lyrics-draft", JSON.stringify(payload));
+    location.assign("/tools/ai-music-studio");
+  };
 
-  return <div className="lyrics-page">
-    <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{t.back}</button>
-    <header className="lyrics-hero"><span><NotePencil size={34} weight="duotone" /><Sparkle size={16} weight="fill" /></span><div><p className="eyebrow">{t.kicker}</p><h1>{t.title}</h1><p>{t.sub}</p></div><aside><Coins size={18} /><strong>{tool.creditCost}</strong><small>{t.credits}</small></aside></header>
+  return <div className={`lyrics-page ${embedded ? "music-lyrics-workspace" : ""}`}>
+    {!embedded && <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{t.back}</button>}
+    {!embedded && <header className="lyrics-hero"><span><NotePencil size={34} weight="duotone" /><Sparkle size={16} weight="fill" /></span><div><p className="eyebrow">{t.kicker}</p><h1>{t.title}</h1><p>{t.sub}</p></div><aside><Coins size={18} /><strong>{tool.creditCost}</strong><small>{t.credits}</small></aside></header>}
     {busy && <div className="lyrics-progress"><SpinnerGap className="spin" size={20} /><div><strong>{t.generating} · {elapsed}s</strong><small>{t.waiting}</small></div><i><b style={{ width: `${Math.min(92, 14 + elapsed * 1.2)}%` }} /></i></div>}
     <main className="lyrics-layout">
       <section className="lyrics-form-card">

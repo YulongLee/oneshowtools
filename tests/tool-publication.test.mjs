@@ -25,6 +25,10 @@ test("new installations publish the approved launch tools", async () => {
 
   const musicStatus = await handleApi(request("/api/music/status"));
   assert.equal(musicStatus.status, 200);
+  const musicStatusBody = await musicStatus.json();
+  assert.equal(musicStatusBody.lyrics.slug, "lyrics-generator");
+  assert.equal(typeof musicStatusBody.lyrics.creditCost, "number");
+  assert.equal(published.includes("lyrics-generator"), false);
 });
 
 test("publication settings survive database reinitialization", async () => {

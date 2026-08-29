@@ -157,7 +157,7 @@ export async function submitSingingCover(user, form, fetchImpl = fetch) {
   if (balance(user.id) < configuration.creditCost) throw singingError("INSUFFICIENT_CREDITS", 402);
   const source = await persistFile(user.id, audio.fileName, audio.mimeType, audio.buffer);
   const taskId = randomUUID(); const trackId = randomUUID(); const jobId = randomUUID(); const token = randomUUID(); const timestamp = Date.now();
-  const tool = db.prepare("SELECT * FROM tools WHERE slug = 'ai-music-studio' AND active = 1").get();
+  const tool = db.prepare("SELECT * FROM tools WHERE slug = 'ai-music-studio'").get();
   try {
     db.exec("BEGIN IMMEDIATE");
     db.prepare("INSERT INTO tasks (id, user_id, tool_id, status, input_json, credit_cost, created_at, updated_at) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)")

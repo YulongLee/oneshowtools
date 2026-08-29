@@ -63,10 +63,10 @@ const copy = {
     mfaSecret: "验证器密钥", mfaCode: "6 位动态验证码", activate: "完成绑定",
     verifyMfa: "验证并进入后台", recovery: "恢复代码", recoveryBody: "请立即安全保存，代码只展示一次。",
     saved: "我已安全保存", lifecycle: "生命周期", cost: "积分价格", runtime: "运行状态",
-    publish: "发布", maintenance: "维护", retire: "下架", draft: "草稿", staged: "预发布",
-    publicationTitle: "工具上线管理", publicationHint: "新工具默认不上线。上线后才会出现在工具市场并允许用户执行。",
-    onlineTools: "已上线", offlineTools: "未上线", searchTools: "搜索工具名称或标识", onlineOnly: "仅已上线",
-    offlineOnly: "仅未上线", putOnline: "上线", takeOffline: "下线", online: "已上线", offline: "未上线",
+    publish: "发布", maintenance: "维护", retire: "下架", draft: "草稿", staged: "预发布", testing: "测试中",
+    publicationTitle: "工具发布治理", publicationHint: "测试中的工具仅管理员可在网站内查看和执行；正式上线后才向普通用户开放。",
+    onlineTools: "已上线", testingTools: "测试中", offlineTools: "已下线", searchTools: "搜索工具名称或标识", onlineOnly: "仅已上线",
+    testingOnly: "仅测试中", offlineOnly: "仅已下线", putOnline: "上线", putTesting: "设为测试", takeOffline: "下线", online: "已上线", offline: "已下线",
     configureBranding: "配置产品图标", brandingTitle: "产品品牌外观", brandingHint: "上传独立产品图标并配置图标底色。PNG、JPG 或 WebP，最大 2MB。",
     iconUpload: "上传产品图标", iconColor: "强调色", iconBackground: "图标背景色", brandingReason: "本次变更原因",
     saveBranding: "保存品牌外观", resetBranding: "恢复默认图标", brandingSaved: "产品图标配置已保存",
@@ -153,10 +153,10 @@ const copy = {
     mfaSecret: "Authenticator key", mfaCode: "6-digit code", activate: "Activate MFA",
     verifyMfa: "Verify and continue", recovery: "Recovery codes", recoveryBody: "Store these securely now. They are shown once.",
     saved: "I saved them securely", lifecycle: "Lifecycle", cost: "Credit cost", runtime: "Runtime",
-    publish: "Publish", maintenance: "Maintenance", retire: "Retire", draft: "Draft", staged: "Staged",
-    publicationTitle: "Tool publication", publicationHint: "New tools stay offline by default. Only published tools appear in the marketplace and can run.",
-    onlineTools: "Online", offlineTools: "Offline", searchTools: "Search name or slug", onlineOnly: "Online only",
-    offlineOnly: "Offline only", putOnline: "Publish", takeOffline: "Take offline", online: "Online", offline: "Offline",
+    publish: "Publish", maintenance: "Maintenance", retire: "Retire", draft: "Draft", staged: "Staged", testing: "Testing",
+    publicationTitle: "Tool governance", publicationHint: "Testing tools are visible and executable only to administrators. Publishing makes them available to customers.",
+    onlineTools: "Online", testingTools: "Testing", offlineTools: "Offline", searchTools: "Search name or slug", onlineOnly: "Online only",
+    testingOnly: "Testing only", offlineOnly: "Offline only", putOnline: "Publish", putTesting: "Set testing", takeOffline: "Take offline", online: "Online", offline: "Offline",
     configureBranding: "Configure icon", brandingTitle: "Product branding", brandingHint: "Upload a product icon and choose its accent and background colors. PNG, JPG or WebP, up to 2 MB.",
     iconUpload: "Upload product icon", iconColor: "Accent color", iconBackground: "Icon background", brandingReason: "Reason for change",
     saveBranding: "Save branding", resetBranding: "Restore default icon", brandingSaved: "Product branding saved",
@@ -1025,11 +1025,15 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
   const [pricing, setPricing] = useState({ mode: "paid", creditCost: 1, reason: "" });
   const [saving, setSaving] = useState(false);
   const tools = data?.tools || [];
-  const onlineCount = tools.filter((tool) => tool.active).length;
+  const publicationState = (tool) => tool.active ? "published" : tool.lifecycleState === "testing" ? "testing" : "offline";
+  const onlineCount = tools.filter((tool) => publicationState(tool) === "published").length;
+  const testingCount = tools.filter((tool) => publicationState(tool) === "testing").length;
+  const offlineCount = tools.length - onlineCount - testingCount;
   const normalizedQuery = query.trim().toLowerCase();
   const visibleTools = tools.filter((tool) => {
-    if (filter === "online" && !tool.active) return false;
-    if (filter === "offline" && tool.active) return false;
+    if (filter === "online" && publicationState(tool) !== "published") return false;
+    if (filter === "testing" && publicationState(tool) !== "testing") return false;
+    if (filter === "offline" && publicationState(tool) !== "offline") return false;
     if (!normalizedQuery) return true;
     return [tool.slug, tool.nameZh, tool.nameEn, tool.category].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
   });
@@ -1075,17 +1079,17 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
   return <div className="admin-tool-publication-page">
     <section className="admin-tool-publication-head">
       <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
-      <div className="admin-tool-publication-counts"><article><span className="online" /><div><strong>{onlineCount}</strong><small>{t.onlineTools}</small></div></article><article><span /><div><strong>{tools.length - onlineCount}</strong><small>{t.offlineTools}</small></div></article></div>
+      <div className="admin-tool-publication-counts"><article><span className="online" /><div><strong>{onlineCount}</strong><small>{t.onlineTools}</small></div></article><article><span className="testing" /><div><strong>{testingCount}</strong><small>{t.testingTools}</small></div></article><article><span /><div><strong>{offlineCount}</strong><small>{t.offlineTools}</small></div></article></div>
     </section>
     <section className="admin-tool-publication-toolbar">
       <label><MagnifyingGlass size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.searchTools} /></label>
-      <nav><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t.all} <span>{tools.length}</span></button><button className={filter === "online" ? "active" : ""} onClick={() => setFilter("online")}>{t.onlineOnly} <span>{onlineCount}</span></button><button className={filter === "offline" ? "active" : ""} onClick={() => setFilter("offline")}>{t.offlineOnly} <span>{tools.length - onlineCount}</span></button></nav>
+      <nav><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>{t.all} <span>{tools.length}</span></button><button className={filter === "online" ? "active" : ""} onClick={() => setFilter("online")}>{t.onlineOnly} <span>{onlineCount}</span></button><button className={filter === "testing" ? "active" : ""} onClick={() => setFilter("testing")}>{t.testingOnly} <span>{testingCount}</span></button><button className={filter === "offline" ? "active" : ""} onClick={() => setFilter("offline")}>{t.offlineOnly} <span>{offlineCount}</span></button></nav>
     </section>
-    <div className="admin-tool-admin-grid">{visibleTools.map((tool) => <article className={`admin-tool-admin-card ${tool.active ? "is-online" : "is-offline"}`} key={tool.id}>
-      <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${tool.active ? "published" : "retired"}`}><span />{tool.active ? t.online : t.offline}</i></header>
+    <div className="admin-tool-admin-grid">{visibleTools.map((tool) => { const state = publicationState(tool); return <article className={`admin-tool-admin-card is-${state}`} key={tool.id}>
+      <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${state}`}><span />{state === "published" ? t.online : state === "testing" ? t.testing : t.offline}</i></header>
       <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong className={Number(tool.creditCost || 0) === 0 ? "is-free" : ""}>{Number(tool.creditCost || 0) === 0 ? t.freeTool : tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className={tool.active ? "danger" : "primary"} onClick={() => onLifecycle(tool.id, tool.active ? "retired" : "published")}>{tool.active ? t.takeOffline : t.putOnline}</button></div></footer>
-    </article>)}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
+    </article>; })}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
     {brandingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBrandingTool(null); }}><form className="admin-branding-dialog" onSubmit={saveBranding}>
       <header><div><small>PRODUCT IDENTITY</small><h2>{t.brandingTitle}</h2><p>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</p></div><button type="button" onClick={() => setBrandingTool(null)} aria-label={t.close}><X size={20} /></button></header>
       <div className="admin-branding-preview"><span style={{ color: branding.iconColor, background: branding.iconBackground }}>{previewUrl ? <img src={previewUrl} alt="" /> : <Wrench size={30} weight="duotone" />}</span><div><strong>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</strong><p>{t.brandingHint}</p></div></div>

@@ -128,6 +128,7 @@ export function musicStudioStatus() {
   const configuration = musicProviderConfiguration();
   const coverConfiguration = imageProviderConfiguration();
   const singingConfiguration = singingProviderConfiguration();
+  const lyricsTool = db.prepare("SELECT id, slug, credit_cost AS creditCost, runtime_status AS runtimeStatus FROM tools WHERE slug = 'lyrics-generator'").get();
   return {
     ready: Boolean(configuration.configured && configuration.enabled),
     providerAlias: "OneShowMusic",
@@ -135,6 +136,12 @@ export function musicStudioStatus() {
     maxDurationSeconds: configuration.maxDurationSeconds,
     outputFormat: configuration.outputFormat,
     modes: ["inspiration", "lyrics", "cover", "singing_cover", "instrumental"],
+    lyrics: lyricsTool ? {
+      toolId: lyricsTool.id,
+      slug: lyricsTool.slug,
+      creditCost: lyricsTool.creditCost,
+      ready: lyricsTool.runtimeStatus === "ready",
+    } : null,
     cover: { ready: Boolean(coverConfiguration.configured && coverConfiguration.enabled), creditCost: coverConfiguration.creditCost },
     singingCover: {
       available: process.env.SINGING_COVER_PUBLIC_ENABLED === "true",
@@ -149,7 +156,7 @@ export function createMusicGeneration(user, data) {
   if (!configuration.configured || !configuration.enabled) throw studioError("MUSIC_PROVIDER_NOT_CONFIGURED", 503);
   const input = normalizedInput(user.id, data);
   input.durationSeconds = Math.min(input.durationSeconds, configuration.maxDurationSeconds);
-  const tool = db.prepare("SELECT * FROM tools WHERE slug = 'ai-music-studio' AND active = 1").get();
+  const tool = db.prepare("SELECT * FROM tools WHERE slug = 'ai-music-studio'").get();
   if (!tool) throw studioError("MUSIC_TOOL_NOT_AVAILABLE", 404);
   const totalCost = configuration.creditCost * input.variants;
   if (creditBalance(user.id) < totalCost) throw studioError("INSUFFICIENT_CREDITS", 402);

@@ -851,7 +851,10 @@ async function toolCommands(request, path, context) {
     };
     if (!updated.nameZh || !updated.nameEn || !updated.descriptionZh || !updated.descriptionEn
       || !updated.category || !Number.isInteger(updated.creditCost) || updated.creditCost < 0) return fail("INVALID_TOOL_METADATA");
-    const version = Number(db.prepare("SELECT COALESCE(MAX(version),0) AS version FROM tool_versions WHERE tool_id = ?").get(tool.id).version) + 1;
+    const currentVersion = db.prepare("SELECT * FROM tool_versions WHERE tool_id = ? ORDER BY version DESC LIMIT 1").get(tool.id);
+    const version = Number(currentVersion?.version || 0) + 1;
+    const lifecycleState = currentVersion?.lifecycle_state || (tool.active ? "published" : "draft");
+    const visibility = currentVersion?.visibility || "public";
     db.exec("BEGIN IMMEDIATE");
     try {
       db.prepare(`
@@ -862,8 +865,8 @@ async function toolCommands(request, path, context) {
         INSERT INTO tool_versions
         (id, tool_id, version, lifecycle_state, visibility, name_zh, name_en, description_zh,
           description_en, category, icon, credit_cost, contract_version, runtime_kind, created_by, created_at)
-        VALUES (?, ?, ?, 'draft', 'public', ?, ?, ?, ?, ?, ?, ?, 'v1', ?, ?, ?)
-      `).run(randomUUID(), tool.id, version, updated.nameZh, updated.nameEn, updated.descriptionZh, updated.descriptionEn, updated.category, tool.icon, updated.creditCost, tool.runtime_kind, context.user.id, now());
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v1', ?, ?, ?)
+      `).run(randomUUID(), tool.id, version, lifecycleState, visibility, updated.nameZh, updated.nameEn, updated.descriptionZh, updated.descriptionEn, updated.category, tool.icon, updated.creditCost, tool.runtime_kind, context.user.id, now());
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
@@ -877,7 +880,7 @@ async function toolCommands(request, path, context) {
     const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
     const data = await parseBody(request);
     const state = String(data.state || "");
-    if (!["draft", "staged", "published", "maintenance", "retired"].includes(state) || !String(data.reason || "").trim()) {
+    if (!["draft", "staged", "testing", "published", "maintenance", "retired"].includes(state) || !String(data.reason || "").trim()) {
       return fail("INVALID_TOOL_LIFECYCLE");
     }
     const tool = db.prepare("SELECT * FROM tools WHERE id = ?").get(match[1]);

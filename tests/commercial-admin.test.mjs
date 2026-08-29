@@ -189,6 +189,31 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
     200,
   );
 
+  const testingTool = db.prepare("SELECT id FROM tools WHERE slug = 'ai-writer'").get();
+  assert.equal(
+    (await handleApi(authenticatedJson(`/api/admin/v1/tools/${testingTool.id}/lifecycle`, owner.cookie, {
+      state: "testing", reason: "Private administrator acceptance test",
+    }))).status,
+    200,
+  );
+  assert.equal(
+    (await handleApi(authenticatedJson(`/api/admin/v1/tools/${testingTool.id}`, owner.cookie, {
+      creditCost: 12, reason: "Configure pricing during acceptance testing",
+    }, { method: "PATCH" }))).status,
+    200,
+  );
+  assert.equal(
+    db.prepare("SELECT lifecycle_state FROM tool_versions WHERE tool_id = ? ORDER BY version DESC LIMIT 1").get(testingTool.id).lifecycle_state,
+    "testing",
+  );
+  const publicStorefront = await handleApi(request("/api/tools"));
+  assert.equal((await publicStorefront.json()).tools.some((tool) => tool.slug === "ai-writer"), false);
+  const administratorStorefront = await handleApi(authenticated("/api/tools", owner.cookie));
+  const administratorTestingTool = (await administratorStorefront.json()).tools.find((tool) => tool.slug === "ai-writer");
+  assert.equal(administratorTestingTool.publicationState, "testing");
+  assert.equal((await handleApi(request("/api/writing/catalog"))).status, 404);
+  assert.equal((await handleApi(authenticated("/api/writing/catalog", owner.cookie))).status, 200);
+
   const publishedTool = db.prepare("SELECT id, slug FROM tools WHERE active = 1 ORDER BY slug LIMIT 1").get();
   assert.ok(publishedTool);
   const brandingForm = new FormData();

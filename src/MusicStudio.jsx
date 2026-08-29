@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, CheckCircle, Coins, DownloadSimple, Headphones, LockKey, MusicNotes,
   Play, Sparkle, SpinnerGap, Trash, Warning, FileText, ImageSquare, Microphone,
-  Stop, UploadSimple, Waveform,
+  Stop, UploadSimple, Waveform, NotePencil, ShieldCheck,
 } from "@phosphor-icons/react";
+import { LyricsGenerator } from "./LyricsGenerator.jsx";
 
 async function request(path, options = {}) {
   const response = await fetch(path, { credentials: "include", ...options });
@@ -20,7 +21,8 @@ const initialDraft = {
 
 const copy = {
   "zh-CN": {
-    kicker: "ONESH​OW MUSIC STUDIO", title: "把一个想法，变成一首完整音乐", sub: "创作歌曲、编写歌词或生成纯音乐。模型由平台安全托管，作品自动保存到你的音乐库。",
+    kicker: "ONESH​OW MUSIC STUDIO", title: "从灵感到发行级音乐，一站式完成", sub: "AI 作词、歌曲创作、风格重制、授权翻唱与纯音乐生成，作品自动进入你的私有音乐库。",
+    studioTab: "音乐创作", lyricsTab: "AI 作词", privateAssets: "作品私有存储", rightsGuard: "版权确认流程", productionReady: "商业创作工作流",
     inspiration: "灵感歌曲", lyrics: "自定义歌词", cover: "歌曲风格重制", singingCover: "歌曲翻唱", comingSoon: "后续开放", instrumental: "纯音乐", titleLabel: "歌曲名称", titleHint: "例如：夏天的最后一班地铁",
     idea: "音乐灵感", ideaHint: "描述歌曲故事、使用场景、画面或希望表达的情绪…", lyricsLabel: "歌词", lyricsHint: "支持 [Verse]、[Chorus]、[Bridge] 等歌曲结构标签。",
     genre: "音乐风格", mood: "情绪", language: "语言", vocal: "演唱方式", instruments: "乐器偏好", instrumentsHint: "例如：钢琴、木吉他、弦乐",
@@ -33,7 +35,8 @@ const copy = {
     singingTitle: "歌曲翻唱", singingHint: "选择已授权的个人音色，上传目标歌曲，系统将保留原曲结构并替换演唱音色。", singingNotReady: "歌曲翻唱接口尚未配置，当前不会提交任务或扣除积分。", targetSong: "上传目标歌曲", targetSongHint: "点击选择 MP3/WAV，最大 50MB", chooseVoice: "选择演唱音色", noVoice: "还没有可用音色", voiceLibrary: "已创建音色", voiceName: "音色名称", voiceFiles: "声音样本", voiceFilesHint: "上传 1～25 个 MP3/WAV/M4A 文件，有效人声必须超过 1 分钟。", enrollVoice: "创建个人音色", enrollingVoice: "正在提交音色训练", voiceTraining: "训练中", voiceReady: "可使用", voiceFailed: "训练失败", voiceConsent: "我确认声音属于本人，或已取得声音权利人的明确授权，并同意仅在合法范围内生成翻唱。", singingRights: "我确认拥有目标歌曲的使用权及所选音色的授权，不冒充他人、不侵犯人格权、著作权或邻接权。", singingRequired: "请选择可用音色、上传目标歌曲并确认全部授权。", singingSubmitted: "翻唱任务已提交，完成后会自动保存到音乐库。", deleteVoice: "删除", addVoice: "新增个人音色", cancelVoice: "收起音色创建", voiceStep: "选择授权音色", voiceStepHint: "使用本人声音，或已获得明确授权的声音", songStep: "上传目标歌曲", songStepHint: "保留原曲结构与伴奏，替换演唱音色", voiceCount: "个授权音色", fileSelected: "已选择",
   },
   en: {
-    kicker: "ONESH​OW MUSIC STUDIO", title: "Turn one idea into a complete track", sub: "Create songs, write lyrics, or generate instrumental music. Your work is saved securely to your library.",
+    kicker: "ONESH​OW MUSIC STUDIO", title: "From first idea to release-ready music", sub: "Write lyrics, create songs, remake styles, produce authorized covers, and generate instrumentals in one private workspace.",
+    studioTab: "Music creation", lyricsTab: "AI lyric lab", privateAssets: "Private asset storage", rightsGuard: "Rights confirmation", productionReady: "Commercial workflow",
     inspiration: "Idea to song", lyrics: "Custom lyrics", cover: "Style remake", singingCover: "Song cover", comingSoon: "Coming soon", instrumental: "Instrumental", titleLabel: "Track title", titleHint: "e.g. The last train of summer",
     idea: "Creative direction", ideaHint: "Describe the story, use case, scene, or emotion…", lyricsLabel: "Lyrics", lyricsHint: "Supports sections such as [Verse], [Chorus], and [Bridge].",
     genre: "Genre", mood: "Mood", language: "Language", vocal: "Vocal", instruments: "Instruments", instrumentsHint: "e.g. piano, acoustic guitar, strings",
@@ -49,7 +52,7 @@ const copy = {
 
 const statusClass = (status) => ["queued", "running", "completed", "failed"].includes(status) ? status : "queued";
 
-export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTaskId, onBack, onAuth, onCompleted }) {
+export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTaskId, runtime, lyricsHistoryTasks = [], onBack, onAuth, onCompleted, onModelChange }) {
   const t = copy[locale] || copy["zh-CN"];
   const [draft, setDraft] = useState(() => {
     try {
@@ -62,6 +65,7 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
     return initialDraft;
   });
   const [status, setStatus] = useState(null);
+  const [workspaceView, setWorkspaceView] = useState("compose");
   const [tracks, setTracks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -212,15 +216,21 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
     catch (requestError) { setError(requestError.code === "INSUFFICIENT_CREDITS" ? t.insufficient : t.coverFailed); }
     finally { setCoverBusy(null); }
   };
+  const useGeneratedLyrics = ({ title, idea, lyrics }) => {
+    setDraft((current) => ({ ...current, mode: "lyrics", title: String(title || "").slice(0, 100), idea: String(idea || "AI 生成歌词").slice(0, 1000), lyrics: String(lyrics || "").slice(0, 3500) }));
+    setWorkspaceView("compose");
+    requestAnimationFrame(() => document.querySelector(".music-composer")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   return <div className="music-studio-page">
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{locale === "en" ? "Back to marketplace" : "返回工具市场"}</button>
     <header className="music-studio-hero">
-      <div className="music-hero-mark"><MusicNotes size={30} weight="duotone" /></div>
-      <div><p className="eyebrow">{t.kicker}</p><h1>{t.title}</h1><p>{t.sub}</p></div>
+      <div className="music-hero-copy"><div className="music-hero-mark"><Waveform size={34} weight="bold" /></div><div><p className="eyebrow">{t.kicker}</p><h1>{t.title}</h1><p>{t.sub}</p><div className="music-hero-trust"><span><ShieldCheck size={14} weight="fill" />{t.privateAssets}</span><span><CheckCircle size={14} weight="fill" />{t.rightsGuard}</span><span><Sparkle size={14} weight="fill" />{t.productionReady}</span></div></div></div>
+      <div className="music-hero-visual" aria-hidden="true"><i /><i /><i /><i /><i /><span><MusicNotes size={29} weight="fill" /></span></div>
       <aside><Coins size={18} /><span>{locale === "en" ? "Balance" : "可用积分"}</span><strong>{authenticated ? (balance?.toLocaleString() ?? "—") : "—"}</strong></aside>
     </header>
+    <nav className="music-workspace-tabs"><button className={workspaceView === "compose" ? "active" : ""} onClick={() => setWorkspaceView("compose")}><Waveform size={19} weight="duotone" /><span><strong>{t.studioTab}</strong><small>{locale === "en" ? "Create and manage tracks" : "生成音乐与管理作品"}</small></span></button><button className={workspaceView === "lyrics" ? "active" : ""} onClick={() => setWorkspaceView("lyrics")}><NotePencil size={19} weight="duotone" /><span><strong>{t.lyricsTab}</strong><small>{locale === "en" ? "Write, continue, and rewrite" : "原创、续写与改写歌词"}</small></span></button></nav>
     {!status?.ready && !status?.singingCover?.ready && <section className="music-provider-notice"><LockKey size={22} /><div><strong>{t.notReady}</strong><p>{t.notReadyBody}</p></div></section>}
-    <main className="music-studio-layout">
+    {workspaceView === "compose" ? <main className="music-studio-layout">
       <form className="music-composer" onSubmit={submit}>
         <nav className="music-mode-tabs">{Object.entries(modeInfo).map(([id, label]) => {
           const upcoming = id === "singing_cover" && !status?.singingCover?.available;
@@ -270,6 +280,6 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
           </div>
         </article>)}</div> : <div className="music-library-empty"><MusicNotes size={34} weight="duotone" /><strong>{t.empty}</strong><p>{t.emptyBody}</p></div>}
       </section>
-    </main>
+    </main> : status?.lyrics ? <LyricsGenerator embedded tool={{ id: status.lyrics.toolId, slug: status.lyrics.slug, creditCost: status.lyrics.creditCost }} historyTasks={lyricsHistoryTasks} locale={locale} authenticated={authenticated} runtime={runtime} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} onUseLyrics={useGeneratedLyrics} /> : <section className="music-provider-notice"><LockKey size={22} /><div><strong>{locale === "en" ? "Lyric model unavailable" : "歌词模型暂不可用"}</strong></div></section>}
   </div>;
 }

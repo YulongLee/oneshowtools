@@ -623,6 +623,24 @@ export function initializeDatabase() {
       .run(stockPetPublicationKey, JSON.stringify({ slug: "stock-pet", published: true }), timestamp);
   }
 
+  const lyricsStudioMergeKey = "tool_lyrics_music_studio_merge_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(lyricsStudioMergeKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE tools SET active = 0, updated_at = ? WHERE slug = 'lyrics-generator'").run(timestamp);
+      db.prepare(`
+        UPDATE tool_versions SET lifecycle_state = 'retired'
+        WHERE id = (SELECT id FROM tool_versions WHERE tool_id = 'tool_lyrics_generator' ORDER BY version DESC LIMIT 1)
+      `).run();
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+        .run(lyricsStudioMergeKey, JSON.stringify({ slug: "lyrics-generator", parentSlug: "ai-music-studio" }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`
     INSERT INTO plans (id, code, name_zh, name_en, amount_minor, currency, interval, recurring_credits, file_limit, active)

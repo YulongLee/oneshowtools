@@ -892,7 +892,10 @@ export function listToolModelPreferences(userId) {
 }
 
 export function setToolModelPreference(userId, toolId, modelConnectionId) {
-  const tool = db.prepare("SELECT id, runtime_kind FROM tools WHERE id = ? AND active = 1").get(toolId);
+  // Publication access is enforced at the HTTP boundary. Keeping the gateway
+  // independent of the public active flag lets administrators execute tools
+  // while they are in the private testing lifecycle.
+  const tool = db.prepare("SELECT id, runtime_kind FROM tools WHERE id = ?").get(toolId);
   if (!tool) throw gatewayError("TOOL_NOT_FOUND", 404);
   if (!toolModelCapability(tool.runtime_kind).userConfigurable) throw gatewayError("TOOL_MODEL_NOT_CONFIGURABLE", 422);
   const selection = String(modelConnectionId || "managed");

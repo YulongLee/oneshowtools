@@ -346,6 +346,8 @@ function toolSelect() {
     tools.description_zh AS descriptionZh, tools.description_en AS descriptionEn,
     tools.category, tools.icon, tools.credit_cost AS creditCost, tools.runtime_kind AS runtimeKind,
     tools.runtime_status AS runtimeStatus, tools.active,
+    COALESCE((SELECT lifecycle_state FROM tool_versions WHERE tool_id = tools.id ORDER BY version DESC LIMIT 1),
+      CASE WHEN tools.active = 1 THEN 'published' ELSE 'draft' END) AS lifecycleState,
     (SELECT accent_color FROM tool_branding WHERE tool_id = tools.id) AS iconColor,
     (SELECT background_color FROM tool_branding WHERE tool_id = tools.id) AS iconBackground,
     CASE WHEN (SELECT object_key FROM tool_branding WHERE tool_id = tools.id) IS NOT NULL
@@ -355,26 +357,34 @@ function toolSelect() {
     FROM tools`;
 }
 
-function storefrontTools() {
+function activeAdministrator(userId) {
+  if (!userId) return false;
+  return Boolean(db.prepare("SELECT 1 AS active FROM admin_memberships WHERE user_id = ? AND status = 'active'").get(userId));
+}
+
+function storefrontTools(request) {
   const specialists = new Map(
     seoCatalog().specialists.map((item) => [item.slug, item]),
   );
+  const user = currentUser(request);
+  const canPreview = activeAdministrator(user?.id);
   return db
-    .prepare(`${toolSelect()} WHERE active = 1 ORDER BY name_en`)
+    .prepare(`${toolSelect()} ORDER BY name_en`)
     .all()
+    .filter((tool) => tool.active || (canPreview && tool.lifecycleState === "testing"))
     .map((tool) => {
+      const publicationState = tool.active ? "published" : "testing";
       const specialist = specialists.get(tool.slug);
-      if (!specialist || specialist.ready) return tool;
-      return { ...tool, runtimeStatus: "configuration_required" };
+      if (!specialist || specialist.ready) return { ...tool, publicationState };
+      return { ...tool, publicationState, runtimeStatus: "configuration_required" };
     });
 }
 
-function toolIsPublished(slug) {
-  return Boolean(
-    db
-      .prepare("SELECT 1 AS published FROM tools WHERE slug = ? AND active = 1")
-      .get(slug),
-  );
+function toolIsAccessible(slug, request) {
+  const tool = db.prepare(`${toolSelect()} WHERE slug = ?`).get(slug);
+  if (!tool) return false;
+  if (tool.active) return true;
+  return tool.lifecycleState === "testing" && activeAdministrator(currentUser(request)?.id);
 }
 
 function unpublishedToolResponse() {
@@ -1274,9 +1284,9 @@ async function createTask(request, user) {
   if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
   const data = await body(request);
   const tool = db
-    .prepare(`${toolSelect()} WHERE id = ? AND active = 1`)
+    .prepare(`${toolSelect()} WHERE id = ?`)
     .get(String(data.toolId || ""));
-  if (!tool) return fail("TOOL_NOT_FOUND", 404);
+  if (!tool || !toolIsAccessible(tool.slug, request)) return fail("TOOL_NOT_FOUND", 404);
   const fileIds = Array.isArray(data.fileIds) ? data.fileIds.slice(0, 10) : [];
   for (const fileId of fileIds) {
     if (
@@ -2381,11 +2391,11 @@ export async function handleApi(request) {
       SELECT b.storage_provider AS provider, b.storage_name AS storageName,
         b.object_key AS objectKey, b.mime_type AS mimeType, b.etag
       FROM tool_branding b JOIN tools t ON t.id = b.tool_id
-      WHERE t.slug = ? AND t.active = 1 AND b.object_key IS NOT NULL
+      WHERE t.slug = ? AND b.object_key IS NOT NULL
     `,
       )
       .get(slug);
-    if (!branding) return fail("TOOL_ICON_NOT_FOUND", 404);
+    if (!branding || !toolIsAccessible(slug, request)) return fail("TOOL_ICON_NOT_FOUND", 404);
     try {
       const cacheKey = `tool:${slug}:${branding.etag || branding.objectKey}`;
       let stored = imageCache.get(cacheKey);
@@ -2406,27 +2416,29 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/tools" && request.method === "GET") {
-    return json({ tools: storefrontTools() }, 200, {
-      "cache-control": "public, max-age=60, stale-while-revalidate=300",
+    const previewing = activeAdministrator(currentUser(request)?.id);
+    return json({ tools: storefrontTools(request) }, 200, {
+      "cache-control": previewing ? "private, no-store" : "public, max-age=60, stale-while-revalidate=300",
     });
   }
   if (path === "/api/products/stock-pet" && request.method === "GET") {
+    if (!toolIsAccessible("stock-pet", request)) return unpublishedToolResponse();
     return json(stockPetPublicProduct(), 200, {
-      "cache-control": "public, max-age=60",
+      "cache-control": activeAdministrator(currentUser(request)?.id) ? "private, no-store" : "public, max-age=60",
     });
   }
   if (path === "/api/writing/catalog" && request.method === "GET") {
-    return toolIsPublished("ai-writer")
+    return toolIsAccessible("ai-writer", request)
       ? json(writingCatalog())
       : unpublishedToolResponse();
   }
   if (path === "/api/seo/catalog" && request.method === "GET") {
-    return toolIsPublished("seo-workbench")
+    return toolIsAccessible("seo-workbench", request)
       ? json(seoCatalog())
       : unpublishedToolResponse();
   }
   if (path === "/api/music/status" && request.method === "GET") {
-    return toolIsPublished("ai-music-studio")
+    return toolIsAccessible("ai-music-studio", request)
       ? json(musicStudioStatus())
       : unpublishedToolResponse();
   }
@@ -2446,6 +2458,9 @@ export async function handleApi(request) {
   const auth = requireUser(request);
   if (auth.response) return auth.response;
   const user = auth.user;
+
+  if (path.startsWith("/api/products/stock-pet") && !toolIsAccessible("stock-pet", request))
+    return unpublishedToolResponse();
 
   if (path === "/api/products/stock-pet/license" && request.method === "GET")
     return json(stockPetLicense(user.id));
@@ -2604,7 +2619,7 @@ export async function handleApi(request) {
   }
 
   if (path === "/api/seo-agent" || path.startsWith("/api/seo-agent/")) {
-    return toolIsPublished("seo-agent")
+    return toolIsAccessible("seo-agent", request)
       ? handleSeoAgent(request, user, path)
       : unpublishedToolResponse();
   }
@@ -2616,7 +2631,7 @@ export async function handleApi(request) {
     return json({ voices: listSingingVoices(user.id) });
   }
   if (path === "/api/music/singing-voices" && request.method === "POST") {
-    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
+    if (!toolIsAccessible("ai-music-studio", request)) return unpublishedToolResponse();
     if (!musicStudioStatus().singingCover.available)
       return fail("FEATURE_NOT_AVAILABLE", 404);
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
@@ -2648,7 +2663,7 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/music/singing-covers" && request.method === "POST") {
-    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
+    if (!toolIsAccessible("ai-music-studio", request)) return unpublishedToolResponse();
     if (!musicStudioStatus().singingCover.available)
       return fail("FEATURE_NOT_AVAILABLE", 404);
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
@@ -2665,7 +2680,7 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/music/references" && request.method === "POST") {
-    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
+    if (!toolIsAccessible("ai-music-studio", request)) return unpublishedToolResponse();
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try {
       const form = await request.formData();
@@ -2681,7 +2696,7 @@ export async function handleApi(request) {
     }
   }
   if (path === "/api/music/generations" && request.method === "POST") {
-    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
+    if (!toolIsAccessible("ai-music-studio", request)) return unpublishedToolResponse();
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     try {
       const generation = createMusicGeneration(user, await body(request));
@@ -2704,7 +2719,7 @@ export async function handleApi(request) {
   }
   const musicCoverMatch = path.match(/^\/api\/music\/tracks\/([^/]+)\/cover$/);
   if (musicCoverMatch && request.method === "POST") {
-    if (!toolIsPublished("ai-music-studio")) return unpublishedToolResponse();
+    if (!toolIsAccessible("ai-music-studio", request)) return unpublishedToolResponse();
     try {
       return json(await createMusicCover(user, musicCoverMatch[1]), 201);
     } catch (error) {
@@ -3051,9 +3066,10 @@ export async function handleApi(request) {
     if (deletionPending(user.id)) return fail("ACCOUNT_DELETION_PENDING", 403);
     const slug = path.split("/")[3];
     const tool = db
-      .prepare(`${toolSelect()} WHERE slug = ? AND active = 1`)
+      .prepare(`${toolSelect()} WHERE slug = ?`)
       .get(slug);
-    if (!tool) return fail("TOOL_NOT_FOUND", 404);
+    const isMusicWorkspaceCapability = slug === "lyrics-generator" && toolIsAccessible("ai-music-studio", request);
+    if (!tool || (!toolIsAccessible(slug, request) && !isMusicWorkspaceCapability)) return fail("TOOL_NOT_FOUND", 404);
     try {
       if (slug === "sliding-ancestor-generator") {
         const result = await createAncestorTask(request, user, tool);
