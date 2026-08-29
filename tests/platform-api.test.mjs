@@ -140,7 +140,40 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   assert.equal(uploaded.sizeBytes, 17);
 
   const download = await handleApi(authenticated(`/api/files/${uploaded.id}/download`, cookie));
+  assert.equal(download.headers.get("accept-ranges"), "bytes");
+  assert.equal(download.headers.get("content-length"), "17");
+  assert.match(download.headers.get("content-disposition"), /^attachment;/);
   assert.equal(await download.text(), "real file content");
+
+  const mediaRange = await handleApi(authenticated(`/api/files/${uploaded.id}/download?preview=1`, cookie, {
+    headers: { range: "bytes=5-8" },
+  }));
+  assert.equal(mediaRange.status, 206);
+  assert.equal(mediaRange.headers.get("accept-ranges"), "bytes");
+  assert.equal(mediaRange.headers.get("content-range"), "bytes 5-8/17");
+  assert.equal(mediaRange.headers.get("content-length"), "4");
+  assert.match(mediaRange.headers.get("content-disposition"), /^inline;/);
+  assert.equal(await mediaRange.text(), "file");
+
+  const suffixRange = await handleApi(authenticated(`/api/files/${uploaded.id}/download?preview=1`, cookie, {
+    headers: { range: "bytes=-7" },
+  }));
+  assert.equal(suffixRange.status, 206);
+  assert.equal(suffixRange.headers.get("content-range"), "bytes 10-16/17");
+  assert.equal(await suffixRange.text(), "content");
+
+  const invalidRange = await handleApi(authenticated(`/api/files/${uploaded.id}/download?preview=1`, cookie, {
+    headers: { range: "bytes=99-120" },
+  }));
+  assert.equal(invalidRange.status, 416);
+  assert.equal(invalidRange.headers.get("content-range"), "bytes */17");
+
+  const mediaHead = await handleApi(authenticated(`/api/files/${uploaded.id}/download?preview=1`, cookie, {
+    method: "HEAD",
+  }));
+  assert.equal(mediaHead.status, 200);
+  assert.equal(mediaHead.headers.get("content-length"), "17");
+  assert.equal(await mediaHead.text(), "");
   const deletion = await handleApi(authenticated(`/api/files/${uploaded.id}`, cookie, { method: "DELETE" }));
   assert.equal(deletion.status, 200);
 });

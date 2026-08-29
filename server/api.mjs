@@ -124,6 +124,66 @@ const json = (data, status = 200, headers = {}) =>
     },
   });
 const fail = (code, status = 400) => json({ error: { code } }, status);
+
+function requestedByteRange(value, totalBytes) {
+  const range = String(value || "").trim();
+  if (!range) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!match || (!match[1] && !match[2]) || totalBytes <= 0) return false;
+
+  let start;
+  let end;
+  if (!match[1]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return false;
+    start = Math.max(0, totalBytes - suffixLength);
+    end = totalBytes - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : totalBytes - 1;
+    if (
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start < 0 ||
+      start >= totalBytes ||
+      end < start
+    ) return false;
+    end = Math.min(end, totalBytes - 1);
+  }
+  return { start, end };
+}
+
+function storedFileResponse(request, file, buffer) {
+  const totalBytes = buffer.length;
+  const range = requestedByteRange(request.headers.get("range"), totalBytes);
+  const preview = new URL(request.url).searchParams.get("preview") === "1";
+  const headers = {
+    "accept-ranges": "bytes",
+    "cache-control": "private, no-store",
+    "content-type": file.mime_type || "application/octet-stream",
+    "content-disposition": `${preview ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+  };
+  if (range === false) {
+    return new Response(null, {
+      status: 416,
+      headers: { ...headers, "content-range": `bytes */${totalBytes}`, "content-length": "0" },
+    });
+  }
+  if (range) {
+    const partial = buffer.subarray(range.start, range.end + 1);
+    return new Response(request.method === "HEAD" ? null : partial, {
+      status: 206,
+      headers: {
+        ...headers,
+        "content-range": `bytes ${range.start}-${range.end}/${totalBytes}`,
+        "content-length": String(partial.length),
+      },
+    });
+  }
+  return new Response(request.method === "HEAD" ? null : buffer, {
+    headers: { ...headers, "content-length": String(totalBytes) },
+  });
+}
 const imageCache = new Map();
 function cacheImage(key, buffer) {
   if (imageCache.size >= 64) imageCache.delete(imageCache.keys().next().value);
@@ -3251,7 +3311,7 @@ export async function handleApi(request) {
   }
   if (
     path.match(/^\/api\/files\/[^/]+\/download$/) &&
-    request.method === "GET"
+    ["GET", "HEAD"].includes(request.method)
   ) {
     const id = path.split("/")[3];
     const file = db
@@ -3261,18 +3321,14 @@ export async function handleApi(request) {
       )
       .get(id, user.id);
     if (!file) return fail("FILE_NOT_FOUND", 404);
-    return new Response(
+    return storedFileResponse(
+      request,
+      file,
       await readStoredFile({
         provider: file.storage_provider,
         objectKey: file.object_key,
         storageName: file.storage_name,
       }),
-      {
-        headers: {
-          "content-type": file.mime_type,
-          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-        },
-      },
     );
   }
   if (

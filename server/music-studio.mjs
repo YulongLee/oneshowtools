@@ -215,6 +215,7 @@ export function listMusicTracks(userId) {
     options: JSON.parse(track.optionsJson || "{}"),
     optionsJson: undefined,
     downloadUrl: track.fileId ? `/api/files/${track.fileId}/download` : null,
+    streamUrl: track.fileId ? `/api/files/${track.fileId}/download?preview=1` : null,
     coverUrl: track.coverFileId ? `/api/files/${track.coverFileId}/download` : null,
   }));
 }

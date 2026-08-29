@@ -108,6 +108,7 @@ test("music generation reserves real credits, stores a private artifact, and exp
   assert.equal(tracks[0].status, "completed");
   assert.equal(tracks[0].durationMs, 62_000);
   assert.match(tracks[0].downloadUrl, /^\/api\/files\//);
+  assert.match(tracks[0].streamUrl, /^\/api\/files\/.*\?preview=1$/);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM file_storage_objects WHERE file_id = ?").get(tracks[0].fileId).count, 1);
   assert.doesNotMatch(JSON.stringify(tracks), /music-provider-secret|provider-trace-redacted/);
 });
@@ -210,6 +211,7 @@ test("authorized singing covers train an owner-scoped voice, bill once, and pers
   assert.equal(track.mode, "singing_cover");
   assert.equal(track.status, "completed");
   assert.match(track.downloadUrl, /^\/api\/files\//);
+  assert.match(track.streamUrl, /^\/api\/files\/.*\?preview=1$/);
   assert.equal(db.prepare("SELECT status FROM singing_cover_jobs WHERE task_id = ?").get(submitted.taskId).status, "completed");
 });
 
