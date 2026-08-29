@@ -9,6 +9,8 @@ dist/
 .idea/
 .vscode/
 coverage/
+output/
+tmp/
 .expo/
 data/
 qa-*.png

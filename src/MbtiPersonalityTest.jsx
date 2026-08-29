@@ -4,8 +4,8 @@ import { mbtiQuestions } from "../shared/mbti-assessment.mjs";
 import "./mbti-personality-test.css";
 
 const ui = {
-  zh: { back: "返回工具市场", title: "MBTI 性格偏好自测", subtitle: "通过原创平衡题库，了解四维偏好、优势与成长建议", original: "原创平衡题库", types: "16 型与模糊维度", private: "结果私密", free: "免费测试", start: "开始测试", login: "登录后开始", questions: "64 题", duration: "8–12 分钟", introTitle: "为什么做性格偏好自测？", noRight: "请按你通常的真实反应选择，没有标准答案；不确定时可以选择中间项。", previous: "上一题", next: "下一题", submit: "生成我的报告", incomplete: "请完成当前题目后继续。", result: "你的性格偏好结果", retake: "重新测试", copy: "复制摘要", print: "打印 / 保存 PDF", history: "历史报告", strengths: "你可能更自然的优势", growth: "成长建议", dimensions: "四维偏好", work: "工作方式", collaboration: "协作偏好", learning: "学习方式", saved: "报告已保存到任务中心。" },
-  en: { back: "Back to tools", title: "Personality Preference Self-Test", subtitle: "Explore four preference dimensions, strengths, and growth ideas through original scenarios", original: "Original bank", types: "16 patterns", private: "Private results", free: "Free", start: "Start assessment", login: "Sign in to start", questions: "64 questions", duration: "8–12 min", introTitle: "Why explore your preferences?", noRight: "Choose what is usually true for you. There are no right answers.", previous: "Previous", next: "Next", submit: "Build my report", incomplete: "Choose an answer before continuing.", result: "Your preference pattern", retake: "Retake", copy: "Copy summary", print: "Print / Save PDF", history: "Past reports", strengths: "Natural strengths", growth: "Growth ideas", dimensions: "Four preferences", work: "Work style", collaboration: "Collaboration", learning: "Learning style", saved: "Saved to Task Center." },
+  zh: { back: "返回工具市场", title: "MBTI 性格偏好自测", subtitle: "通过原创平衡题库，了解四维偏好、优势与成长建议", original: "原创平衡题库", types: "16 型与模糊维度", private: "结果私密", free: "免费测试", start: "开始测试", login: "登录后开始", questions: "64 题", duration: "8–12 分钟", introTitle: "为什么做性格偏好自测？", noRight: "请按你通常的真实反应选择，没有标准答案；不确定时可以选择中间项。", previous: "上一题", next: "下一题", submit: "生成我的报告", incomplete: "请完成当前题目后继续。", result: "你的性格偏好结果", retake: "重新测试", copy: "复制摘要", print: "导出 PDF", exporting: "正在生成 PDF…", history: "历史报告", strengths: "你可能更自然的优势", growth: "成长建议", dimensions: "四维偏好", work: "工作方式", collaboration: "协作偏好", learning: "学习方式", saved: "报告已保存到任务中心。" },
+  en: { back: "Back to tools", title: "Personality Preference Self-Test", subtitle: "Explore four preference dimensions, strengths, and growth ideas through original scenarios", original: "Original bank", types: "16 patterns", private: "Private results", free: "Free", start: "Start assessment", login: "Sign in to start", questions: "64 questions", duration: "8–12 min", introTitle: "Why explore your preferences?", noRight: "Choose what is usually true for you. There are no right answers.", previous: "Previous", next: "Next", submit: "Build my report", incomplete: "Choose an answer before continuing.", result: "Your preference pattern", retake: "Retake", copy: "Copy summary", print: "Export PDF", exporting: "Building PDF…", history: "Past reports", strengths: "Natural strengths", growth: "Growth ideas", dimensions: "Four preferences", work: "Work style", collaboration: "Collaboration", learning: "Learning style", saved: "Saved to Task Center." },
 };
 
 const benefits = [
@@ -29,11 +29,14 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
   const t = ui[locale] || ui.zh;
   const storageKey = "oneshowtools_mbti_draft_v2";
   const startedAt = useRef(Date.now());
+  const autoAdvanceTimer = useRef(null);
+  const pdfDocumentRef = useRef(null);
   const [stage, setStage] = useState(task?.output?.type ? "result" : "intro");
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState(() => { try { return JSON.parse(localStorage.getItem(storageKey) || "{}"); } catch { return {}; } });
   const [report, setReport] = useState(task?.output?.type ? task.output : null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const current = mbtiQuestions[index];
   const completed = Object.keys(answers).filter((id) => mbtiQuestions.some((item) => item.id === id)).length;
@@ -41,21 +44,29 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
   const histories = useMemo(() => historyTasks.filter((item) => item.toolSlug === tool.slug && item.output?.type).slice(0, 6), [historyTasks, tool.slug]);
 
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(answers)); }, [answers]);
+  useEffect(() => () => window.clearTimeout(autoAdvanceTimer.current), []);
   useEffect(() => { if (task?.output?.type) { setReport(task.output); setStage("result"); } }, [task?.id]);
 
   const begin = () => { if (!authenticated) return onAuth?.(); startedAt.current = Date.now(); setStage("quiz"); setError(""); };
-  const choose = (value) => { setAnswers((previous) => ({ ...previous, [current.id]: value })); setError(""); };
-  const next = () => {
-    if (!answers[current.id]) return setError(t.incomplete);
-    if (index < mbtiQuestions.length - 1) { setIndex((value) => value + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }
-    else submit();
+  const choose = (value) => {
+    const nextAnswers = { ...answers, [current.id]: value };
+    setAnswers(nextAnswers);
+    setError("");
+    window.clearTimeout(autoAdvanceTimer.current);
+    autoAdvanceTimer.current = window.setTimeout(() => {
+      if (index < mbtiQuestions.length - 1) {
+        setIndex((currentIndex) => currentIndex + 1);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else submit(nextAnswers);
+    }, 320);
   };
-  const submit = async () => {
-    if (completed !== mbtiQuestions.length) return setError(locale === "en" ? `Complete all ${mbtiQuestions.length} questions first.` : `请先完成全部 ${mbtiQuestions.length} 道题。`);
+  const submit = async (answerSet = answers) => {
+    const answerCount = Object.keys(answerSet).filter((id) => mbtiQuestions.some((item) => item.id === id)).length;
+    if (answerCount !== mbtiQuestions.length) return setError(locale === "en" ? `Complete all ${mbtiQuestions.length} questions first.` : `请先完成全部 ${mbtiQuestions.length} 道题。`);
     setBusy(true); setError(""); setStage("generating");
     try {
       const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt.current) / 1000));
-      const response = await fetch(`/api/tool-actions/${tool.slug}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers, locale, durationSeconds }) });
+      const response = await fetch(`/api/tool-actions/${tool.slug}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers: answerSet, locale, durationSeconds }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error?.code || "REQUEST_FAILED");
       setReport(data.output); setStage("result"); localStorage.removeItem(storageKey); onCompleted?.(data);
@@ -64,6 +75,35 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
   };
   const restart = () => { setAnswers({}); setIndex(0); setReport(null); setStage("intro"); localStorage.removeItem(storageKey); };
   const copySummary = async () => report && navigator.clipboard?.writeText(`${report.type} ${report.typeName}\n${report.summary}\n${report.strengths.join("；")}`);
+  const exportPdf = async () => {
+    if (!report || !pdfDocumentRef.current || exporting) return;
+    setExporting(true); setError("");
+    try {
+      const [{ default: html2canvas }, { PDFDocument }] = await Promise.all([import("html2canvas"), import("pdf-lib")]);
+      await document.fonts?.ready;
+      const pdf = await PDFDocument.create();
+      pdf.setTitle(`OneShowTools ${t.title} - ${report.type}`);
+      pdf.setAuthor("OneShowTools");
+      pdf.setSubject(locale === "en" ? "Personality preference self-assessment report" : "性格偏好自测报告");
+      const pages = [...pdfDocumentRef.current.querySelectorAll(".mbti-pdf-page")];
+      for (const pageNode of pages) {
+        const canvas = await html2canvas(pageNode, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
+        const image = await pdf.embedJpg(canvas.toDataURL("image/jpeg", 0.94));
+        const page = pdf.addPage([595.28, 841.89]);
+        page.drawImage(image, { x: 0, y: 0, width: 595.28, height: 841.89 });
+      }
+      const bytes = await pdf.save({ useObjectStreams: true });
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const date = new Date().toISOString().slice(0, 10);
+      anchor.href = url; anchor.download = `OneShowTools-MBTI-${report.type}-${date}.pdf`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError(locale === "en" ? "The PDF could not be generated. Please try again." : "PDF 生成失败，请稍后重试。");
+    } finally { setExporting(false); }
+  };
 
   return <main className="mbti-page">
     <button className="mbti-back" type="button" onClick={onBack}><ArrowLeft size={18} />{t.back}</button>
@@ -84,7 +124,7 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
 
     {stage === "quiz" && <section className="mbti-quiz">
       <header><div><small>{locale === "en" ? "QUESTION" : "问题"} {index + 1} / {mbtiQuestions.length}</small><strong>{progress}%</strong></div><span><i style={{ width: `${progress}%` }} /></span></header>
-      <div className="mbti-question-card"><em>{current.axis}</em><h2>{locale === "en" ? "Which statement is usually closer to you?" : "哪一种描述通常更接近你？"}</h2><div className="mbti-statements"><article><small>{current.leftCode}</small><strong>{current.left}</strong></article><article><small>{current.rightCode}</small><strong>{current.right}</strong></article></div><div className="mbti-scale">{scale.map((value, valueIndex) => <button key={value} className={answers[current.id] === value ? "selected" : ""} type="button" onClick={() => choose(value)} aria-label={scaleLabels[valueIndex]}><span>{value}</span><small>{valueIndex === 0 || valueIndex === 4 ? scaleLabels[valueIndex] : valueIndex === 2 ? scaleLabels[valueIndex] : ""}</small></button>)}</div>{error && <p className="mbti-error"><Warning size={17} />{error}</p>}<footer><button type="button" disabled={!index} onClick={() => setIndex((value) => Math.max(0, value - 1))}><ArrowLeft size={17} />{t.previous}</button><button className="primary" type="button" onClick={next}>{index === mbtiQuestions.length - 1 ? t.submit : t.next}<ArrowRight size={17} /></button></footer></div>
+      <div className="mbti-question-card"><span className="mbti-neutral-label">{locale === "en" ? "Choose by instinct" : "按第一反应选择"}</span><h2>{locale === "en" ? "Which statement is usually closer to you?" : "哪一种描述通常更接近你？"}</h2><div className="mbti-statements"><article><small>A</small><strong>{current.left}</strong></article><article><small>B</small><strong>{current.right}</strong></article></div><div className="mbti-scale">{scale.map((value, valueIndex) => <button key={value} className={answers[current.id] === value ? "selected" : ""} type="button" onClick={() => choose(value)} aria-label={scaleLabels[valueIndex]}><span>{value}</span><small>{valueIndex === 0 || valueIndex === 4 ? scaleLabels[valueIndex] : valueIndex === 2 ? scaleLabels[valueIndex] : ""}</small></button>)}</div><p className="mbti-auto-next"><CheckCircle size={15} />{index === mbtiQuestions.length - 1 ? (locale === "en" ? "Your report will be generated after selection" : "选择后将自动生成报告") : (locale === "en" ? "Moves to the next question automatically" : "选择后自动进入下一题")}</p>{error && <p className="mbti-error"><Warning size={17} />{error}</p>}<footer><button type="button" disabled={!index} onClick={() => { window.clearTimeout(autoAdvanceTimer.current); setIndex((value) => Math.max(0, value - 1)); }}><ArrowLeft size={17} />{t.previous}</button><span>{locale === "en" ? "You can revise earlier answers at any time" : "可随时返回修改之前的答案"}</span></footer></div>
     </section>}
 
     {stage === "generating" && <section className="mbti-generating"><SpinnerGap className="spin" size={45} /><h2>{locale === "en" ? "Scoring your four preferences" : "正在计算你的四维偏好"}</h2><p>{locale === "en" ? "Building a practical, non-diagnostic report…" : "正在生成一份可回看的非诊断性报告…"}</p></section>}
@@ -95,9 +135,27 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
       <div className="mbti-report-grid"><article><h3><Sparkle size={20} />{t.strengths}</h3><ul>{report.strengths.map((item) => <li key={item}><Check size={16} />{item}</li>)}</ul></article><article><h3><Lightbulb size={20} />{t.growth}</h3><ul>{report.growth.map((item) => <li key={item}><ArrowRight size={16} />{item}</li>)}</ul></article></div>
       {report.quality && <div className={"mbti-quality " + report.quality.status}><ShieldCheck size={20} weight="duotone" /><div><strong>{locale === "en" ? "Response quality" : "答题质量"}：{report.quality.status === "good" ? (locale === "en" ? "Good" : "良好") : report.quality.status === "review" ? (locale === "en" ? "Review suggested" : "建议复核") : (locale === "en" ? "Low confidence" : "可信度较低")}</strong><p>{report.quality.warnings?.length ? (locale === "en" ? "The response pattern was unusually fast or repetitive. Retake when you have enough uninterrupted time." : "检测到答题速度过快、中立项过多或连续选择相同选项。建议在不受打扰时重新测试。") : (locale === "en" ? "No obvious rushed or repetitive response pattern was detected." : "未发现明显的过快作答或机械重复选择。")}</p></div></div>}
       <div className="mbti-style-grid">{[[Briefcase, t.work, report.workStyle], [UsersThree, t.collaboration, report.collaboration], [Brain, t.learning, report.learning]].map(([Icon, title, body]) => <article key={title}><Icon size={24} /><div><h3>{title}</h3><p>{body}</p></div></article>)}</div>
-      <p className="mbti-disclaimer"><ShieldCheck size={17} />{report.disclaimer}</p><footer><button type="button" onClick={restart}>{t.retake}</button><button type="button" onClick={copySummary}><Copy size={17} />{t.copy}</button><button className="primary" type="button" onClick={() => window.print()}><DownloadSimple size={17} />{t.print}</button></footer>
+      <p className="mbti-disclaimer"><ShieldCheck size={17} />{report.disclaimer}</p><footer><button type="button" onClick={restart}>{t.retake}</button><button type="button" onClick={copySummary}><Copy size={17} />{t.copy}</button><button className="primary" type="button" onClick={exportPdf} disabled={exporting}>{exporting ? <SpinnerGap className="spin" size={17} /> : <DownloadSimple size={17} />}{exporting ? t.exporting : t.print}</button></footer>
     </section>}
     {error && stage !== "quiz" && <p className="mbti-error"><Warning size={17} />{error}</p>}
     {!!histories.length && <section className="mbti-history"><h2><Clock size={20} />{t.history}</h2><div>{histories.map((item) => <button type="button" key={item.id} onClick={() => { setReport(item.output); setStage("result"); }}><img src="/mbti/mbti-icon-v1.webp" alt="" /><span><strong>{item.output.type} · {item.output.typeName}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></span><ArrowRight size={17} /></button>)}</div></section>}
+    {report && <div className="mbti-pdf-export-root" ref={pdfDocumentRef} aria-hidden="true">
+      <section className="mbti-pdf-page">
+        <header className="mbti-pdf-brand"><div><img src="/mbti/mbti-icon-v1.webp" alt="" /><span><strong>OneShowTools</strong><small>{locale === "en" ? "PERSONALITY PREFERENCE REPORT" : "性格偏好自测报告"}</small></span></div><em>{new Date(report.assessedAt || Date.now()).toLocaleDateString(locale === "en" ? "en-US" : "zh-CN")}</em></header>
+        <div className="mbti-pdf-result"><small>{t.result}</small><h1>{report.type}<span>{report.typeName}</span></h1><p>{report.summary}</p></div>
+        <div className="mbti-pdf-section-title"><span>01</span><div><strong>{t.dimensions}</strong><small>{locale === "en" ? "Preference strength across four dimensions" : "四个维度的偏好强度与清晰度"}</small></div></div>
+        <div className="mbti-pdf-dimensions">{report.dimensions.map((item) => <article key={item.axis}><header><b>{item.leftCode} {item.leftPercent}%</b><span>{item.axis}</span><b>{item.rightPercent}% {item.rightCode}</b></header><div><i style={{ width: `${item.leftPercent}%` }} /></div><small>{item.closeness === "balanced" ? (locale === "en" ? "Nearly balanced" : "两侧较为均衡") : (locale === "en" ? `Leans ${item.selected}` : `当前更偏向 ${item.selected}`)}</small></article>)}</div>
+        {report.quality && <div className={`mbti-pdf-quality ${report.quality.status}`}><ShieldCheck size={20} /><div><strong>{locale === "en" ? "Response quality" : "答题质量"} · {report.quality.status === "good" ? (locale === "en" ? "Good" : "良好") : (locale === "en" ? "Review suggested" : "建议复核")}</strong><p>{report.quality.warnings?.length ? (locale === "en" ? "Your response pattern may have been rushed or repetitive. Consider a retake when uninterrupted." : "检测到过快、中立项较多或重复选择，建议在不受打扰时复测。") : (locale === "en" ? "No obvious rushed or repetitive pattern was detected." : "未发现明显的过快作答或机械重复选择。")}</p></div></div>}
+        <footer><span>OneShowTools · {locale === "en" ? "Private self-exploration report" : "私密自我探索报告"}</span><b>1 / 2</b></footer>
+      </section>
+      <section className="mbti-pdf-page">
+        <header className="mbti-pdf-brand compact"><div><img src="/mbti/mbti-icon-v1.webp" alt="" /><span><strong>{report.type} · {report.typeName}</strong><small>{locale === "en" ? "ACTIONABLE PREFERENCE INSIGHTS" : "可执行的偏好洞察"}</small></span></div><em>OneShowTools</em></header>
+        <div className="mbti-pdf-two-columns"><section><div className="mbti-pdf-section-title"><span>02</span><div><strong>{t.strengths}</strong><small>{locale === "en" ? "Patterns that may feel more natural" : "你可能更容易自然发挥的方式"}</small></div></div><ul>{report.strengths.map((item) => <li key={item}><Check size={16} />{item}</li>)}</ul></section><section><div className="mbti-pdf-section-title"><span>03</span><div><strong>{t.growth}</strong><small>{locale === "en" ? "Small experiments for growth" : "可尝试的成长行动"}</small></div></div><ul>{report.growth.map((item) => <li key={item}><ArrowRight size={16} />{item}</li>)}</ul></section></div>
+        <div className="mbti-pdf-section-title"><span>04</span><div><strong>{locale === "en" ? "How you may work best" : "适合你的工作与学习方式"}</strong><small>{locale === "en" ? "Use these as experiments, not fixed rules" : "把建议当作实验，而不是固定规则"}</small></div></div>
+        <div className="mbti-pdf-styles">{[[Briefcase, t.work, report.workStyle], [UsersThree, t.collaboration, report.collaboration], [Brain, t.learning, report.learning]].map(([Icon, title, body]) => <article key={title}><Icon size={22} /><div><h3>{title}</h3><p>{body}</p></div></article>)}</div>
+        <div className="mbti-pdf-note"><ShieldCheck size={18} /><p>{report.disclaimer}</p></div>
+        <footer><span>© 2026 OneShowTools · oneshowtools.com</span><b>2 / 2</b></footer>
+      </section>
+    </div>}
   </main>;
 }

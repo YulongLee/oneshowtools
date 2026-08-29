@@ -109,7 +109,10 @@ export function scoreMbtiAnswers(answers = {}, options = {}) {
     const leftPercent = Math.round(50 + normalized * 50);
     const rightPercent = 100 - leftPercent;
     const clarity = Math.abs(normalized);
-    const selected = clarity < 0.1 ? "X" : evidence > 0 ? leftCode : rightCode;
+    // Only an exact tie is unresolved. Near-midpoint preferences still receive
+    // a usable best-fit letter while `clarity` and `closeness` communicate that
+    // the result is weak and should be validated against real-world behavior.
+    const selected = evidence === 0 ? "X" : evidence > 0 ? leftCode : rightCode;
     return {
       axis, leftCode, rightCode, leftPercent, rightPercent, selected,
       clarity: Math.round(clarity * 100),

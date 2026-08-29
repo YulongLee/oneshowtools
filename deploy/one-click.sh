@@ -85,6 +85,8 @@ rsync -az --delete \
   --exclude='packages/' \
   --exclude='qa/' \
   --exclude='artifacts/' \
+  --exclude='output/' \
+  --exclude='tmp/' \
   --exclude='qa-*' \
   --exclude='*.log' \
   -e "$RSYNC_SSH" ./ "$REMOTE:$REMOTE_STAGE/"

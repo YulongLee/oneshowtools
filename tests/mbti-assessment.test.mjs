@@ -39,6 +39,19 @@ test("MBTI neutral and patterned submissions are not forced into ESTJ", () => {
   assert.ok(report.strengths.every((item) => !/目标拆解|直接沟通/.test(item)));
 });
 
+test("near-midpoint answers still return a usable best-fit type with low clarity", () => {
+  const desired = { EI: "I", SN: "N", TF: "F", JP: "P" };
+  const answers = Object.fromEntries(mbtiQuestions.map((item) => [item.id, 3]));
+  for (const axis of Object.keys(desired)) {
+    const item = mbtiQuestions.find((question) => question.axis === axis);
+    answers[item.id] = item.leftCode === desired[axis] ? 1 : 5;
+  }
+  const scored = scoreMbtiAnswers(answers, { durationSeconds: 480 });
+  assert.equal(scored.type, "INFP");
+  assert.equal(scored.ambiguousAxes.length, 0);
+  assert.ok(scored.dimensions.every((item) => item.closeness === "moderate"));
+});
+
 test("MBTI scoring rejects incomplete submissions", () => {
   assert.throws(() => scoreMbtiAnswers({}), /MBTI_ANSWERS_INCOMPLETE/);
 });

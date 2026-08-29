@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, CheckCircle, CloudArrowUp, Coins, DownloadSimple, ImageSquare,
-  LockKey, Play, ShieldCheck, Sparkle, SpinnerGap, Warning, X, ClockCounterClockwise,
+  ArrowLeft, CaretDown, CaretLeft, CaretRight, CheckCircle, CloudArrowUp, Coins,
+  DownloadSimple, ImageSquare, LockKey, Pause, Play, ShieldCheck, SlidersHorizontal,
+  Sparkle, SpinnerGap, Warning, X, ClockCounterClockwise,
 } from "@phosphor-icons/react";
 import { apiErrorCode, slidingAncestorErrorMessage } from "./toolErrorMessages.js";
 
@@ -35,6 +36,11 @@ const defaultCustomPromptsZh = [
   "最夯最终形态：达到整组最强状态，极具力量感和压迫感，适合最终展示。",
 ];
 
+const stageNames = {
+  zh: ["初始", "蓄力", "觉醒", "强化", "突破", "进阶", "重塑", "升华", "极境", "巅峰"],
+  en: ["Origin", "Charge", "Awaken", "Build", "Break", "Advance", "Reforge", "Ascend", "Limit", "Apex"],
+};
+
 const normalizeStyle = (value) => value === "dynasty" ? "realistic" : value === "clan" ? "cinematic" : value;
 
 function sourceFromTask(task) {
@@ -63,6 +69,7 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   const [result, setResult] = useState(null);
   const [activeTask, setActiveTask] = useState(null);
   const [intensity, setIntensity] = useState(5);
+  const [playing, setPlaying] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
   const [customPrompts, setCustomPrompts] = useState(defaultCustomPromptsZh);
   const [references, setReferences] = useState(() => Array(10).fill(null));
@@ -133,9 +140,21 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
   }, [activeTask?.id, activeTask?.status, locale, onCompleted]);
 
   const frames = useMemo(() => [...(result?.files || result?.output?.resultFiles || [])].sort((a, b) => a.level - b.level), [result]);
-  const leftFrames = useMemo(() => frames.slice(0, 5), [frames]);
-  const rightFrames = useMemo(() => frames.slice(5, 10), [frames]);
   const selected = frames[intensity - 1] || null;
+  const previous = frames[Math.max(0, intensity - 2)] || null;
+  const next = frames[Math.min(frames.length - 1, intensity)] || null;
+
+  useEffect(() => {
+    if (!playing || frames.length < 2) return undefined;
+    const timer = window.setInterval(() => {
+      setIntensity((current) => current >= frames.length ? 1 : current + 1);
+    }, 850);
+    return () => window.clearInterval(timer);
+  }, [playing, frames.length]);
+
+  useEffect(() => {
+    if (!frames.length) setPlaying(false);
+  }, [frames.length]);
 
   useEffect(() => {
     for (const frame of frames) {
@@ -206,73 +225,98 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     return null;
   }));
 
-  return <div className="ancestor-page">
-    <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
-    <header className="ancestor-header">
-      <div className="ancestor-title-lockup"><span><Sparkle size={28} weight="duotone" /></span><div><p>ONESHOWTOOLS · AI 形态进化玩法</p><h1>{zh ? "滑动变祖器" : "Sliding Power-Up Generator"}</h1><small>{zh ? "“变祖”就是变强：同一个人从虚到夯，一次生成 10 种强度明确、顺序一致的连续形态。" : "Power up the same person through ten clearly ordered stages, from fragile to formidable."}</small></div></div>
-      <aside><Coins size={18} /><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></aside>
+  const downloadAll = async () => {
+    if (!frames.length) return;
+    try {
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
+      const blobs = await Promise.all(frames.map(async (frame) => {
+        const response = await fetch(frame.downloadUrl, { credentials: "include" });
+        if (!response.ok) throw new Error("DOWNLOAD_FAILED");
+        return response.blob();
+      }));
+      blobs.forEach((blob, index) => zip.file(`oneshowtools-ancestor-${String(frames[index].level).padStart(2, "0")}.png`, blob));
+      const archive = await zip.generateAsync({ type: "blob" });
+      const archiveUrl = URL.createObjectURL(archive);
+      const anchor = document.createElement("a");
+      anchor.href = archiveUrl;
+      anchor.download = "oneshowtools-ancestor-10-frames.zip";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(archiveUrl), 1000);
+    } catch {
+      setError(zh ? "整组下载失败，请稍后重试或逐帧下载。" : "The archive could not be downloaded. Try again or download each frame.");
+    }
+  };
+
+  return <div className="ancestor-page ancestor-studio-v2">
+    <header className="ancestor-studio-bar">
+      <button className="tool-back" onClick={onBack}><ArrowLeft size={18} />{zh ? "工具市场" : "Marketplace"}</button>
+      <div className="ancestor-brand-row">
+        <span><Sparkle size={22} weight="duotone" /></span>
+        <div><p>ONESHOWTOOLS · AI {zh ? "形态进化" : "EVOLUTION"}</p><h1>{zh ? "滑动变祖器" : "Power-Up Timeline"}</h1></div>
+      </div>
+      <div className="ancestor-save-state"><CheckCircle size={17} weight="fill" /><span>{zh ? "项目自动保存" : "Auto-saved"}</span></div>
+      <aside className="ancestor-price"><Coins size={18} weight="duotone" /><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></aside>
     </header>
 
-    <div className="ancestor-layout">
-      <section className="ancestor-control">
-        <div className="ancestor-section-title"><span>01</span><div><strong>{zh ? "上传人物" : "Upload portrait"}</strong><small>{zh ? "建议使用正面或半身清晰照片" : "A clear front-facing or half-body photo works best"}</small></div></div>
+    <main className="ancestor-workspace">
+      <section className="ancestor-builder">
+        <header><div><span>01</span><div><h2>{zh ? "上传人物" : "Upload portrait"}</h2><p>{zh ? "建议使用正面、清晰、光线均匀的人像" : "Use a clear, front-facing portrait"}</p></div></div>{preview && <em>{zh ? "已就绪" : "Ready"}</em>}</header>
         <label className={`ancestor-uploader ${preview ? "has-image" : ""}`}>
           <input type="file" accept="image/*" onChange={(event) => chooseFile(event.target.files?.[0])} />
-          {preview ? <><img src={preview} alt={zh ? "上传预览" : "Upload preview"} /><button type="button" onClick={(event) => { event.preventDefault(); setFile(null); setResult(null); }}><X size={16} /></button><span>{zh ? "点击更换图片" : "Click to replace"}</span></> : <><CloudArrowUp size={30} /><strong>{zh ? "上传一张人物照片" : "Upload a portrait"}</strong><span>JPG · PNG · WEBP · 25 MB</span></>}
+          {preview ? <><img src={preview} alt={zh ? "上传预览" : "Upload preview"} /><button type="button" onClick={(event) => { event.preventDefault(); setFile(null); setResult(null); }}><X size={16} /></button><span>{zh ? "点击更换人物照片" : "Click to replace portrait"}</span></> : <><span className="ancestor-upload-icon"><CloudArrowUp size={28} /></span><strong>{zh ? "上传人物照片" : "Upload portrait"}</strong><small>{zh ? "拖拽或点击上传" : "Drop or click to upload"}</small><em>JPG · PNG · WEBP · 25 MB</em></>}
         </label>
 
-        <div className="ancestor-section-title"><span>02</span><div><strong>{zh ? "选择变化风格" : "Choose transformation style"}</strong><small>{zh ? "身份和构图保持连续，只改变人物强弱形态" : "Keep identity and framing continuous while changing power level"}</small></div></div>
-        <div className="ancestor-style-list">{styles.map(([value, name, description]) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}><span>{style === value ? <CheckCircle weight="fill" /> : <Sparkle />}</span><div><strong>{zh ? name : value === "custom" ? "Custom sequence" : value}</strong><small>{zh ? description : value === "realistic" ? "Natural realistic power progression" : value === "cinematic" ? "Rugged cinematic transformation" : value === "custom" ? "Write ten prompts and add optional references" : "Exaggerated meme-ready evolution"}</small></div></button>)}</div>
+        <header className="ancestor-style-heading"><div><span>02</span><div><h2>{zh ? "选择进化风格" : "Choose a style"}</h2><p>{zh ? "同一身份、同一构图，生成连续十帧" : "One identity, one framing, ten stages"}</p></div></div></header>
+        <div className="ancestor-template-grid">{styles.slice(0, 3).map(([value, name, description], index) => <button key={value} type="button" className={style === value ? "active" : ""} onClick={() => setStyle(value)}>
+          <span className={`ancestor-template-visual style-${value}`}>{preview ? <img src={preview} alt="" /> : <Sparkle size={23} weight="duotone" />}<i>{String(index + 1).padStart(2, "0")}</i></span>
+          <strong>{zh ? name : value}</strong><small>{zh ? description : value === "realistic" ? "Natural progression" : value === "cinematic" ? "Cinematic power" : "Bold social style"}</small>
+          {style === value && <CheckCircle size={18} weight="fill" />}
+        </button>)}</div>
+
+        <button type="button" className={`ancestor-advanced-toggle ${style === "custom" ? "active" : ""}`} onClick={() => setStyle(style === "custom" ? "realistic" : "custom")}><span><SlidersHorizontal size={18} /><strong>{zh ? "高级编辑" : "Advanced editor"}</strong><small>{zh ? "逐帧提示词与参考图" : "Per-frame prompts and references"}</small></span><CaretDown size={17} /></button>
 
         {style === "custom" && <section className="ancestor-custom-editor">
-          <header><div><strong>{zh ? "自定义 10 张图片" : "Customize ten frames"}</strong><small>{zh ? "提示词必填；每一级可选一张参考图，仅用于该级的造型、光影或姿态参考。" : "A prompt is required for every frame. Each optional reference applies only to its frame."}</small></div><span>{customPrompts.filter((item) => item.trim()).length}/10</span></header>
+          <header><div><strong>{zh ? "自定义 10 帧" : "Customize ten frames"}</strong><small>{zh ? "为每一帧编写要求，也可以添加独立参考图。" : "Describe each frame and add optional references."}</small></div><span>{customPrompts.filter((item) => item.trim()).length}/10</span></header>
           <div className="ancestor-custom-grid">{customPrompts.map((prompt, index) => <article key={index}>
-            <div className="ancestor-custom-number"><strong>{String(index + 1).padStart(2, "0")}</strong><span>{zh ? (index < 5 ? "偏虚" : "偏夯") : (index < 5 ? "Fragile" : "Powerful")}</span></div>
-            <textarea value={prompt} onChange={(event) => updateCustomPrompt(index, event.target.value)} placeholder={zh ? `填写第 ${index + 1} 张图片的生成要求` : `Describe frame ${index + 1}`} />
-            <label className={`ancestor-reference-input ${references[index] ? "has-reference" : ""}`}>
-              <input type="file" accept="image/*" onChange={(event) => updateReference(index, event.target.files?.[0])} />
-              {references[index] ? <><img src={references[index].previewUrl} alt={zh ? `第 ${index + 1} 级参考图` : `Frame ${index + 1} reference`} /><span>{zh ? "更换参考图" : "Replace reference"}</span></> : <><ImageSquare size={18} /><span>{zh ? "添加参考图（可选）" : "Add reference (optional)"}</span></>}
-            </label>
+            <div className="ancestor-custom-number"><strong>{String(index + 1).padStart(2, "0")}</strong><span>{stageNames[zh ? "zh" : "en"][index]}</span></div>
+            <textarea value={prompt} onChange={(event) => updateCustomPrompt(index, event.target.value)} placeholder={zh ? `填写第 ${index + 1} 帧的生成要求` : `Describe frame ${index + 1}`} />
+            <label className={`ancestor-reference-input ${references[index] ? "has-reference" : ""}`}><input type="file" accept="image/*" onChange={(event) => updateReference(index, event.target.files?.[0])} />{references[index] ? <><img src={references[index].previewUrl} alt="" /><span>{zh ? "更换" : "Replace"}</span></> : <><ImageSquare size={18} /><span>{zh ? "参考图" : "Reference"}</span></>}</label>
             {references[index] && <button type="button" className="ancestor-reference-clear" onClick={() => clearReference(index)}><X size={13} />{zh ? "移除" : "Remove"}</button>}
           </article>)}</div>
         </section>}
 
-        <p className="ancestor-safety"><ShieldCheck size={17} />{zh ? "请仅上传你有权使用的图片。结果属于虚构娱乐性的形态变化，不评价人物真实能力或身份。" : "Only upload images you may use. Results are fictional transformations and do not judge real ability or identity."}</p>
         {error && <div className="form-error ancestor-error"><Warning size={17} /><span>{error}</span>{error.includes("100") && <a href="/?view=files">{zh ? "前往文件中心" : "Open File Center"}</a>}</div>}
         {!authenticated && <div className="tool-auth-notice"><LockKey size={18} /><span>{zh ? "登录后可生成并保存结果" : "Sign in to generate and save"}</span><button onClick={onAuth}>{zh ? "登录" : "Sign in"}</button></div>}
-        <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? `后台生成中 ${result?.files?.length || activeTask?.output?.progress?.completed || 0}/10，可离开页面` : `Generating in background ${result?.files?.length || activeTask?.output?.progress?.completed || 0}/10 · safe to leave`}</> : <><Play weight="fill" />{zh ? "生成 10 级形态变化" : "Generate 10 power stages"}</>}</button>
-        <small className="ancestor-quota-note">{zh ? "10 张均由模型独立生成并保存；每位用户最多保存 100 个文件。" : "All ten frames are model-generated and saved; each account can store up to 100 files."}</small>
+        <div className="ancestor-builder-footer">
+          <p className="ancestor-safety"><ShieldCheck size={16} />{zh ? "仅上传你有权使用的照片" : "Only upload images you may use"}</p>
+          <button className="ancestor-run" onClick={run} disabled={busy}>{busy ? <><SpinnerGap className="spin" />{zh ? `生成中 ${result?.files?.length || activeTask?.output?.progress?.completed || 0}/10` : `Generating ${result?.files?.length || activeTask?.output?.progress?.completed || 0}/10`}</> : <><Sparkle weight="fill" />{zh ? `生成 10 张 · ${tool.creditCost} 积分` : `Generate 10 · ${tool.creditCost} credits`}</>}</button>
+          <small>{zh ? "后台生成，可安全离开页面；完成后自动保存" : "Runs in background and saves automatically"}</small>
+        </div>
       </section>
 
-      <section className="ancestor-stage">
-        <header><div><p>{zh ? "生成结果" : "RESULT PREVIEW"}</p><h2>{frames.length ? intensityLabel : (zh ? "等待生成" : "Waiting")}</h2></div><span>{frames.length ? `${frames.length} / 10` : "00 / 10"}</span></header>
-        <div className={`ancestor-portrait ${!preview && !frames.length ? "empty" : ""}`}>
-          {frames.length ? <div className="ancestor-frame-stack">{frames.map((frame) => <img key={frame.id} className={frame.id === selected?.id ? "active" : ""} src={frame.downloadUrl} alt={`${zh ? "形态" : "Stage"} ${frame.level}`} />)}</div> : preview ? <img src={preview} alt={zh ? "上传预览" : "Upload preview"} /> : <><ImageSquare size={42} /><strong>{zh ? "等待人物图像" : "Waiting for portrait"}</strong><span>{zh ? "上传后会在这里显示原图预览" : "Your source preview will appear here"}</span></>}
-          {(preview || frames.length) && <div className="ancestor-frame-corners" />}
+      <section className="ancestor-preview-workspace">
+        <header className="ancestor-preview-head"><div><p>{zh ? "生成工作台" : "GENERATION STUDIO"}</p><h2>{zh ? "10 帧进化时间轴" : "10-stage evolution timeline"}</h2><span>{frames.length ? `${styleName(style, zh)} · ${frames.length}/10 ${zh ? "已完成" : "complete"}` : (zh ? "上传人物并选择风格后开始生成" : "Upload a portrait and choose a style")}</span></div><div className="ancestor-preview-actions"><button type="button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? <Pause size={17} weight="fill" /> : <Play size={17} weight="fill" />}{zh ? (playing ? "暂停预览" : "预览动效") : (playing ? "Pause" : "Preview")}</button><button type="button" onClick={downloadAll} disabled={!frames.length}><DownloadSimple size={17} />{zh ? "下载全部" : "Download all"}</button></div></header>
+
+        <div className={`ancestor-carousel ${!preview && !frames.length ? "empty" : ""}`}>
+          <button type="button" className="ancestor-carousel-arrow left" disabled={!frames.length} onClick={() => setIntensity((value) => Math.max(1, value - 1))}><CaretLeft size={20} /></button>
+          {previous && previous.id !== selected?.id ? <button type="button" className="ancestor-side-frame previous" onClick={() => setIntensity(previous.level)}><img src={previous.downloadUrl} alt="" /><span>{String(previous.level).padStart(2, "0")} · {stageNames[zh ? "zh" : "en"][previous.level - 1]}</span></button> : <span className="ancestor-side-placeholder" />}
+          <div className="ancestor-primary-frame">{selected ? <><img key={selected.id} src={selected.downloadUrl} alt={`${zh ? "形态" : "Stage"} ${selected.level}`} /><div><strong>{String(selected.level).padStart(2, "0")}</strong><span>{stageNames[zh ? "zh" : "en"][selected.level - 1]}</span></div></> : preview ? <><img src={preview} alt={zh ? "原始人物" : "Original portrait"} /><div><strong>00</strong><span>{zh ? "原图预览" : "Source"}</span></div></> : <div className="ancestor-preview-empty"><span><ImageSquare size={34} /></span><strong>{zh ? "从一张照片开始" : "Start with one portrait"}</strong><p>{zh ? "上传后可在这里预览十帧连续变化" : "Your ten-stage sequence will appear here"}</p></div>}</div>
+          {next && next.id !== selected?.id ? <button type="button" className="ancestor-side-frame next" onClick={() => setIntensity(next.level)}><img src={next.downloadUrl} alt="" /><span>{String(next.level).padStart(2, "0")} · {stageNames[zh ? "zh" : "en"][next.level - 1]}</span></button> : <span className="ancestor-side-placeholder" />}
+          <button type="button" className="ancestor-carousel-arrow right" disabled={!frames.length} onClick={() => setIntensity((value) => Math.min(frames.length || 10, value + 1))}><CaretRight size={20} /></button>
         </div>
-        <div className="ancestor-scale-copy"><span>{zh ? "最虚 · 01" : "Weakest · 01"}</span><strong>{frames.length ? intensityLabel : (zh ? "从虚到夯" : "Weak to strong")}</strong><span>{zh ? "最夯 · 10" : "Strongest · 10"}</span></div>
-        <input className="ancestor-slider" type="range" min="1" max="10" step="1" value={intensity} onChange={(event) => setIntensity(Number(event.target.value))} disabled={!frames.length} />
-        <div className="ancestor-ticks ancestor-ticks-ten">{Array.from({ length: 10 }, (_, index) => <i key={index} className={index === intensity - 1 ? "active" : index === 4 || index === 5 ? "origin" : ""} />)}</div>
-        {frames.length ? <div className="ancestor-series">
-          <div><header><strong>{zh ? "偏虚形态 · 01–05" : "Fragile · 01–05"}</strong><span>{zh ? "逐级接近原始状态" : "gradually approaches neutral"}</span></header><div>{leftFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`虚 ${item.level}`} loading="eager" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
-          <div><header><strong>{zh ? "偏夯形态 · 06–10" : "Powerful · 06–10"}</strong><span>{zh ? "逐级增强体格和气场" : "steadily gains power"}</span></header><div>{rightFrames.map((item) => <button key={item.id} className={selected?.id === item.id ? "active" : ""} onClick={() => setIntensity(item.level)}><img src={item.downloadUrl} alt={`夯 ${item.level}`} loading="eager" /><span>{String(item.level).padStart(2, "0")}</span></button>)}</div></div>
-        </div> : <div className="ancestor-empty-series"><span>{zh ? "生成后，10 张从虚到夯的真实模型结果会按顺序显示在这里。" : "Ten real model outputs will appear here in weak-to-strong order."}</span></div>}
-        {selected && <a className="ancestor-download" href={selected.downloadUrl} download><DownloadSimple size={18} />{zh ? "下载当前图片" : "Download selected image"}</a>}
+
+        <div className="ancestor-timeline-shell"><div className="ancestor-timeline-label"><strong>{zh ? "形态时间轴" : "Stage timeline"}</strong><span>{frames.length ? intensityLabel : (zh ? "01 初始 — 10 巅峰" : "01 Origin — 10 Apex")}</span></div><div className="ancestor-timeline">{Array.from({ length: 10 }, (_, index) => {
+          const item = frames[index];
+          return <button key={index} type="button" className={`${index + 1 === intensity ? "active" : ""} ${item ? "complete" : ""}`} disabled={!item} onClick={() => setIntensity(index + 1)}><span>{item ? <img src={item.downloadUrl} alt="" /> : preview ? <img src={preview} alt="" /> : <i />}</span><strong>{String(index + 1).padStart(2, "0")}</strong><small>{stageNames[zh ? "zh" : "en"][index]}</small></button>;
+        })}</div></div>
+
+        <div className="ancestor-playback"><button type="button" onClick={() => setPlaying((value) => !value)} disabled={frames.length < 2}>{playing ? <Pause size={18} weight="fill" /> : <Play size={18} weight="fill" />}</button><input type="range" min="1" max="10" step="1" value={intensity} onChange={(event) => { setPlaying(false); setIntensity(Number(event.target.value)); }} disabled={!frames.length} /><span>{String(intensity).padStart(2, "0")} / 10</span>{selected && <a href={selected.downloadUrl} download><DownloadSimple size={17} />{zh ? "下载当前帧" : "Download frame"}</a>}</div>
+
+        <section className="ancestor-projects"><header><div><ClockCounterClockwise size={19} /><span><strong>{zh ? "最近项目" : "Recent projects"}</strong><small>{zh ? "任务完成后会自动保存在这里" : "Completed sets are saved here"}</small></span></div><em>{history.length} {zh ? "组" : "sets"}</em></header>{history.length ? <div>{history.slice(0, 4).map((entry) => { const cover = [...entry.source.files].sort((a, b) => a.level - b.level)[4] || entry.source.files[0]; const active = result?.task?.id === entry.task.id; return <button type="button" key={entry.task.id} className={active ? "active" : ""} onClick={() => openHistory(entry)}><img src={cover.downloadUrl} alt="" loading="lazy" /><span><strong>{styleName(entry.source.output?.style, zh)}</strong><small>{taskTime(entry.task, locale)}</small></span><i>{entry.source.files.length}/10</i></button>; })}</div> : <div className="ancestor-project-empty"><ImageSquare size={20} /><span>{zh ? "首个项目完成后会显示在这里" : "Your first project will appear here"}</span></div>}</section>
       </section>
-    </div>
-    <section className="ancestor-history">
-      <header><div><span><ClockCounterClockwise size={20} /></span><div><h2>{zh ? "生成历史" : "Generation history"}</h2><p>{zh ? "每次生成均按任务保存，可随时回来继续查看和下载。" : "Every generation is saved as a task so you can reopen and download it later."}</p></div></div><strong>{history.length} {zh ? "组" : "sets"}</strong></header>
-      {history.length ? <div className="ancestor-history-grid">{history.map((entry) => {
-        const cover = [...entry.source.files].sort((a, b) => a.level - b.level)[4] || entry.source.files[0];
-        const active = result?.task?.id === entry.task.id;
-        return <article key={entry.task.id} className={active ? "active" : ""}>
-          <button type="button" className="ancestor-history-open" onClick={() => openHistory(entry)}>
-            <span className="ancestor-history-cover"><img src={cover.downloadUrl} alt={styleName(entry.source.output?.style, zh)} loading="lazy" /><i>{entry.source.files.length}/10</i></span>
-            <span className="ancestor-history-copy"><strong>{styleName(entry.source.output?.style, zh)}</strong><small>{taskTime(entry.task, locale)}</small><em>{active ? (zh ? "正在查看" : "Viewing") : (zh ? "打开结果" : "Open result")}</em></span>
-          </button>
-          <a href={cover.downloadUrl} download title={zh ? "下载封面图" : "Download cover"}><DownloadSimple size={17} /></a>
-        </article>;
-      })}</div> : <div className="ancestor-history-empty"><ImageSquare size={28} /><strong>{zh ? "还没有生成记录" : "No generations yet"}</strong><span>{zh ? "完成第一组生成后，历史结果会显示在这里。" : "Your completed sets will appear here."}</span></div>}
-    </section>
+    </main>
   </div>;
 }
