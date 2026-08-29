@@ -2432,12 +2432,12 @@ export function App() {
       projects: () => api("/api/projects").catch(() => ({ projects: [] })),
       favorites: () => api("/api/favorites").catch(() => ({ favorites: [], collections: [], counts: { tool: 0, file: 0, prompt: 0, material: 0 } })),
     };
-    const values = await Promise.all(areas.map((area) => loaders[area]()));
-    const results = Object.fromEntries(areas.map((area, index) => [area, values[index]]));
+    const values = await Promise.allSettled(areas.map((area) => loaders[area]()));
+    const results = Object.fromEntries(areas.flatMap((area, index) => values[index].status === "fulfilled" ? [[area, values[index].value]] : []));
     setPrivateData((current) => ({
       ...current,
       ...(results.dashboard ? { dashboard: results.dashboard } : {}), ...(results.runtime ? { runtime: results.runtime } : {}),
-      ...(results.credits ? { credits: results.credits } : {}), ...(results.billing ? { billing: results.billing } : {}),
+      ...(results.credits ? { credits: results.credits } : (!current.credits && Number.isFinite(results.dashboard?.metrics?.credits) ? { credits: { balance: results.dashboard.metrics.credits, ledger: [] } } : {})), ...(results.billing ? { billing: results.billing } : {}),
       ...(results.tasks ? { tasks: results.tasks.tasks } : {}),
       ...(results.files ? { files: results.files.files, fileQuota: results.files.quota || current.fileQuota } : {}),
       ...(results.projects ? { projects: results.projects.projects || [] } : {}),

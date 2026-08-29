@@ -55,6 +55,10 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   assert.equal(dashboard.metrics.credits, 200);
   assert.equal(dashboard.metrics.tasks, 0);
 
+  const runtimeStatus = await handleApi(authenticated("/api/runtime/status", cookie));
+  assert.equal(runtimeStatus.status, 200);
+  assert.equal(Array.isArray((await runtimeStatus.json()).tools), true);
+
   const taskResponse = await handleApi(authenticated("/api/tasks", cookie, {
     method: "POST",
     headers: { "content-type": "application/json" },

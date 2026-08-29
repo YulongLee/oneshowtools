@@ -273,6 +273,7 @@ async function issueAccountToken(request, user, purpose, email = user.email) {
 }
 
 function currentUser(request) {
+  if (!request?.headers) return null;
   const token = requestSessionToken(request);
   if (!token) return null;
   return (
@@ -3391,7 +3392,7 @@ export async function handleApi(request) {
     const preferences = listToolModelPreferences(user.id);
     return json({
       ...runtimeSummary(user.id),
-      tools: storefrontTools()
+      tools: storefrontTools(request)
         .sort((left, right) =>
           `${left.category}:${left.nameEn}`.localeCompare(
             `${right.category}:${right.nameEn}`,
