@@ -516,7 +516,12 @@ function App() {
     setBusy(true);
     setMessage("");
     try {
-      setSession(await window.stockPet.login({ email, password }));
+      const result = await window.stockPet.login({ email, password });
+      if (!result?.ok) {
+        setMessage(errors[result?.error?.code] || "登录失败，请稍后重试");
+        return;
+      }
+      setSession(result.session);
     } catch (error: any) {
       setMessage(errors[error?.code] || "登录失败，请稍后重试");
     } finally {

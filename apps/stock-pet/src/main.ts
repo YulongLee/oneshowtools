@@ -10,7 +10,7 @@ import { autoUpdater } from "electron-updater";
 let petWindow: BrowserWindow | null = null;
 let controlWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-const apiBase = process.env.ONESHOWTOOLS_API_URL || "https://www.gameforcast.top";
+const apiBase = String(process.env.ONESHOWTOOLS_API_URL || "https://oneshowtools.com").replace(/\/+$/, "");
 const updateFeedUrl = String(process.env.STOCK_PET_UPDATE_URL || "").trim();
 const fingerprint = createHash("sha256").update(`${hostname()}:${platform()}:${app.getPath("userData")}`).digest("hex");
 const sessionPath = () => join(app.getPath("userData"), "session.bin");
@@ -440,14 +440,25 @@ ipcMain.handle("pet:session", async () => {
   }
 });
 ipcMain.handle("pet:login", async (_event, credentials) => {
-  const result = await api("/api/auth/login", { method: "POST", body: credentials, authenticated: false });
-  writeToken(result.accessToken);
-  await api("/api/products/stock-pet/devices", { method: "POST", body: { fingerprint, name: hostname(), platform: platform(), appVersion: app.getVersion() } });
-  const session = { authenticated: true, account: await api("/api/auth/session"), license: await api("/api/products/stock-pet/license") };
-  writeEncryptedJson(licenseCachePath(), { ...session, cachedAt: Date.now() });
-  petWindow?.webContents.send("pet:session-changed", session);
-  controlWindow?.webContents.send("pet:session-changed", session);
-  return session;
+  try {
+    const result = await api("/api/auth/login", { method: "POST", body: credentials, authenticated: false });
+    writeToken(result.accessToken);
+    await api("/api/products/stock-pet/devices", { method: "POST", body: { fingerprint, name: hostname(), platform: platform(), appVersion: app.getVersion() } });
+    const session = { authenticated: true, account: await api("/api/auth/session"), license: await api("/api/products/stock-pet/license") };
+    writeEncryptedJson(licenseCachePath(), { ...session, cachedAt: Date.now() });
+    petWindow?.webContents.send("pet:session-changed", session);
+    controlWindow?.webContents.send("pet:session-changed", session);
+    return { ok: true, session };
+  } catch (error: any) {
+    writeToken("");
+    return {
+      ok: false,
+      error: {
+        code: String(error?.code || "REQUEST_FAILED"),
+        status: Number(error?.status || 0),
+      },
+    };
+  }
 });
 ipcMain.handle("pet:logout", () => {
   writeToken(""); writeEncryptedJson(licenseCachePath(), {});

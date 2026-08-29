@@ -26,7 +26,7 @@ export function ensureDevStockPet() {
   window.stockPet = {
     identity: async () => ({}),
     session: async () => ({ authenticated: true, license: { entitled: true }, user: { name: "本地预览" } }),
-    login: async () => ({ authenticated: true, license: { entitled: true } }),
+    login: async () => ({ ok: true, session: { authenticated: true, license: { entitled: true } } }),
     logout: async () => ({ authenticated: false }),
     api: async (path: string, init: any = {}) => {
       if (path.includes("/watchlist")) {

@@ -221,6 +221,14 @@ test("stock pet commercial downloads use a short-lived private link", () => {
   assert.equal(STOCK_PET_DOWNLOAD_TTL_SECONDS, 60);
 });
 
+test("stock pet desktop release authenticates against the production platform and preserves login errors", async () => {
+  const source = await readFile(new URL("../apps/stock-pet/src/main.ts", import.meta.url), "utf8");
+  assert.match(source, /https:\/\/oneshowtools\.com/);
+  assert.equal(source.includes("gameforcast.top"), false);
+  assert.match(source, /return \{ ok: true, session \}/);
+  assert.match(source, /code: String\(error\?\.code \|\| "REQUEST_FAILED"\)/);
+});
+
 test("stock pet ships optimized transparent one-shot GIFs for every default action", async () => {
   const assetNames = [
     "alert.gif", "closed.gif", "confused.gif", "down.gif", "flat.gif",

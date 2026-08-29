@@ -2,7 +2,7 @@ export {};
 declare global { interface Window { stockPet: {
   identity(): Promise<Record<string,string>>;
   session(): Promise<any>;
-  login(credentials: { email: string; password: string }): Promise<any>;
+  login(credentials: { email: string; password: string }): Promise<{ok:true;session:any}|{ok:false;error:{code:string;status:number}}>;
   logout(): Promise<any>;
   api(path: string, options?: { method?: string; body?: unknown }): Promise<any>;
   openLogin(): Promise<void>;
