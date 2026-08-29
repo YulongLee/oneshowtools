@@ -45,6 +45,7 @@ import {
 import {
   saveStockMarketProviderConfiguration, stockMarketProviderConfiguration, testStockMarketProviderConfiguration,
 } from "./stock-market-provider.mjs";
+import { normalizeMainlandPhone, phoneIdentityHash } from "./sms-provider.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -135,8 +136,14 @@ export function seedAdminGovernance() {
 seedAdminGovernance();
 
 function cleanAdminUser(user) {
+  const phone = user && db.prepare(`
+    SELECT country_code AS countryCode, phone_last4 AS last4
+    FROM user_phone_identities WHERE user_id = ?
+  `).get(user.id);
   return user && {
-    id: user.id, name: user.name, email: user.email, locale: user.locale,
+    id: user.id, name: user.name,
+    email: String(user.email || "").endsWith("@phone.oneshowtools.invalid") ? null : user.email,
+    phone: phone ? `${phone.countryCode} **** ${phone.last4}` : null, locale: user.locale,
     emailVerified: Boolean(user.email_verified), createdAt: user.created_at,
   };
 }
@@ -1237,15 +1244,20 @@ function administrators() {
     administrators: db.prepare(`
       SELECT m.user_id AS userId, m.status, m.mfa_required AS mfaRequired, m.version,
         m.created_at AS createdAt, u.name, u.email,
+        p.country_code AS phoneCountryCode, p.phone_last4 AS phoneLast4,
         GROUP_CONCAT(r.code) AS roleCodes,
         EXISTS(SELECT 1 FROM admin_mfa_factors f WHERE f.user_id = m.user_id AND f.active = 1) AS mfaEnrolled
       FROM admin_memberships m JOIN users u ON u.id = m.user_id
+      LEFT JOIN user_phone_identities p ON p.user_id = m.user_id
       LEFT JOIN admin_membership_roles mr ON mr.user_id = m.user_id
       LEFT JOIN admin_roles r ON r.id = mr.role_id
       GROUP BY m.user_id ORDER BY m.created_at
     `).all().map((row) => ({
       ...row, mfaRequired: Boolean(row.mfaRequired), mfaEnrolled: Boolean(row.mfaEnrolled),
+      email: String(row.email || "").endsWith("@phone.oneshowtools.invalid") ? null : row.email,
+      phone: row.phoneLast4 ? `${row.phoneCountryCode} **** ${row.phoneLast4}` : null,
       roles: row.roleCodes ? row.roleCodes.split(",") : [], roleCodes: undefined,
+      phoneCountryCode: undefined, phoneLast4: undefined,
     })),
     roles: db.prepare(`
       SELECT r.id, r.code, r.name_zh AS nameZh, r.name_en AS nameEn,
@@ -1254,6 +1266,33 @@ function administrators() {
       GROUP BY r.id ORDER BY r.code
     `).all().map((row) => ({ ...row, permissions: row.permissionCodes ? row.permissionCodes.split(",") : [], permissionCodes: undefined })),
   };
+}
+
+function resolveAdministratorAccount(data) {
+  const identifier = String(data.identifier || data.phone || data.email || "").trim();
+  if (!identifier) return null;
+  if (identifier.includes("@")) {
+    const target = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(identifier.toLowerCase());
+    return target ? { target, identityType: "email", identityMasked: target.email } : null;
+  }
+  let phone;
+  try { phone = normalizeMainlandPhone(identifier); } catch { return null; }
+  const record = db.prepare(`
+    SELECT u.*, p.country_code AS phone_country_code, p.phone_last4, p.verified_at AS phone_verified_at
+    FROM user_phone_identities p JOIN users u ON u.id = p.user_id
+    WHERE p.phone_hash = ?
+  `).get(phoneIdentityHash(phone));
+  return record ? {
+    target: record,
+    identityType: "phone",
+    identityMasked: `${record.phone_country_code} **** ${record.phone_last4}`,
+  } : null;
+}
+
+function administratorAccountVerified(user) {
+  return Boolean(user?.email_verified || user?.phone_verified_at || db.prepare(
+    "SELECT 1 FROM user_phone_identities WHERE user_id = ? AND verified_at IS NOT NULL",
+  ).get(user?.id));
 }
 
 function soleActiveSuperAdministrator(userId) {
@@ -1317,13 +1356,12 @@ async function adminCommands(request, path, context) {
   if (path === "/api/admin/v1/administrators" && request.method === "POST") {
     const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
     const data = await parseBody(request);
-    const email = String(data.email || "").trim().toLowerCase();
     const reason = String(data.reason || "").trim();
     const role = db.prepare("SELECT id, code FROM admin_roles WHERE code = ?").get(String(data.role || ""));
-    if (!email || !role || !reason) return fail("INVALID_ADMIN_CREATE");
-    const target = db.prepare("SELECT * FROM users WHERE email = ? COLLATE NOCASE").get(email);
-    if (!target) return fail("ADMIN_ACCOUNT_NOT_FOUND", 404);
-    if (!target.email_verified) return fail("ADMIN_EMAIL_NOT_VERIFIED", 409);
+    const resolved = resolveAdministratorAccount(data);
+    if (!resolved || !role || !reason) return fail(resolved ? "INVALID_ADMIN_CREATE" : "ADMIN_ACCOUNT_NOT_FOUND", resolved ? 400 : 404);
+    const { target, identityType, identityMasked } = resolved;
+    if (!administratorAccountVerified(target)) return fail("ADMIN_ACCOUNT_NOT_VERIFIED", 409);
     if (target.status !== "active") return fail("ADMIN_ACCOUNT_INACTIVE", 409);
     if (db.prepare("SELECT 1 FROM admin_memberships WHERE user_id = ?").get(target.id)) {
       return fail("ADMIN_ALREADY_EXISTS", 409);
@@ -1345,15 +1383,21 @@ async function adminCommands(request, path, context) {
       db.exec("ROLLBACK");
       throw error;
     }
-    richAudit({ request, actor: context.user, roles: context.roles, permission: "admins.manage", action: "admin.create", targetType: "administrator", targetId: target.id, reason, after: { email: target.email, role: role.code, status: "active" } });
-    return json({ ok: true, administrator: { userId: target.id, email: target.email, role: role.code, status: "active" } }, 201);
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "admins.manage", action: "admin.create", targetType: "administrator", targetId: target.id, reason, after: { identityType, identityMasked, role: role.code, status: "active" } });
+    return json({ ok: true, administrator: { userId: target.id, identityType, identity: identityMasked, role: role.code, status: "active" } }, 201);
   }
   match = path.match(/^\/api\/admin\/v1\/administrators\/([^/]+)\/role$/);
   if (match && request.method === "POST") {
     const denied = requirePermission(context, "admins.manage"); if (denied) return denied;
     const data = await parseBody(request);
     const role = db.prepare("SELECT id, code FROM admin_roles WHERE code = ?").get(String(data.role || ""));
-    const target = db.prepare("SELECT * FROM users WHERE id = ? AND email_verified = 1").get(match[1]);
+    const target = db.prepare(`
+      SELECT * FROM users WHERE id = ? AND (
+        email_verified = 1 OR EXISTS (
+          SELECT 1 FROM user_phone_identities p WHERE p.user_id = users.id AND p.verified_at IS NOT NULL
+        )
+      )
+    `).get(match[1]);
     if (!role || !target || !String(data.reason || "").trim()) return fail("INVALID_ADMIN_ROLE_CHANGE");
     if (target.id === context.user.id) return fail("CANNOT_CHANGE_OWN_ADMIN_ROLE", 409);
     if (role.code !== "super_admin" && soleActiveSuperAdministrator(target.id)) {

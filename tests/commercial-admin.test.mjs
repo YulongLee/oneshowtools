@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ process.env.ADMIN_MFA_ENFORCED = "false";
 process.env.ADMIN_MFA_ENCRYPTION_KEY = "test-commercial-admin-encryption-key";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.ADMIN_CREDIT_APPROVAL_THRESHOLD = "1000";
+process.env.SMS_PHONE_HASH_KEY = "commercial-admin-phone-identity-test-key";
 
 const { handleApi } = await import(`../server/api.mjs?admin=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
@@ -70,6 +71,19 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   const support = await createVerifiedUser(`support-${Date.now()}@example.com`, "Support");
   const finance = await createVerifiedUser(`finance-${Date.now()}@example.com`, "Finance");
   const invited = await createVerifiedUser(`operator-${Date.now()}@example.com`, "Operator");
+  const phoneAdministratorId = randomUUID();
+  const phone = "+8613900012345";
+  const phoneHash = createHmac("sha256", process.env.SMS_PHONE_HASH_KEY).update(phone).digest("hex");
+  const phoneCreatedAt = Date.now();
+  db.prepare(`
+    INSERT INTO users (id, name, email, password_hash, locale, email_verified, status, created_at, updated_at)
+    VALUES (?, 'Mobile Owner', ?, 'sms-only-account', 'zh-CN', 0, 'active', ?, ?)
+  `).run(phoneAdministratorId, `phone-${phoneHash.slice(0, 32)}@phone.oneshowtools.invalid`, phoneCreatedAt, phoneCreatedAt);
+  db.prepare(`
+    INSERT INTO user_phone_identities
+    (user_id, phone_hash, phone_last4, country_code, verified_at, created_at, updated_at)
+    VALUES (?, ?, '2345', '+86', ?, ?, ?)
+  `).run(phoneAdministratorId, phoneHash, phoneCreatedAt, phoneCreatedAt, phoneCreatedAt);
 
   const ownerSession = await handleApi(authenticated("/api/admin/v1/session", owner.cookie));
   assert.equal(ownerSession.status, 200);
@@ -135,6 +149,24 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   assert.equal((await handleApi(authenticatedJson("/api/admin/v1/administrators", owner.cookie, {
     email: invitedEmail, role: "operations", reason: "Duplicate test",
   }))).status, 409);
+  const createPhoneAdministrator = await handleApi(authenticatedJson("/api/admin/v1/administrators", owner.cookie, {
+    identifier: "139 0001 2345", role: "super_admin", reason: "Authorize verified mobile owner",
+  }));
+  assert.equal(createPhoneAdministrator.status, 201);
+  assert.deepEqual((await createPhoneAdministrator.json()).administrator, {
+    userId: phoneAdministratorId, identityType: "phone", identity: "+86 **** 2345", role: "super_admin", status: "active",
+  });
+  const administratorsResponse = await handleApi(authenticated("/api/admin/v1/administrators", owner.cookie));
+  const phoneAdministrator = (await administratorsResponse.json()).administrators.find(({ userId }) => userId === phoneAdministratorId);
+  assert.equal(phoneAdministrator.email, null);
+  assert.equal(phoneAdministrator.phone, "+86 **** 2345");
+  assert.deepEqual(phoneAdministrator.roles, ["super_admin"]);
+  assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/administrators/${phoneAdministratorId}/role`, owner.cookie, {
+    role: "operations", reason: "Validate mobile administrator role changes",
+  }))).status, 200);
+  assert.equal((await handleApi(authenticatedJson("/api/admin/v1/administrators", owner.cookie, {
+    identifier: "13800138000", role: "super_admin", reason: "Unknown mobile account",
+  }))).status, 404);
   assert.equal((await handleApi(authenticatedJson(`/api/admin/v1/administrators/${owner.id}/status`, owner.cookie, {
     status: "suspended", reason: "Self lockout test",
   }))).status, 409);

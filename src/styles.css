@@ -2160,9 +2160,18 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .admin-login-card > small, .admin-main header small { color: #1768e5; font-weight: 700; letter-spacing: .08em; }
 .admin-login-card h1 { margin: 6px 0 8px; font-size: 30px; }
 .admin-login-card p { margin: 0 0 24px; color: #68758a; }
+.admin-login-methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; margin: 0 0 18px; padding: 4px; border-radius: 10px; background: #f1f4f9; }
+.admin-login-methods button { min-height: 36px; border: 0; border-radius: 7px; color: #69778c; background: transparent; font-weight: 700; }
+.admin-login-methods button.active { color: #1768e5; background: #fff; box-shadow: 0 3px 10px rgba(24, 35, 56, .08); }
 .admin-login-card form, .admin-login-card label { display: grid; gap: 8px; }
 .admin-login-card form { gap: 16px; }
 .admin-login-card input, .admin-toolbar input, .admin-actions input { height: 42px; padding: 0 12px; border: 1px solid #dce3ed; border-radius: 9px; background: #fff; }
+.admin-phone-input, .admin-sms-code-input { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; overflow: hidden; border: 1px solid #dce3ed; border-radius: 9px; background: #fff; }
+.admin-phone-input > span { padding-left: 12px; color: #66758b; font-weight: 700; }
+.admin-phone-input input, .admin-sms-code-input input { width: 100%; border: 0; border-radius: 0; outline: 0; }
+.admin-sms-code-input { grid-template-columns: minmax(0, 1fr) auto; }
+.admin-sms-code-input button { height: 34px; margin-right: 4px; padding: 0 11px; border: 0; border-radius: 7px; color: #1768e5; background: #edf4ff; font-weight: 700; }
+.admin-sms-code-input button:disabled { color: #9aa6b8; background: #f3f5f8; }
 .admin-login-card form > button, .admin-toolbar > button, .admin-actions > button:not(.admin-secondary) { height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 9px; color: #fff; background: #1768e5; font-weight: 700; }
 .admin-login-card > a { display: block; margin-top: 20px; color: #68758a; text-align: center; }
 .admin-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 9px; color: #92400e; background: #fff7ed; }

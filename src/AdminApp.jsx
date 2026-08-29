@@ -11,8 +11,9 @@ import {
 const copy = {
   "zh-CN": {
     console: "商业管理后台", loading: "正在加载安全管理后台…", signIn: "管理员登录",
-    signInBody: "使用已验证并获得管理员授权的邮箱账户登录。", email: "管理员邮箱", emailStatus: "邮箱状态",
-    password: "密码", secureLogin: "安全登录", back: "返回 OneShowTools",
+    signInBody: "使用已获得管理员授权的邮箱或手机号登录。", email: "管理员邮箱", emailStatus: "邮箱状态",
+    password: "密码", secureLogin: "安全登录", back: "返回 OneShowTools", emailLogin: "邮箱密码", smsLogin: "手机号验证码",
+    phone: "手机号", smsCode: "短信验证码", sendSmsCode: "获取验证码", resendSmsIn: "秒后重试", smsCodeSent: "验证码已发送，请查看手机。",
     noPermission: "当前账户没有管理员权限。", loginFailed: "登录失败，请检查邮箱、密码和验证状态。",
     loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营",
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
@@ -81,14 +82,14 @@ const copy = {
     previous: "上一页", next: "下一页", page: "页", result: "结果", action: "操作",
     actor: "操作者", target: "对象", time: "时间", detailsJson: "变更摘要",
     role: "角色", changeRole: "变更角色", reasonRequired: "请先填写操作原因。",
-    addAdmin: "新增管理员", addAdminHint: "对方需要先注册账户并完成邮箱验证。",
-    adminEmail: "用户注册邮箱", selectRole: "分配角色", auditReason: "操作说明",
+    addAdmin: "新增管理员", addAdminHint: "支持已完成邮箱验证或短信验证的注册账户；超级管理员拥有全部后台权限。",
+    adminIdentifier: "注册邮箱或手机号", selectRole: "分配角色", auditReason: "操作说明",
     disableAdmin: "停用权限", enableAdmin: "恢复权限", adminAdded: "管理员添加成功",
     super_admin: "超级管理员", operationsRole: "运营管理员", supportRole: "客服管理员",
     financeRole: "财务管理员", tool_manager: "工具管理员", privacyRole: "隐私管理员",
     read_only: "只读审计员",
-    adminAccountNotFound: "没有找到该邮箱账户，请让对方先注册。",
-    adminEmailNotVerified: "该账户尚未完成邮箱验证。",
+    adminAccountNotFound: "没有找到该邮箱或手机号账户，请让对方先完成注册。",
+    adminEmailNotVerified: "该账户尚未完成身份验证。",
     adminAlreadyExists: "该账户已经是管理员。",
     adminInactive: "该用户账户当前不可用。",
     lastSuperAdmin: "系统必须至少保留一名正常的超级管理员。",
@@ -101,8 +102,9 @@ const copy = {
   },
   en: {
     console: "Commercial Admin", loading: "Loading secure administration…", signIn: "Administrator sign in",
-    signInBody: "Use a verified email account with administrator access.", email: "Administrator email", emailStatus: "Email status",
-    password: "Password", secureLogin: "Secure sign in", back: "Back to OneShowTools",
+    signInBody: "Use an authorized email or mobile account to sign in.", email: "Administrator email", emailStatus: "Email status",
+    password: "Password", secureLogin: "Secure sign in", back: "Back to OneShowTools", emailLogin: "Email & password", smsLogin: "Mobile code",
+    phone: "Mobile number", smsCode: "Verification code", sendSmsCode: "Send code", resendSmsIn: "s to retry", smsCodeSent: "Code sent. Check your phone.",
     noPermission: "This account does not have administrator access.", loginFailed: "Sign in failed. Check the email, password, and verification status.",
     loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers",
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
@@ -171,14 +173,14 @@ const copy = {
     result: "Result", action: "Action", actor: "Actor", target: "Target", time: "Time",
     detailsJson: "Change summary", role: "Role", changeRole: "Change role",
     reasonRequired: "Enter an action reason first.", addAdmin: "Add administrator",
-    addAdminHint: "The user must register and verify their email first.",
-    adminEmail: "Registered user email", selectRole: "Assign role", auditReason: "Audit note",
+    addAdminHint: "The account must have a verified email or mobile number. Super administrators receive all console permissions.",
+    adminIdentifier: "Registered email or mobile", selectRole: "Assign role", auditReason: "Audit note",
     disableAdmin: "Suspend access", enableAdmin: "Restore access", adminAdded: "Administrator added",
     super_admin: "Super administrator", operationsRole: "Operations", supportRole: "Support",
     financeRole: "Finance", tool_manager: "Tool manager", privacyRole: "Privacy",
     read_only: "Read-only auditor",
-    adminAccountNotFound: "No account was found for that email. Ask the user to register first.",
-    adminEmailNotVerified: "That account has not verified its email.",
+    adminAccountNotFound: "No account was found for that email or mobile number. Ask the user to register first.",
+    adminEmailNotVerified: "That account has not completed identity verification.",
     adminAlreadyExists: "That account is already an administrator.",
     adminInactive: "That user account is not active.",
     lastSuperAdmin: "At least one active super administrator must remain.",
@@ -220,24 +222,44 @@ const allowed = (session, permission) => session?.permissions?.includes(permissi
 
 function Login({ locale, onAuthenticated, message, setMessage }) {
   const t = copy[locale];
+  const [method, setMethod] = useState("email");
   const [login, setLogin] = useState({ email: "", password: "" });
+  const [sms, setSms] = useState({ phone: "", code: "" });
+  const [countdown, setCountdown] = useState(0);
+  const [smsSent, setSmsSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!countdown) return undefined;
+    const timer = setInterval(() => setCountdown((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setMessage("");
     try {
-      await api("/api/auth/login", json("POST", login));
+      if (method === "sms") await api("/api/auth/sms/verify", json("POST", { phone: sms.phone, code: sms.code, locale }));
+      else await api("/api/auth/login", json("POST", login));
       await onAuthenticated();
     } catch {
       setMessage(t.loginFailed);
     } finally { setBusy(false); }
   };
+  const sendSms = async () => {
+    setBusy(true); setMessage("");
+    try {
+      const result = await api("/api/auth/sms/send", json("POST", { phone: sms.phone, locale }));
+      setSmsSent(true); setCountdown(Number(result.retryAfter || 60)); setMessage(t.smsCodeSent);
+    } catch { setMessage(t.loginFailed); }
+    finally { setBusy(false); }
+  };
   return <main className="admin-login-page"><section className="admin-login-card">
     <span className="admin-mark"><ShieldCheck size={30} weight="fill" /></span>
     <small>OneShowTools Platform</small><h1>{t.signIn}</h1><p>{t.signInBody}</p>
-    <form onSubmit={submit}><label>{t.email}<input type="email" autoComplete="username" required value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} /></label>
-      <label>{t.password}<input type="password" autoComplete="current-password" required value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} /></label>
+    <div className="admin-login-methods"><button type="button" className={method === "email" ? "active" : ""} onClick={() => { setMethod("email"); setMessage(""); }}>{t.emailLogin}</button><button type="button" className={method === "sms" ? "active" : ""} onClick={() => { setMethod("sms"); setMessage(""); }}>{t.smsLogin}</button></div>
+    <form onSubmit={submit}>{method === "email" ? <><label>{t.email}<input type="email" autoComplete="username" required value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} /></label>
+      <label>{t.password}<input type="password" autoComplete="current-password" required value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} /></label></> : <><label>{t.phone}<div className="admin-phone-input"><span>+86</span><input inputMode="numeric" autoComplete="tel" required maxLength={11} placeholder="138 0000 0000" value={sms.phone} onChange={(event) => setSms({ ...sms, phone: event.target.value.replace(/\D/g, "").slice(0, 11) })} /></div></label>
+      <label>{t.smsCode}<div className="admin-sms-code-input"><input inputMode="numeric" autoComplete="one-time-code" required maxLength={6} value={sms.code} onChange={(event) => setSms({ ...sms, code: event.target.value.replace(/\D/g, "").slice(0, 6) })} /><button type="button" disabled={busy || countdown > 0 || sms.phone.length !== 11} onClick={sendSms}>{countdown > 0 ? `${countdown}${t.resendSmsIn}` : t.sendSmsCode}</button></div></label></>}
       {message && <div className="admin-alert"><Warning size={18} />{message}</div>}
-      <button disabled={busy}>{busy ? <SpinnerGap className="spin" size={20} /> : <LockKey size={19} />}{t.secureLogin}</button>
+      <button disabled={busy || (method === "sms" && (!smsSent || sms.code.length !== 6))}>{busy ? <SpinnerGap className="spin" size={20} /> : <LockKey size={19} />}{t.secureLogin}</button>
     </form><a href="/">{t.back}</a>
   </section></main>;
 }
@@ -1140,16 +1162,16 @@ function AuditView({ data, locale, onPage }) {
 function AdminsView({ data, locale, currentAdminId, onCreate, onRole, onStatus }) {
   const t = copy[locale];
   const [drafts, setDrafts] = useState({});
-  const [create, setCreate] = useState({ email: "", role: "operations", reason: "" });
+  const [create, setCreate] = useState({ identifier: "", role: "operations", reason: "" });
   const roleLabel = (role) => t[role === "operations" ? "operationsRole" : role === "support" ? "supportRole" : role === "finance" ? "financeRole" : role === "privacy" ? "privacyRole" : role] || role;
   const submitCreate = async () => {
     const success = await onCreate(create);
-    if (success) setCreate({ email: "", role: "operations", reason: "" });
+    if (success) setCreate({ identifier: "", role: "operations", reason: "" });
   };
   return <div className="admin-access-stack">
     <section className="admin-v2-panel admin-add-admin"><header><div><small>ACCESS CONTROL</small><h2>{t.addAdmin}</h2></div><UserCircle size={22} /></header>
       <div className="admin-add-admin-body"><p>{t.addAdminHint}</p><div className="admin-add-admin-form">
-        <label>{t.adminEmail}<input type="email" value={create.email} placeholder="name@example.com" onChange={(event) => setCreate({ ...create, email: event.target.value })} /></label>
+        <label>{t.adminIdentifier}<input value={create.identifier} placeholder={locale === "en" ? "name@example.com or 13800138000" : "邮箱或 11 位手机号"} onChange={(event) => setCreate({ ...create, identifier: event.target.value })} /></label>
         <label>{t.selectRole}<select value={create.role} onChange={(event) => setCreate({ ...create, role: event.target.value })}>{data?.roles?.map((role) => <option key={role.code} value={role.code}>{roleLabel(role.code)}</option>)}</select></label>
         <label>{t.auditReason}<input value={create.reason} placeholder={t.reason} onChange={(event) => setCreate({ ...create, reason: event.target.value })} /></label>
         <button onClick={submitCreate}><UserCircle size={17} />{t.addAdmin}</button>
@@ -1159,7 +1181,7 @@ function AdminsView({ data, locale, currentAdminId, onCreate, onRole, onStatus }
       {data?.administrators?.map((admin) => {
         const draft = drafts[admin.userId] || { role: admin.roles[0], reason: "" };
         const ownAccount = admin.userId === currentAdminId;
-        return <tr key={admin.userId}><td><strong>{admin.name}</strong><small>{admin.email}</small></td><td>{admin.roles.map(roleLabel).join(", ")}</td><td><span className={`admin-badge ${admin.status}`}>{admin.status === "active" ? t.active : t.suspended}</span></td><td><div className="admin-inline-form"><select disabled={ownAccount} value={draft.role} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...draft, role: event.target.value } })}>{data.roles.map((role) => <option key={role.code} value={role.code}>{roleLabel(role.code)}</option>)}</select><input disabled={ownAccount} placeholder={t.reason} value={draft.reason} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...draft, reason: event.target.value } })} /><button disabled={ownAccount} onClick={() => onRole(admin.userId, draft)}>{t.changeRole}</button></div></td><td><button className={`admin-access-status ${admin.status === "active" ? "danger" : ""}`} disabled={ownAccount} onClick={() => onStatus(admin.userId, { status: admin.status === "active" ? "suspended" : "active", reason: draft.reason })}>{admin.status === "active" ? t.disableAdmin : t.enableAdmin}</button></td></tr>;
+        return <tr key={admin.userId}><td><strong>{admin.name}</strong><small>{[admin.email, admin.phone].filter(Boolean).join(" · ")}</small></td><td>{admin.roles.map(roleLabel).join(", ")}</td><td><span className={`admin-badge ${admin.status}`}>{admin.status === "active" ? t.active : t.suspended}</span></td><td><div className="admin-inline-form"><select disabled={ownAccount} value={draft.role} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...draft, role: event.target.value } })}>{data.roles.map((role) => <option key={role.code} value={role.code}>{roleLabel(role.code)}</option>)}</select><input disabled={ownAccount} placeholder={t.reason} value={draft.reason} onChange={(event) => setDrafts({ ...drafts, [admin.userId]: { ...draft, reason: event.target.value } })} /><button disabled={ownAccount} onClick={() => onRole(admin.userId, draft)}>{t.changeRole}</button></div></td><td><button className={`admin-access-status ${admin.status === "active" ? "danger" : ""}`} disabled={ownAccount} onClick={() => onStatus(admin.userId, { status: admin.status === "active" ? "suspended" : "active", reason: draft.reason })}>{admin.status === "active" ? t.disableAdmin : t.enableAdmin}</button></td></tr>;
       })}
       {!data?.administrators?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}
     </tbody></table></div></section>
@@ -1232,6 +1254,7 @@ export function AdminApp() {
   const adminError = (code) => ({
     ADMIN_ACCOUNT_NOT_FOUND: t.adminAccountNotFound,
     ADMIN_EMAIL_NOT_VERIFIED: t.adminEmailNotVerified,
+    ADMIN_ACCOUNT_NOT_VERIFIED: t.adminEmailNotVerified,
     ADMIN_ALREADY_EXISTS: t.adminAlreadyExists,
     ADMIN_ACCOUNT_INACTIVE: t.adminInactive,
     LAST_SUPER_ADMIN_REQUIRED: t.lastSuperAdmin,
@@ -1284,7 +1307,7 @@ export function AdminApp() {
   };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const createAdmin = async (draft) => {
-    if (!draft.email?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    if (!draft.identifier?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
     try { await api("/api/admin/v1/administrators", json("POST", draft)); await loadView(); showToast(t.adminAdded); return true; }
     catch (error) { setMessage(adminError(error.code)); return false; }
   };
