@@ -39,4 +39,16 @@ The implementation preserves the selected hierarchy: one dominant product card, 
 
 - P3: production analytics can later tune the five-second interval using real click-through and pause behavior.
 
+## Workbench redesign QA
+
+- Reference: user-provided OneShowTools workbench redesign screenshot
+- Route: authenticated workbench home (`/`)
+- Viewports checked: 1440 × 900 and 1920 × 1080
+- Visual comparison: hero, compact account status bar, continue-creation card, recommendations, popular/new tools, recent activity, Pro banner, sidebar grouping
+- Responsive result: no horizontal overflow at either desktop viewport; content remains complete and readable
+- Interaction result: recommended tool opens its existing product route and renders successfully; returning to the workbench preserves the dashboard
+- Data result: credits, plan, completed tasks, files, recent task, and activity use existing API data; merchandising order is isolated in explicit dashboard configuration
+- Console result: no new runtime errors during the final interaction pass
+- Automated checks: production build passed; 197 automated tests passed
+
 final result: passed

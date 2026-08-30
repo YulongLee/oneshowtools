@@ -836,6 +836,7 @@ function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, au
   if (tool.slug === "ai-writer") return <AiWriterPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-workbench" || catalog?.specialist) return <SeoWorkbenchPage tool={tool} catalog={catalog} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   const t = dictionary[locale];
+  const Icon = iconMap[tool.icon] || Wrench;
   const [file, setFile] = useState(null);
   const [files, setFiles] = useState([]);
   const [imageSettings, setImageSettings] = useState(imageToolInitial);
@@ -1034,31 +1035,54 @@ function TaskRow({ task, locale, onCancel }) {
   return <div className="task-row"><span className="tool-icon compact"><Icon size={20} /></span><div className="task-main"><strong>{locale === "en" ? task.toolNameEn : task.toolNameZh}</strong><small>{formatDate(task.createdAt, locale)}</small></div><span className="task-cost">−{task.creditCost}</span><StatusPill status={task.status} locale={locale} />{onCancel && ["queued", "waiting_for_runtime"].includes(task.status) && <button className="icon-button" onClick={(event) => { event.stopPropagation(); onCancel(task.id); }}><X size={18} /></button>}</div>;
 }
 
-function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, projects = [] }) {
+const dashboardRecommendedSlugs = ["ai-outfit-changer", "food-nutrition-analyzer", "ai-fridge-recipe", "ai-music-studio"];
+const dashboardPopularSlugs = ["ai-music-studio", "ai-outfit-changer", "food-nutrition-analyzer", "ai-fridge-recipe", "sliding-ancestor-generator", "mbti-personality-test"];
+// The public catalog does not expose a publishedAt field yet. Keep this order in
+// one explicit merchandising config until the admin API can provide it.
+const dashboardNewSlugs = ["sliding-ancestor-generator", "mbti-personality-test", "hang-la-tier-list-generator", "stock-pet"];
+
+function dashboardToolSelection(tools, slugs, limit) {
+  const catalog = Array.isArray(tools) ? tools : [];
+  return [...slugs.map((slug) => catalog.find((tool) => tool.slug === slug)).filter(Boolean), ...catalog]
+    .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index)
+    .slice(0, limit);
+}
+
+function DashboardSectionHeader({ icon: Icon, title, action, onAction }) {
+  return <header className="dashboard-section-heading"><div>{Icon && <Icon size={18} weight="duotone" />}<h2>{title}</h2></div>{action && <button type="button" onClick={onAction}>{action}<ArrowRight size={14} /></button>}</header>;
+}
+
+function DashboardToolCard({ tool, locale, tone, onRun }) {
+  const isEn = locale === "en";
+  return <button type="button" className={`dashboard-tool-card ${tone || ""}`} onClick={() => onRun(tool)}>
+    <span className="dashboard-tool-visual"><ProductToolIcon tool={tool} size={34} /></span>
+    <span className="dashboard-tool-copy"><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><small>{isEn ? tool.descriptionEn : tool.descriptionZh}</small><em>{isEn ? "Use now" : "立即使用"}<ArrowRight size={13} /></em></span>
+  </button>;
+}
+
+function DashboardShortcut({ tool, locale, onRun, badge }) {
+  const isEn = locale === "en";
+  return <button type="button" className="dashboard-shortcut" onClick={() => onRun(tool)}>
+    <ProductToolIcon tool={tool} size={24} />
+    <span><strong>{isEn ? tool.nameEn : tool.nameZh}</strong>{badge && <small>{badge}</small>}</span>
+  </button>;
+}
+
+function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, onOpenTask }) {
   const t = dictionary[locale];
   const [homeQuery, setHomeQuery] = useState("");
   if (!data) return <Loading locale={locale} />;
   const isEn = locale === "en";
   const userName = data.user?.name || (isEn ? "Creator" : "创作者");
   const currentPlan = data.subscription ? (isEn ? data.subscription.nameEn : data.subscription.nameZh) : t.free;
-  const metrics = [
-    [t.creditsBalance, data.metrics.credits, Coins, "blue", isEn ? "Live balance" : "实时余额"],
-    [t.taskCount, data.metrics.tasks, ListChecks, "purple", `${data.metrics.running} ${isEn ? "running" : "个执行中"}`],
-    [t.completed, data.metrics.completed, CheckCircle, "green", isEn ? "Recorded results" : "结果已记录"],
-    [t.fileCount, data.metrics.files, FolderOpen, "orange", isEn ? "Private files" : "账户私有文件"],
-    [t.currentPlan, currentPlan, Crown, "violet", data.subscription?.currentPeriodEnd ? formatDate(data.subscription.currentPeriodEnd, locale) : (isEn ? "Upgrade anytime" : "随时可以升级")],
-  ];
-  // `tools` is already the administrator-curated published catalog. Keep every
-  // published tool discoverable here, even when a provider needs configuration.
-  const readyTools = tools;
-  const preferredSlugs = ["ai-writer", "seo-workbench", "ai-music-studio", "lyrics-generator", "image-compressor", "pdf-summary", "background-remover", "content-repurposer"];
-  const recommended = [...preferredSlugs.map((slug) => readyTools.find((tool) => tool.slug === slug)).filter(Boolean), ...readyTools]
-    .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index).slice(0, 8);
-  const recentTools = data.recentTasks.reduce((items, task) => {
-    if (!items.some((item) => item.toolId === task.toolId)) items.push(task);
-    return items;
-  }, []).slice(0, 3);
-  const activity = data.recentTasks.slice(0, 3);
+  const hasPaidPlan = Boolean(data.subscription && data.subscription.code !== "free");
+  const recommended = dashboardToolSelection(tools, dashboardRecommendedSlugs, 4);
+  const popular = dashboardToolSelection(tools, dashboardPopularSlugs, 6);
+  const newTools = dashboardToolSelection(tools, dashboardNewSlugs, 5);
+  const activity = data.recentTasks.slice(0, 4);
+  const continueTask = data.recentTasks[0];
+  const continueTool = continueTask ? tools.find((item) => item.id === continueTask.toolId) : null;
+  const taskTitle = continueTask ? String(continueTask.input?.title || continueTask.input?.prompt || continueTask.input?.topic || continueTask.input?.text || "").trim() : "";
   const quickActions = [
     ["ai-music-studio", isEn ? "Generate music" : "生成音乐", isEn ? "Generate comfortable piano music" : "生成一首舒缓的钢琴纯音乐"],
     ["ai-outfit-changer", isEn ? "Change outfit" : "一键换装", isEn ? "Change my portrait into a professional outfit" : "把我的人像换成职业正装"],
@@ -1066,12 +1090,12 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
     ["seo-workbench", isEn ? "Analyze SEO" : "分析 SEO", isEn ? "Analyze my website SEO" : "分析我的网站 SEO"],
     ["ai-writer", isEn ? "Write a post" : "写小红书文案", isEn ? "Write a social media post" : "帮我写一篇小红书文案"],
     ["pdf-summary", isEn ? "Summarize PDF" : "总结 PDF", isEn ? "Summarize a PDF document" : "总结一份 PDF 文档"],
-  ].map(([slug, label, query]) => ({ slug, label, query, tool: readyTools.find((item) => item.slug === slug) }));
+  ].map(([slug, label, query]) => ({ slug, label, query, tool: tools.find((item) => item.slug === slug) }));
   const submitSearch = (event) => {
     event.preventDefault();
     onSearch(homeQuery.trim());
   };
-  return <div className="page-stack dashboard-page">
+  return <div className="page-stack dashboard-page dashboard-home-v4">
     <section className="dashboard-hero">
       <div className="dashboard-hero-copy"><h1>{isEn ? "Hello" : "你好"}，{userName}<HandWaving size={24} weight="duotone" aria-hidden="true" /></h1><p>{isEn ? "What would you like AI to help you accomplish today?" : "今天想让 AI 帮你完成什么？"}</p>
         <form className="dashboard-search" onSubmit={submitSearch}><Sparkle size={18} weight="fill" /><input value={homeQuery} onChange={(event) => setHomeQuery(event.target.value)} placeholder={isEn ? "Describe what you need, for example: create relaxing piano music..." : "描述你的需求，例如：生成一首舒缓的钢琴纯音乐..."} /><button aria-label={t.searchAction}><ArrowRight size={20} /></button></form>
@@ -1082,21 +1106,37 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
       </div>
     </section>
 
-    <section className="dashboard-metric-grid">{metrics.map(([label, value, Icon, tone, note]) => <article className="dashboard-metric-card" key={label}><span className={`metric-icon ${tone}`}><Icon size={22} weight="duotone" /></span><div><small>{label}</small><strong>{typeof value === "number" ? value.toLocaleString() : value}</strong><p>{note}</p></div><span className={`dashboard-metric-accent ${tone}`} /></article>)}</section>
-
-    <section className="dashboard-primary-grid">
-      <article className="surface dashboard-recent-tools"><header><h2>{isEn ? "Recently used" : "最近使用"}</h2><button onClick={() => onNavigate("recent")}>{isEn ? "All" : "全部"}<ArrowRight size={14} /></button></header>{recentTools.length ? <div>{recentTools.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button key={task.id} onClick={() => tool && onRun(tool)}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh}</strong><small>{statusLabel(task.status, locale)} · {formatDate(task.updatedAt || task.createdAt, locale)}</small></span><ArrowRight size={14} /></button>; })}</div> : <p>{t.noTasksHint}</p>}</article>
-      <article className="surface dashboard-recommendations"><header><h2>{isEn ? "Recommended for you" : "为你推荐"}</h2><button onClick={() => onNavigate("marketplace")}>{isEn ? "More tools" : "更多工具"}<ArrowRight size={14} /></button></header><div>{recommended.slice(0, 4).map((tool, index) => <button className={`recommend-card tone-${index + 1}`} key={tool.id} onClick={() => onRun(tool)}><div className="recommend-visual"><ProductToolIcon tool={tool} size={28} /></div><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><p>{isEn ? tool.descriptionEn : tool.descriptionZh}</p><span>{isEn ? "Use now" : "立即使用"}<ArrowRight size={13} /></span></button>)}</div></article>
+    <section className="dashboard-status-bar">
+      {[[Coins, data.metrics.credits, isEn ? "Available credits" : "可用积分", "gold"], [Crown, currentPlan, isEn ? "Current plan" : "当前套餐", "violet"], [CheckCircle, data.metrics.completed, isEn ? "Completed tasks" : "已完成任务", "orange"], [FolderOpen, data.metrics.files, isEn ? "Private files" : "私有文件", "green"]].map(([Icon, value, label, tone]) => <article key={label}><span className={`dashboard-status-icon ${tone}`}><Icon size={22} weight="duotone" /></span><div><strong>{typeof value === "number" ? value.toLocaleString() : value}</strong><small>{label}</small></div></article>)}
+      <button type="button" onClick={() => onNavigate("plans")}><Coins size={17} />{isEn ? "Recharge credits" : "积分充值"}<ArrowRight size={15} /></button>
     </section>
 
-    <section className="dashboard-secondary-grid">
-      <article className="surface dashboard-work-summary"><header><h2>{isEn ? "Your work" : "你的工作"}</h2></header><div>{[
-        [isEn ? "Running tasks" : "进行中任务", data.metrics.running, ListChecks, "blue", "tasks"],
-        [isEn ? "Files" : "文件数量", data.metrics.files, FolderOpen, "orange", "files"],
-        ["AI Agent", data.recentTasks.filter((task) => task.toolSlug?.includes("agent")).length, Robot, "violet", "agent"],
-        [isEn ? "Projects" : "最近项目", projects.length, Database, "green", "projects"],
-      ].map(([label, value, Icon, tone, route]) => <button key={label} onClick={() => onNavigate(route)}><span className={`metric-icon ${tone}`}><Icon size={22} weight="duotone" /></span><small>{label}</small><strong>{value.toLocaleString()}</strong><ArrowRight size={14} /></button>)}</div></article>
-      <article className="surface dashboard-activity"><header><h2>{isEn ? "Recent activity" : "最近动态"}</h2><button onClick={() => onNavigate("tasks")}>{isEn ? "All activity" : "全部动态"}<ArrowRight size={14} /></button></header>{activity.length ? <div>{activity.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button key={task.id} onClick={() => tool && onRun(tool)}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh} · {statusLabel(task.status, locale)}</strong><small>{task.outputFileName || task.id}</small></span><time>{formatDate(task.updatedAt || task.createdAt, locale)}</time><i className={`dot ${task.status}`} /></button>; })}</div> : <p>{t.noTasksHint}</p>}</article>
+    <section className="dashboard-v4-layout">
+      <div className="dashboard-content-main">
+        <div className="dashboard-feature-row">
+          <article className="surface dashboard-continue">
+            <DashboardSectionHeader icon={ArrowsClockwise} title={isEn ? "Continue creating" : "继续创作"} />
+            {continueTask ? <div className="dashboard-continue-body"><div className="dashboard-continue-title"><ProductToolIcon tool={continueTool || { icon: continueTask.icon }} size={27} /><span><small>{isEn ? continueTask.toolNameEn : continueTask.toolNameZh}</small><strong>{taskTitle || (isEn ? continueTask.toolNameEn : continueTask.toolNameZh)}</strong></span></div><div className="dashboard-waveform" aria-hidden="true">{Array.from({ length: 22 }, (_, index) => <i key={index} style={{ height: `${8 + ((index * 13) % 23)}px` }} />)}</div><small>{isEn ? "Last edited" : "上次编辑"}：{formatDate(continueTask.updatedAt || continueTask.createdAt, locale)}</small><button type="button" onClick={() => onOpenTask ? onOpenTask(continueTask) : (continueTool && onRun(continueTool))}>{isEn ? "Continue" : "继续创作"}<ArrowRight size={16} /></button></div> : <div className="dashboard-empty"><ListChecks size={26} weight="duotone" /><strong>{isEn ? "No recent creation" : "还没有最近创作"}</strong><small>{isEn ? "Choose a tool to begin your first task." : "选择一个工具，开始你的第一个任务。"}</small><button type="button" onClick={() => onNavigate("marketplace")}>{isEn ? "Browse tools" : "浏览工具"}</button></div>}
+          </article>
+          <article className="surface dashboard-recommended-v4">
+            <DashboardSectionHeader icon={Sparkle} title={isEn ? "Recommended for you" : "为你推荐"} action={isEn ? "More tools" : "更多工具"} onAction={() => onNavigate("marketplace")} />
+            <div>{recommended.map((tool, index) => <DashboardToolCard key={tool.id} tool={tool} locale={locale} tone={`tone-${index + 1}`} onRun={onRun} />)}</div>
+          </article>
+        </div>
+        <div className="dashboard-discovery-row">
+          <article className="surface dashboard-shortcut-panel"><DashboardSectionHeader icon={Fire} title={isEn ? "Popular tools" : "热门工具"} action={isEn ? "View more" : "查看更多"} onAction={() => onNavigate("marketplace")} /><div>{popular.map((tool) => <DashboardShortcut key={tool.id} tool={tool} locale={locale} onRun={onRun} />)}</div></article>
+          <article className="surface dashboard-shortcut-panel"><DashboardSectionHeader icon={Sparkle} title={isEn ? "New this week" : "本周新上线"} action={isEn ? "View more" : "查看更多"} onAction={() => onNavigate("marketplace")} /><div>{newTools.map((tool) => <DashboardShortcut key={tool.id} tool={tool} locale={locale} onRun={onRun} badge={tool.slug === "sliding-ancestor-generator" ? (isEn ? "NEW" : "新") : ""} />)}</div></article>
+        </div>
+      </div>
+      <article className="surface dashboard-activity-v4">
+        <DashboardSectionHeader icon={Clock} title={isEn ? "Recent activity" : "最近动态"} action={isEn ? "View more" : "查看更多"} onAction={() => onNavigate("tasks")} />
+        {activity.length ? <div>{activity.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button type="button" key={task.id} onClick={() => onOpenTask ? onOpenTask(task) : (tool && onRun(tool))}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh} · {statusLabel(task.status, locale)}</strong><small>{String(task.input?.title || task.input?.prompt || task.outputFileName || "").trim() || formatDate(task.updatedAt || task.createdAt, locale)}</small></span><time>{formatDate(task.updatedAt || task.createdAt, locale)}</time></button>; })}</div> : <div className="dashboard-empty"><Clock size={25} weight="duotone" /><strong>{isEn ? "No activity yet" : "暂无动态"}</strong><small>{isEn ? "Your completed tasks will appear here." : "完成任务后，记录会显示在这里。"}</small></div>}
+      </article>
+    </section>
+
+    <section className="dashboard-pro-banner">
+      <div><small>{hasPaidPlan ? (isEn ? "Your professional workspace" : "你的专业创作空间") : (isEn ? "Unlock the complete workspace" : "解锁完整创作能力")}</small><h2>{hasPaidPlan ? (isEn ? "Make more with OneShowTools Pro" : "使用 OneShowTools 专业版高效创作") : (isEn ? "Upgrade to Pro" : "升级专业版，解锁全部 AI 能力")}</h2><p>{isEn ? "Faster generation, advanced models and more commercial-ready tools in one workspace." : "更快生成、进阶模型与更多商业级工具，都在一个工作台完成。"}</p><button type="button" onClick={() => onNavigate("plans")}>{hasPaidPlan ? (isEn ? "Manage plan" : "管理套餐") : (isEn ? "Upgrade now" : "升级专业版")}<ArrowRight size={15} /></button></div>
+      <div className="dashboard-pro-benefits">{[[SquaresFour, isEn ? "All tools" : "更多工具"], [Lightning, isEn ? "Priority generation" : "优先生成"], [Brain, isEn ? "Advanced models" : "高级模型"], [ShieldCheck, isEn ? "Commercial workspace" : "商业权益"]].map(([Icon, label]) => <span key={label}><Icon size={20} weight="duotone" /><small>{label}</small></span>)}</div><Crown className="dashboard-pro-crown" size={96} weight="duotone" aria-hidden="true" />
     </section>
   </div>;
 }
@@ -2655,13 +2695,14 @@ export function App() {
   if (!session) return <Suspense fallback={<Loading locale={locale} />}>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</Suspense>;
 
   const navGroups = [
-    { items: [["dashboard", House], ["marketplace", SquaresFour], ["recent", Clock], ["favorites", Star]] },
-    { label: locale === "en" ? "AI CAPABILITIES" : "AI 能力", items: [["agent", Robot, "Beta"], ["runtime", RocketLaunch]] },
-    { label: locale === "en" ? "MY WORK" : "我的工作", items: [["tasks", ListChecks, privateData.tasks.length], ["files", FolderOpen, privateData.files.length], ["projects", Database]] },
+    { items: [["dashboard", House]] },
+    { label: locale === "en" ? "DISCOVER" : "发现", items: [["marketplace", SquaresFour], ["recent", Clock], ["favorites", Star]] },
+    { label: locale === "en" ? "CREATE" : "创作", items: [["tasks", ListChecks, privateData.tasks.length], ["files", FolderOpen, privateData.files.length], ["projects", Database]] },
+    { label: locale === "en" ? "ADVANCED" : "高级", items: [["agent", Robot, "Beta"], ["runtime", RocketLaunch]] },
     { label: locale === "en" ? "ACCOUNT" : "账户", items: [["plans", Coins], ["settings", GearSix]] },
   ];
   const content = {
-    dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} projects={privateData.projects} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} />,
+    dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} onOpenTask={openTask} />,
     marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} favorites={favorites} onToggleFavorite={toggleFavorite} />,
     recent: <RecentUsagePage tools={tools} tasks={privateData.tasks} files={privateData.files} locale={locale} onRun={openTool} onOpenTask={openTask} onNavigate={setView} />,
     favorites: <FavoritesPage tools={tools} tasks={privateData.tasks} files={privateData.files} favorites={privateData.favorites} collections={privateData.favoriteCollections} counts={privateData.favoriteCounts} locale={locale} onRun={openTool} onOpenTask={openTask} onNavigate={setView} onAdd={toggleLibraryFavorite} onRemove={removeFavorite} onMove={moveFavorite} onCreateCollection={createFavoriteCollection} />,
