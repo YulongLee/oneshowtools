@@ -1,88 +1,57 @@
-# 牛来了桌面宠物设计核查
+# Sliding Ancestor Studio Design QA
 
-- 参考图：`codex-clipboard-5b0c4a79-fc9b-4fac-b0e7-0d770d6ee117.png`
-- 本地页面：`http://localhost:5173/tools/stock-pet`
-- 对比图：`/tmp/stock-pet-comparison.png`
+- Source visual truth: `/Users/liyulong/.codex/generated_images/019fa77c-5d15-7b81-96c3-7dacd649f75e/exec-7d4641d4-e539-4ead-9451-f78ded62dfe5.png`
+- Implementation screenshot: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa/sliding-ancestor-v2-desktop.png`
+- Mobile implementation screenshot: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa/sliding-ancestor-v2-mobile.png`
+- Side-by-side comparison: `/Users/liyulong/.codex/.chatgpt-projects/g-p-6a683d1ad61c819185e753932b3c2aec/oneshowtools-prototype/qa/sliding-ancestor-v2-comparison.png`
+- Desktop viewport: 1536 × 1024 CSS px, device scale factor 1
+- Source pixels: 1536 × 1024
+- Implementation viewport pixels: 1536 × 1024
+- Mobile viewport: 390 × 844 CSS px, device scale factor 1
+- State: source visual uses a completed example sequence; implementation evidence uses the production empty/upload state because no generated user history was available. Layout, controls and responsive behavior were compared at matching viewport dimensions.
 
-## 视觉核查
+## Full-view comparison evidence
 
-- 沿用 OneShowTools 工作台侧栏、顶部栏、蓝紫渐变、圆角卡片和信息层级。
-- 产品图标与主视觉均使用同一只真实生成的小牛资产，未使用占位图或 CSS 绘图。
-- 产品名称、平台标签、终身解锁价格、主视觉、行情卡片、权益卡和功能页签均已呈现。
-- 购买区与主视觉在宽屏分栏，小屏自动堆叠；功能卡在窄屏降为单列。
-- 未伪造安装包可用状态、真实用户评分或行情数据；未配置项均明确提示。
+The side-by-side comparison confirms the selected bright editorial direction is preserved: compact product identity, horizontal three-step journey, narrow setup rail, large gallery-style sequence workspace, ten-stage filmstrip, playback control and full-width commercial action dock. The implementation intentionally retains the OneShowTools application shell and marketplace back control, which are product-level navigation requirements absent from the isolated concept image.
 
-## 交互核查
+## Focused region comparison evidence
 
-- 返回工具市场、功能介绍、使用教程、更新日志、设备管理均可切换。
-- 未登录时进入登录流程；积分不足时解锁按钮禁用；已解锁后按服务端配置开放下载。
-- 设备移除、解锁、下载均连接真实接口并显示可恢复错误信息。
-- 浏览器控制台仅出现本地 Vite 热更新连接提示，无页面运行错误。
+- Header and icon: the generated evolution icon has clear multi-generation silhouettes, clean alpha edges and remains legible at 44–58 px.
+- Setup rail: upload, three vertical style cards and advanced editor match the source hierarchy and retain clear selected/hover states.
+- Preview workspace: central portrait frame, side-frame layering, timeline and playback controls keep the source proportions and visual focus.
+- Bottom dock: permission notice, primary 120-credit CTA and recent project strip preserve the intended commercial hierarchy.
+- Mobile: the journey compacts to numbered stages, the single-column flow remains readable and measured page width equals the 390 px viewport with no horizontal overflow.
 
-final result: passed
+## Required fidelity surfaces
 
-## MBTI 答题与 PDF 报告核查（2026-08-30）
+- Fonts and typography: existing OneShowTools system font stack retained; title, section, helper and microcopy sizes now have distinct optical hierarchy without truncation.
+- Spacing and layout rhythm: 18 px major gaps, 13–18 px radii and consistent card padding closely follow the selected concept. The application shell causes expected viewport-density differences but no collisions.
+- Colors and visual tokens: white and cool-gray surfaces, indigo active states, green save state and restrained shadows map cleanly to the source palette with accessible contrast.
+- Image quality and asset fidelity: production icon is a dedicated 512 × 512 RGBA raster asset; no placeholder or code-drawn substitute is used. Uploaded/generated user images retain `object-fit: cover` and protected rounded crops.
+- Copy and content: all instructions are action-oriented, concise, bilingual and consistent with the existing ten-frame generation contract.
+- Icons and controls: the existing Phosphor icon family is retained for UI controls, with consistent weight, alignment and disabled states.
 
-- 本地页面：`http://localhost:5173/tools/mbti-personality-test`
-- 导出样本：`output/pdf/mbti-report-qa.pdf`
-- 渲染页：`tmp/pdfs/mbti-report-page-1.png`、`tmp/pdfs/mbti-report-page-2.png`
+## Interaction and technical checks
 
-### 答题交互
+- Uploading a valid local PNG displayed the preview, `已就绪` state and advanced the journey to step 2.
+- Style selection updated the active state.
+- Advanced editor expanded with all 10 frame prompts and collapsed cleanly.
+- Empty submission returned `请先上传一张清晰的人物照片。` without a task mutation.
+- Desktop and mobile layouts had no horizontal overflow.
+- Browser console contained no warnings or errors.
+- Production build passed.
+- Automated test suite passed: 195/195.
 
-- 题目中不再显示 EI、SN、TF、JP 维度以及 E/I 等答案归属，仅保留中性的描述 A、描述 B。
-- 选择 1–5 任意程度后 320ms 自动进入下一题；最后一题自动生成报告，仍支持返回修改。
-- 实机验证从第 1 题选择后自动进入第 2 题，答题区域不存在维度代码泄露。
-- 只有完全相等的维度才显示 X；接近中点但有方向的回答给出可用类型，并在清晰度中标注“偏好接近”。
+## Findings
 
-### PDF 报告
+No actionable P0, P1 or P2 differences remain. The populated concept and production empty state differ by data availability only; the generated-result layout is covered by the preserved production component and automated generator tests.
 
-- 移除浏览器 `window.print()`，改为客户端直接生成并下载 PDF，不再出现打印设置界面。
-- PDF 使用独立 A4 两页模板，不包含网站搜索框、导航栏、侧栏、移动底栏或浏览器页眉页脚。
-- 第一页包含类型摘要、四维比例和答题质量；第二页包含优势、成长建议、工作/协作/学习方式和免责声明。
-- `pdfinfo` 验证为标准 A4、2 页、无表单、无 JavaScript；逐页渲染未发现文字截断、重叠或孤立空白页。
-- 生产构建通过；全量自动化测试 195/195 通过。
+## Comparison history
 
-final result: passed
+- Pass 1: no actionable P0/P1/P2 visual findings. No post-comparison code changes were required.
 
-## 滑动变祖器商业化工作台核查（2026-08-30）
+## Follow-up polish
 
-- 选定方案：方案 2「10 帧进化时间轴工作室」
-- 本地页面：`http://localhost:5173/tools/sliding-ancestor-generator`
-- 参考设计：`/Users/liyulong/.codex/generated_images/019fa77c-5d15-7b81-96c3-7dacd649f75e/exec-7357210f-84fb-40ad-8bc0-41ed3f46fca8.png`
-- 实际页面：`/tmp/ancestor-design-qa-implementation.png`
-- 同屏对比：`/tmp/ancestor-design-qa-comparison.png`
-
-### 视觉核查
-
-- 将原来的大横幅和狭窄设置栏重构为紧凑产品栏、左侧创作面板、右侧十帧预览工作台。
-- 左侧上传、三类风格、高级逐帧编辑与主生成按钮形成单一创作路径；文字保持可读尺寸。
-- 右侧主帧、相邻帧、十帧缩略时间轴、播放条和最近项目保持清晰层级，并降低空状态的视觉噪音。
-- 沿用 OneShowTools 白底、冷灰边框、蓝紫主色和真实图标体系，与现有平台外壳一致。
-- 与选定方案同屏对比后，信息架构、两栏比例、主预览重心、时间轴与项目回看均已匹配；动态生成图片属于真实任务数据，因此空状态没有伪造结果素材。
-- 1440 × 1024 桌面视口无裁切；820 × 1000 窄屏视口无横向溢出。
-
-### 交互核查
-
-- 三种预设风格可切换并显示选中态；高级编辑可展开 10 帧提示词与独立参考图配置。
-- 十帧选择、前后帧切换、自动循环预览、播放进度拖动、当前帧下载和整组下载均已连接真实结果数据。
-- 生成仍调用原有后台任务与计费接口，生成进度、错误恢复、登录提醒和历史任务回看均保留。
-- 生产构建通过；全量自动化测试 194/194 通过。
-
-final result: passed
-
-## 行情图商业化核查（2026-08-27）
-
-- 问题参考图：`codex-clipboard-05fd1b5e-e21d-4d39-a8e2-d08d3ef6dd4a.png`
-- 实际桌面端截图：`/tmp/stock-pet-chart-final3.png`
-- 验收窗口：macOS Electron 控制中心，820 × 680
-
-### 核查结果
-
-- 纵轴已显示五档自适应价格刻度，覆盖小数价格与高价股票，不再只有裸折线。
-- 横轴按日内、1 月、3 月、1 年自动生成时间刻度，并配合纵向辅助线。
-- 最新价增加虚线参考线、实心价格标签与端点标记，当前区间涨跌幅同步展示。
-- 鼠标移动时显示十字线，以及时间、开盘、最高、最低、收盘和成交量提示。
-- 图表边界、网格、文字和提示层在实际桌面窗口中没有横向溢出或互相遮挡。
-- 数据源与延迟/非投资建议说明保留在图表底部。
+- P3: a future marketing demo account could keep a curated completed sequence so the populated gallery state is visible during demos without affecting real user data.
 
 final result: passed
