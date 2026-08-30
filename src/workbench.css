@@ -374,9 +374,12 @@
 .workspace-main .marketplace-page-redesign {
   display: block;
   width: min(100%, 1480px);
+  max-width: 100%;
+  min-width: 0;
   margin: 0 auto;
+  overflow: hidden;
 }
-.marketplace-page-redesign .marketplace-primary { display: grid; gap: 16px; }
+.marketplace-page-redesign .marketplace-primary { width: 100%; max-width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; }
 .marketplace-page-redesign .marketplace-hero {
   position: relative;
   min-height: 230px;
@@ -402,7 +405,7 @@
 .marketplace-page-redesign .marketplace-featured,
 .marketplace-page-redesign .marketplace-hot-tools,
 .marketplace-page-redesign .marketplace-catalog { border: 1px solid #e2e8f4; border-radius: 18px; background: rgba(255,255,255,.96); box-shadow: 0 12px 34px rgba(30, 53, 112, .055); }
-.marketplace-page-redesign .marketplace-featured { padding: 18px; }
+.marketplace-page-redesign .marketplace-featured { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; padding: 18px; }
 .marketplace-page-redesign .marketplace-featured > header,
 .marketplace-hot-tools > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
 .marketplace-page-redesign .marketplace-featured > header > div,
@@ -413,8 +416,8 @@
 .marketplace-hot-tools > header span { color: #8a96ac; font-size: 12px; }
 .marketplace-page-redesign .marketplace-featured > header button,
 .marketplace-hot-tools > header button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #2e67e9; font-weight: 700; }
-.marketplace-page-redesign .featured-carousel { position: relative; display: block; grid-template-columns: none; gap: 0; }
-.marketplace-page-redesign .featured-viewport { min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg,transparent,#000 2.5%,#000 97.5%,transparent); mask-image: linear-gradient(90deg,transparent,#000 2.5%,#000 97.5%,transparent); }
+.marketplace-page-redesign .featured-carousel { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; position: relative; display: block; grid-template-columns: none; gap: 0; }
+.marketplace-page-redesign .featured-viewport { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg,transparent,#000 2.5%,#000 97.5%,transparent); mask-image: linear-gradient(90deg,transparent,#000 2.5%,#000 97.5%,transparent); }
 .marketplace-page-redesign .featured-track { width: max-content; display: flex; animation: featured-marquee var(--featured-duration, 40s) linear infinite; will-change: transform; }
 .marketplace-page-redesign .featured-loop-group { padding-right: 16px; display: flex; gap: 16px; }
 .marketplace-page-redesign .featured-tool { width: clamp(360px, 34vw, 520px); min-width: clamp(360px, 34vw, 520px); height: 250px; padding: 23px 24px; border: 1px solid #dfe5f3; border-radius: 17px; position: relative; display: flex; overflow: hidden; color: #17223b; background: #f7f7ff; text-align: left; box-shadow: 0 10px 26px rgba(49, 61, 115, .055); transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }

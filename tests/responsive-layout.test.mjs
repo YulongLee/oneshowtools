@@ -4,6 +4,7 @@ import test from "node:test";
 
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+const workbenchStyles = await readFile(new URL("../src/workbench.css", import.meta.url), "utf8");
 
 test("every authenticated tool receives the full workspace instead of the account context rail", () => {
   assert.match(appSource, /const isToolWorkspace = Boolean\(routeTool\)/);
@@ -24,6 +25,13 @@ test("commercial homepage prevents overflow and stacks its capability cards on n
   assert.match(styles, /\.landing-capability-mosaic \{[^}]*grid-template-columns:/);
   assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.landing-capability-mosaic \{ grid-template-columns: 1fr;/);
   assert.match(styles, /@media \(max-width: 620px\)[\s\S]*\.landing-hero h1 \{[^}]*overflow-wrap: anywhere/);
+});
+
+test("marketplace marquee stays inside the available workspace width", () => {
+  assert.match(workbenchStyles, /\.marketplace-page-redesign \.marketplace-primary \{[^}]*grid-template-columns: minmax\(0,1fr\)/);
+  assert.match(workbenchStyles, /\.marketplace-page-redesign \.marketplace-featured \{[^}]*max-width: 100%;[^}]*overflow: hidden/);
+  assert.match(workbenchStyles, /\.marketplace-page-redesign \.featured-carousel \{[^}]*max-width: 100%;[^}]*overflow: hidden/);
+  assert.match(workbenchStyles, /@keyframes featured-marquee/);
 });
 
 test("guest homepage exposes real catalog states and a stable reference-led hero", () => {
