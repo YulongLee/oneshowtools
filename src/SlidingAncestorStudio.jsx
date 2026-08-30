@@ -260,10 +260,14 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
       <button className="tool-back" onClick={onBack}><ArrowLeft size={18} />{zh ? "工具市场" : "Marketplace"}</button>
       <div className="ancestor-brand-row">
         <img src="/tool-icons-v2/optimized/sliding-ancestor-generator.png" alt="" />
-        <div><h1>{zh ? "滑动变祖器" : "Power-Up Timeline"}</h1><p>{zh ? "上传一张照片，生成 10 帧进化形态" : "Turn one portrait into a ten-stage evolution"}</p></div>
+        <div className="ancestor-brand-copy">
+          <span className="ancestor-brand-kicker">ONESHOWTOOLS · {zh ? "AI 形态进化" : "AI EVOLUTION"}</span>
+          <div className="ancestor-brand-title"><h1>{zh ? "滑动变祖器" : "Power-Up Timeline"}</h1><em><Sparkle size={13} weight="fill" />{zh ? "10 帧连续生成" : "10 continuous frames"}</em></div>
+          <p>{zh ? "上传一张照片，生成 10 帧进化形态" : "Turn one portrait into a ten-stage evolution"}</p>
+        </div>
       </div>
-      <div className="ancestor-save-state"><CheckCircle size={17} weight="fill" /><span>{zh ? "项目自动保存" : "Auto-saved"}</span></div>
-      <aside className="ancestor-price"><Coins size={18} weight="duotone" /><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></aside>
+      <div className="ancestor-save-state"><CheckCircle size={17} weight="fill" /><span><strong>{zh ? "项目自动保存" : "Auto-saved"}</strong><small>{zh ? "云端实时同步" : "Synced to cloud"}</small></span></div>
+      <aside className="ancestor-price"><span className="ancestor-price-icon"><Coins size={19} weight="duotone" /></span><span><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></span></aside>
     </header>
 
     <nav className="ancestor-journey" aria-label={zh ? "生成步骤" : "Generation steps"}>{steps.map(([title, detail], index) => {
