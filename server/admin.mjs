@@ -717,6 +717,8 @@ async function approveAction(request, path, context) {
 }
 
 function listTools() {
+  const featured = parseJson(db.prepare("SELECT value_json FROM platform_settings WHERE key = 'marketplace.featured_tools'").get()?.value_json, { toolSlugs: [] });
+  const featuredSlugs = Array.isArray(featured?.toolSlugs) ? featured.toolSlugs : [];
   return db.prepare(`
     SELECT t.id, t.slug, t.name_zh AS nameZh, t.name_en AS nameEn,
       t.description_zh AS descriptionZh, t.description_en AS descriptionEn,
@@ -733,7 +735,10 @@ function listTools() {
       CASE WHEN b.object_key IS NOT NULL
         THEN '/api/tools/' || t.slug || '/icon?v=' || b.updated_at ELSE NULL END AS iconUrl
     FROM tools t LEFT JOIN tool_branding b ON b.tool_id = t.id ORDER BY t.name_en
-  `).all().map((tool) => ({ ...tool, active: Boolean(tool.active) }));
+  `).all().map((tool) => {
+    const featuredIndex = featuredSlugs.indexOf(tool.slug);
+    return { ...tool, active: Boolean(tool.active), featuredRank: featuredIndex >= 0 ? featuredIndex + 1 : null };
+  });
 }
 
 function brandingColor(value, fallback) {
@@ -767,6 +772,25 @@ function publicBranding(row, slug) {
 }
 
 async function toolCommands(request, path, context) {
+  if (path === "/api/admin/v1/tools/featured-placement" && request.method === "PUT") {
+    const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const toolIds = Array.isArray(data.toolIds) ? data.toolIds.map(String) : null;
+    const reason = String(data.reason || "").trim().slice(0, 500);
+    if (!toolIds || toolIds.length > 20 || new Set(toolIds).size !== toolIds.length || !reason) return fail("INVALID_FEATURED_PLACEMENT");
+    const rows = toolIds.length ? db.prepare(`SELECT id, slug FROM tools WHERE id IN (${toolIds.map(() => "?").join(",")})`).all(...toolIds) : [];
+    if (rows.length !== toolIds.length) return fail("TOOL_NOT_FOUND", 404);
+    const byId = new Map(rows.map((row) => [row.id, row.slug]));
+    const next = { toolSlugs: toolIds.map((id) => byId.get(id)) };
+    const key = "marketplace.featured_tools";
+    const previous = parseJson(db.prepare("SELECT value_json FROM platform_settings WHERE key = ?").get(key)?.value_json, { toolSlugs: [] });
+    db.prepare(`
+      INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
+    `).run(key, safeJson(next), now());
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "tools.manage", action: "admin.marketplace.featured.update", targetType: "marketplace_placement", targetId: "featured", reason, before: previous, after: next });
+    return json({ ok: true, toolIds });
+  }
   let brandingMatch = path.match(/^\/api\/admin\/v1\/tools\/([^/]+)\/branding$/);
   if (brandingMatch && request.method === "PUT") {
     const denied = requirePermission(context, "tools.manage"); if (denied) return denied;

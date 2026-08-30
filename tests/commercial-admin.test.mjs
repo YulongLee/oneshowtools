@@ -246,6 +246,20 @@ test("commercial admin enforces roles, MFA, idempotency, approvals, and audit re
   assert.equal((await handleApi(request("/api/writing/catalog"))).status, 404);
   assert.equal((await handleApi(authenticated("/api/writing/catalog", owner.cookie))).status, 200);
 
+  const featuredTools = db.prepare("SELECT id, slug FROM tools WHERE active = 1 ORDER BY slug LIMIT 3").all();
+  const featuredPlacement = await handleApi(authenticatedJson("/api/admin/v1/tools/featured-placement", owner.cookie, {
+    toolIds: featuredTools.map((tool) => tool.id), reason: "Schedule the commercial marketplace placement",
+  }, { method: "PUT" }));
+  assert.equal(featuredPlacement.status, 200);
+  const featuredStorefront = await (await handleApi(request("/api/tools"))).json();
+  assert.deepEqual(
+    featuredStorefront.tools.filter((tool) => tool.featuredRank).sort((a, b) => a.featuredRank - b.featuredRank).map((tool) => tool.slug),
+    featuredTools.map((tool) => tool.slug),
+  );
+  assert.equal((await handleApi(authenticatedJson("/api/admin/v1/tools/featured-placement", support.cookie, {
+    toolIds: [], reason: "Unauthorized placement change",
+  }, { method: "PUT" }))).status, 403);
+
   const publishedTool = db.prepare("SELECT id, slug FROM tools WHERE active = 1 ORDER BY slug LIMIT 1").get();
   assert.ok(publishedTool);
   const brandingForm = new FormData();

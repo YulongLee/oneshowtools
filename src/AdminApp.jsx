@@ -4,7 +4,7 @@ import {
   File, Gauge, Gear, Globe, IdentificationCard, Key, ListChecks, LockKey,
   MagnifyingGlass, Package, Receipt, ShieldCheck, SignOut, SpinnerGap, Storefront,
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
-  BookOpenText, Gift,
+  BookOpenText, Gift, Megaphone, CaretUp, CaretDown,
   Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes, ImageSquare, Clock, Robot,
 } from "@phosphor-icons/react";
 
@@ -74,6 +74,8 @@ const copy = {
     configurePricing: "配置计费", pricingTitle: "应用计费设置", pricingHint: "免费应用不会扣减用户积分；积分收费应用按每次成功执行扣费。",
     pricingMode: "计费方式", freeTool: "免费应用", paidTool: "积分收费", creditsPerRun: "每次执行积分",
     pricingReason: "本次调整原因", savePricing: "保存计费设置", pricingSaved: "应用计费设置已保存",
+    featuredPlacement: "精选轮播广告位", featuredPlacementHint: "选择并排序需要在工具市场持续滚动展示的产品；配置保存在数据库中，版本更新不会重置。",
+    featuredEmpty: "暂未选择广告产品", addFeatured: "加入广告位", removeFeatured: "移出广告位", saveFeatured: "保存广告位", featuredSaved: "精选广告位已保存",
     orders: "订单", subscriptions: "订阅", invoices: "发票", refunds: "退款",
     disputes: "争议", exceptions: "对账异常", approvals: "待审批", approve: "批准",
     jobs: "作业队列", alerts: "运营告警", retry: "重试", policies: "政策版本",
@@ -165,6 +167,8 @@ const copy = {
     configurePricing: "Configure pricing", pricingTitle: "App pricing", pricingHint: "Free apps do not deduct credits. Paid apps charge after each successful run.",
     pricingMode: "Pricing mode", freeTool: "Free app", paidTool: "Credit charge", creditsPerRun: "Credits per run",
     pricingReason: "Reason for change", savePricing: "Save pricing", pricingSaved: "App pricing saved",
+    featuredPlacement: "Featured carousel placement", featuredPlacementHint: "Choose and order the products shown in the continuously moving marketplace placement. This configuration persists across releases.",
+    featuredEmpty: "No featured products selected", addFeatured: "Add to placement", removeFeatured: "Remove from placement", saveFeatured: "Save placement", featuredSaved: "Featured placement saved",
     orders: "Orders", subscriptions: "Subscriptions", invoices: "Invoices", refunds: "Refunds",
     disputes: "Disputes", exceptions: "Exceptions", approvals: "Approvals", approve: "Approve",
     jobs: "Jobs", alerts: "Alerts", retry: "Retry", policies: "Policies", deletions: "Deletion queue",
@@ -1036,7 +1040,7 @@ function CommerceView({ data, locale, onApprove, canManage, onProviderTest, onPr
         {!sections[tab]?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>}</section></div>;
 }
 
-function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing }) {
+function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing, onFeaturedPlacement }) {
   const t = copy[locale];
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -1045,8 +1049,12 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
   const [previewUrl, setPreviewUrl] = useState("");
   const [pricingTool, setPricingTool] = useState(null);
   const [pricing, setPricing] = useState({ mode: "paid", creditCost: 1, reason: "" });
+  const [featuredIds, setFeaturedIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const tools = data?.tools || [];
+  useEffect(() => {
+    setFeaturedIds([...tools].filter((tool) => Number(tool.featuredRank) > 0).sort((a, b) => a.featuredRank - b.featuredRank).map((tool) => tool.id));
+  }, [data]);
   const publicationState = (tool) => tool.active ? "published" : tool.lifecycleState === "testing" ? "testing" : "offline";
   const onlineCount = tools.filter((tool) => publicationState(tool) === "published").length;
   const testingCount = tools.filter((tool) => publicationState(tool) === "testing").length;
@@ -1098,10 +1106,24 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
       if (await onPricing(pricingTool.id, { creditCost, reason: pricing.reason.trim() })) setPricingTool(null);
     } finally { setSaving(false); }
   };
+  const toggleFeatured = (id) => setFeaturedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const moveFeatured = (id, delta) => setFeaturedIds((current) => {
+    const from = current.indexOf(id); const to = from + delta;
+    if (from < 0 || to < 0 || to >= current.length) return current;
+    const next = [...current]; [next[from], next[to]] = [next[to], next[from]]; return next;
+  });
+  const saveFeatured = async () => {
+    setSaving(true);
+    try { await onFeaturedPlacement(featuredIds); } finally { setSaving(false); }
+  };
   return <div className="admin-tool-publication-page">
     <section className="admin-tool-publication-head">
       <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
       <div className="admin-tool-publication-counts"><article><span className="online" /><div><strong>{onlineCount}</strong><small>{t.onlineTools}</small></div></article><article><span className="testing" /><div><strong>{testingCount}</strong><small>{t.testingTools}</small></div></article><article><span /><div><strong>{offlineCount}</strong><small>{t.offlineTools}</small></div></article></div>
+    </section>
+    <section className="admin-featured-placement">
+      <header><span><Megaphone size={22} weight="duotone" /></span><div><h3>{t.featuredPlacement}</h3><p>{t.featuredPlacementHint}</p></div><button className="admin-primary" onClick={saveFeatured} disabled={saving}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.saveFeatured}</button></header>
+      <div>{featuredIds.length ? featuredIds.map((id, index) => { const tool = tools.find((item) => item.id === id); if (!tool) return null; return <article key={id}><b>{index + 1}</b><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={18} />}</span><div><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><small>{tool.slug}</small></div><button aria-label={t.previous} disabled={index === 0} onClick={() => moveFeatured(id, -1)}><CaretUp size={16} /></button><button aria-label={t.next} disabled={index === featuredIds.length - 1} onClick={() => moveFeatured(id, 1)}><CaretDown size={16} /></button><button className="danger" onClick={() => toggleFeatured(id)}>{t.removeFeatured}</button></article>; }) : <p className="admin-featured-empty">{t.featuredEmpty}</p>}</div>
     </section>
     <section className="admin-tool-publication-toolbar">
       <label><MagnifyingGlass size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.searchTools} /></label>
@@ -1110,7 +1132,7 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
     <div className="admin-tool-admin-grid">{visibleTools.map((tool) => { const state = publicationState(tool); return <article className={`admin-tool-admin-card is-${state}`} key={tool.id}>
       <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${state}`}><span />{state === "published" ? t.online : state === "testing" ? t.testing : t.offline}</i></header>
       <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong className={Number(tool.creditCost || 0) === 0 ? "is-free" : ""}>{Number(tool.creditCost || 0) === 0 ? t.freeTool : tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button className={featuredIds.includes(tool.id) ? "featured-active" : ""} onClick={() => toggleFeatured(tool.id)}>{featuredIds.includes(tool.id) ? t.removeFeatured : t.addFeatured}</button><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
     </article>; })}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
     {brandingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBrandingTool(null); }}><form className="admin-branding-dialog" onSubmit={saveBranding}>
       <header><div><small>PRODUCT IDENTITY</small><h2>{t.brandingTitle}</h2><p>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</p></div><button type="button" onClick={() => setBrandingTool(null)} aria-label={t.close}><X size={20} /></button></header>
@@ -1305,6 +1327,12 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/tools/${id}`, json("PATCH", draft)); await loadView(); showToast(t.pricingSaved); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const saveFeaturedPlacement = async (toolIds) => {
+    try {
+      await api("/api/admin/v1/tools/featured-placement", json("PUT", { toolIds, reason: "管理员更新工具市场精选轮播广告位" }));
+      await loadView(); showToast(t.featuredSaved); return true;
+    } catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const createAdmin = async (draft) => {
     if (!draft.identifier?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
@@ -1477,7 +1505,7 @@ export function AdminApp() {
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} onProviderToggle={togglePaymentProvider} />,
-    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} />,
+    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} onFeaturedPlacement={saveFeaturedPlacement} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
     audit: <AuditView data={data.audit} locale={locale} onPage={setPage} />,

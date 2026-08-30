@@ -1394,10 +1394,6 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
   const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState("all");
   const [limit, setLimit] = useState(12);
-  const [featuredIndex, setFeaturedIndex] = useState(0);
-  const [featuredInteracting, setFeaturedInteracting] = useState(false);
-  const [featuredCycle, setFeaturedCycle] = useState(0);
-  const featuredTouchStart = useRef(null);
   const isEn = locale === "en";
   const selectedCategory = marketplaceCategories.find((item) => item.id === category) || marketplaceCategories[0];
   const matching = tools.filter((tool) => {
@@ -1413,16 +1409,9 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
   });
   const visible = matching.slice(0, limit);
   const categoryCount = (item) => item.id === "all" ? tools.length : tools.filter((tool) => item.accepts.includes(tool.category)).length;
-  const preferredSlugs = ["ai-music-studio", "ai-outfit-changer", "ai-fridge-recipe", "mbti-personality-test", "sliding-ancestor-generator"];
-  const featured = [...preferredSlugs.map((slug) => tools.find((tool) => tool.slug === slug)).filter(Boolean), ...tools]
-    .filter((tool, index, list) => list.findIndex((item) => item.id === tool.id) === index).slice(0, 6);
-  const carouselItems = featured.slice(0, 5);
-  const featuredPaused = featuredInteracting;
-  const moveFeatured = useCallback((delta) => {
-    if (!carouselItems.length) return;
-    setFeaturedIndex((current) => (current + delta + carouselItems.length) % carouselItems.length);
-    setFeaturedCycle((current) => current + 1);
-  }, [carouselItems.length]);
+  const featured = [...tools].sort((a, b) => (a.featuredRank || 999) - (b.featuredRank || 999)).slice(0, 6);
+  const carouselItems = tools.filter((tool) => Number(tool.featuredRank) > 0)
+    .sort((a, b) => a.featuredRank - b.featuredRank);
   const recentTasks = tasks.slice(0, 5);
   const activeConnections = runtime?.connections?.filter((item) => item.status === "active").length || 0;
   const runtimeRows = [
@@ -1438,16 +1427,6 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
     ["local", isEn ? "Local tools" : "本地工具", ShieldCheck],
   ];
   useEffect(() => setLimit(12), [category, filter, query]);
-  useEffect(() => {
-    if (featuredPaused || carouselItems.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
-    const timer = window.setInterval(() => {
-      if (!document.hidden) moveFeatured(1);
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [featuredPaused, carouselItems.length, featuredCycle, moveFeatured]);
-  useEffect(() => {
-    if (featuredIndex >= carouselItems.length) setFeaturedIndex(0);
-  }, [carouselItems.length, featuredIndex]);
   return <div className="marketplace-page marketplace-page-redesign">
     <div className="marketplace-primary">
       <section className="marketplace-hero">
@@ -1462,14 +1441,12 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
 
       <nav className="marketplace-category-nav" aria-label={isEn ? "Tool categories" : "工具分类"}>{marketplaceCategories.filter((item) => item.id === "all" || categoryCount(item) > 0).map((item) => { const CategoryIcon = item.icon; return <button className={category === item.id ? "active" : ""} key={item.id} onClick={() => setCategory(item.id)}><CategoryIcon size={16} />{t[item.id]}<small>{categoryCount(item)}</small></button>; })}</nav>
 
-      <section className="marketplace-featured surface">
+      {carouselItems.length > 0 && <section className="marketplace-featured surface">
         <header><div><Sparkle size={20} weight="fill" /><h2>{isEn ? "Featured picks" : "精选推荐"}</h2><span>{isEn ? "High-quality tools selected for you" : "精选优质 AI 工具，让你的工作效率翻倍"}</span></div><button onClick={() => { setCategory("all"); setFilter("all"); }}>{isEn ? "View all" : "查看全部精选"}<ArrowRight size={14} /></button></header>
-        <div className="featured-carousel" onMouseEnter={() => setFeaturedInteracting(true)} onMouseLeave={() => setFeaturedInteracting(false)} onFocusCapture={() => setFeaturedInteracting(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFeaturedInteracting(false); }} onTouchStart={(event) => { featuredTouchStart.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => { const end = event.changedTouches[0]?.clientX; if (featuredTouchStart.current !== null && Number.isFinite(end) && Math.abs(end - featuredTouchStart.current) > 42) moveFeatured(end < featuredTouchStart.current ? 1 : -1); featuredTouchStart.current = null; }}>
-          <button className="featured-arrow previous" type="button" aria-label={isEn ? "Previous featured tool" : "上一个精选工具"} onClick={() => moveFeatured(-1)}><ArrowLeft size={18} /></button>
-          <div className="featured-viewport"><div className="featured-track">{carouselItems.map((tool, index) => { const relative = (index - featuredIndex + carouselItems.length) % carouselItems.length; const slot = relative === 0 ? "active" : relative === 1 ? "next-card-1 peek" : relative === 2 ? "next-card-2 peek" : relative === carouselItems.length - 1 ? "previous-card peek" : "far-card peek"; return <button className={`featured-tool tone-${index + 1} ${slot}`} key={tool.id} onClick={() => onRun(tool)}><span className="featured-copy"><small><Fire size={12} weight="fill" />{tool.publicationState === "testing" ? (isEn ? "ADMIN TEST" : "管理员测试") : (isEn ? "POPULAR" : "热门")}</small><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><em>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</em><span className="featured-tags"><i>{t[tool.category] || tool.category}</i><ToolPrice tool={tool} locale={locale} /></span><b>{isEn ? "Use now" : "立即使用"}<ArrowRight size={14} /></b></span><span className="featured-icon"><ProductToolIcon tool={tool} size={84} /></span></button>; })}</div></div>
-          <button className="featured-arrow next" type="button" aria-label={isEn ? "Next featured tool" : "下一个精选工具"} onClick={() => moveFeatured(1)}><ArrowRight size={18} /></button>
+        <div className="featured-carousel">
+          <div className="featured-viewport"><div className="featured-track" style={{ "--featured-duration": `${Math.max(28, carouselItems.length * 8)}s` }}>{[0, 1].map((group) => <div className="featured-loop-group" aria-hidden={group === 1} key={group}>{carouselItems.map((tool, index) => <button className={`featured-tool tone-${(index % 5) + 1}`} tabIndex={group === 1 ? -1 : 0} key={`${group}-${tool.id}`} onClick={() => onRun(tool)}><span className="featured-copy"><small><Fire size={12} weight="fill" />{tool.publicationState === "testing" ? (isEn ? "ADMIN TEST" : "管理员测试") : (isEn ? "POPULAR" : "热门")}</small><strong>{locale === "en" ? tool.nameEn : tool.nameZh}</strong><em>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</em><span className="featured-tags"><i>{t[tool.category] || tool.category}</i><ToolPrice tool={tool} locale={locale} /></span><b>{isEn ? "Use now" : "立即使用"}<ArrowRight size={14} /></b></span><span className="featured-icon"><ProductToolIcon tool={tool} size={84} /></span></button>)}</div>)}</div></div>
         </div>
-      </section>
+      </section>}
 
       <section className="marketplace-hot-tools surface"><header><div><Fire size={20} weight="fill" /><h2>{isEn ? "Popular tools" : "热门工具"}</h2><span>{isEn ? "Tools people are using now" : "大家都在用的 AI 工具"}</span></div><button onClick={() => { setCategory("all"); setFilter("all"); }}>{isEn ? "View all" : "查看全部热门"}<ArrowRight size={14} /></button></header><div>{featured.map((tool) => <article key={tool.id}><div><ProductToolIcon tool={tool} size={24} />{tool.publicationState === "testing" && <span className="tool-testing-badge">{isEn ? "TEST" : "测试"}</span>}<button className={`tool-favorite ${favorites.includes(tool.id) ? "active" : ""}`} onClick={() => onToggleFavorite(tool.id)} aria-label={isEn ? "Toggle favorite" : "切换收藏"}><Star size={15} weight={favorites.includes(tool.id) ? "fill" : "regular"} /></button></div><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3><p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><footer><ToolPrice tool={tool} locale={locale} /><button onClick={() => onRun(tool)} aria-label={isEn ? "Use tool" : "使用工具"}><ArrowRight size={15} /></button></footer></article>)}</div></section>
 

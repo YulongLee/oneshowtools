@@ -640,6 +640,13 @@ export function initializeDatabase() {
       throw error;
     }
   }
+  const marketplaceFeaturedKey = "marketplace.featured_tools";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(marketplaceFeaturedKey)) {
+    db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+      .run(marketplaceFeaturedKey, JSON.stringify({
+        toolSlugs: ["ai-music-studio", "ai-outfit-changer", "ai-fridge-recipe", "mbti-personality-test", "sliding-ancestor-generator"],
+      }), timestamp);
+  }
 
   const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`

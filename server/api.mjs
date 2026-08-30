@@ -423,21 +423,32 @@ function activeAdministrator(userId) {
   return Boolean(db.prepare("SELECT 1 AS active FROM admin_memberships WHERE user_id = ? AND status = 'active'").get(userId));
 }
 
+function marketplaceFeaturedSlugs() {
+  const row = db.prepare("SELECT value_json FROM platform_settings WHERE key = 'marketplace.featured_tools'").get();
+  try {
+    const slugs = JSON.parse(row?.value_json || "{}").toolSlugs;
+    return Array.isArray(slugs) ? slugs.filter((slug) => typeof slug === "string") : [];
+  } catch { return []; }
+}
+
 function storefrontTools(request) {
   const specialists = new Map(
     seoCatalog().specialists.map((item) => [item.slug, item]),
   );
   const user = currentUser(request);
   const canPreview = activeAdministrator(user?.id);
+  const featuredSlugs = marketplaceFeaturedSlugs();
   return db
     .prepare(`${toolSelect()} ORDER BY name_en`)
     .all()
     .filter((tool) => tool.active || (canPreview && tool.lifecycleState === "testing"))
     .map((tool) => {
       const publicationState = tool.active ? "published" : "testing";
+      const featuredIndex = featuredSlugs.indexOf(tool.slug);
+      const featuredRank = featuredIndex >= 0 ? featuredIndex + 1 : null;
       const specialist = specialists.get(tool.slug);
-      if (!specialist || specialist.ready) return { ...tool, publicationState };
-      return { ...tool, publicationState, runtimeStatus: "configuration_required" };
+      if (!specialist || specialist.ready) return { ...tool, publicationState, featuredRank };
+      return { ...tool, publicationState, featuredRank, runtimeStatus: "configuration_required" };
     });
 }
 

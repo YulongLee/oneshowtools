@@ -38,6 +38,23 @@ test("publication settings survive database reinitialization", async () => {
   assert.equal(db.prepare("SELECT active FROM tools WHERE slug = 'lyrics-generator'").get().active, 1);
 });
 
+test("marketplace featured placement is ordered, public, and survives reinitialization", async () => {
+  const configured = { toolSlugs: ["stock-pet", "ai-music-studio", "mbti-personality-test"] };
+  db.prepare("UPDATE platform_settings SET value_json = ?, updated_at = ? WHERE key = 'marketplace.featured_tools'")
+    .run(JSON.stringify(configured), Date.now());
+
+  const storefront = await (await handleApi(request("/api/tools"))).json();
+  const featured = storefront.tools.filter((tool) => tool.featuredRank).sort((a, b) => a.featuredRank - b.featuredRank);
+  assert.deepEqual(featured.map((tool) => tool.slug), configured.toolSlugs);
+
+  const { initializeDatabase } = await import("../server/database.mjs");
+  initializeDatabase();
+  assert.deepEqual(
+    JSON.parse(db.prepare("SELECT value_json FROM platform_settings WHERE key = 'marketplace.featured_tools'").get().value_json),
+    configured,
+  );
+});
+
 test("operator-managed tool and billing settings survive database reinitialization", async () => {
   db.prepare(`
     UPDATE tools SET name_zh = ?, name_en = ?, description_zh = ?, description_en = ?,
