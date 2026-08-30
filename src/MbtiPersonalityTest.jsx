@@ -56,7 +56,6 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
     autoAdvanceTimer.current = window.setTimeout(() => {
       if (index < mbtiQuestions.length - 1) {
         setIndex((currentIndex) => currentIndex + 1);
-        window.scrollTo({ top: 0, behavior: "smooth" });
       } else submit(nextAnswers);
     }, 320);
   };
