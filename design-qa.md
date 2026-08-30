@@ -22,6 +22,7 @@ The implementation preserves the selected hierarchy: one dominant product card, 
 - Automatic rotation advanced from `AI 音乐工作室` to `AI 一键换装` after five seconds.
 - No autoplay status, pause, progress or pagination controls are rendered in the page.
 - Previous/next controls, keyboard focus, hover pause and touch swipe are implemented.
+- Each card keeps a stable DOM position and transitions between previous, active and upcoming slots over 720 ms; the next card moves left while expanding into the primary position instead of being replaced abruptly.
 - Autoplay is disabled when the operating system requests reduced motion.
 - The browser console contained no application errors.
 - Production build passed.
@@ -32,6 +33,7 @@ The implementation preserves the selected hierarchy: one dominant product card, 
 - Pass 1 found the legacy parent grid constraining the carousel to one quarter of the available width (P1). The carousel was explicitly reset to a block formatting context.
 - Pass 2 confirmed the active card, preview cards and controls now occupy the intended track width. No actionable P0, P1 or P2 findings remain.
 - Pass 3 removed the user-rejected autoplay control strip and confirmed automatic rotation still advances after five seconds.
+- Pass 4 replaced the abrupt content swap with a continuous positional track transition. Geometry sampled before, 120 ms into and after the transition confirmed progressive changes to both card position and width.
 
 ## Follow-up polish
 
