@@ -69,6 +69,10 @@ test("real platform lifecycle stores user, credits, tasks, and files", async () 
   const tasks = await (await handleApi(authenticated("/api/tasks", cookie))).json();
   assert.equal(tasks.tasks.length, 1);
   assert.equal(tasks.tasks[0].status, "waiting_for_runtime");
+  const updatedDashboard = await (await handleApi(authenticated("/api/dashboard", cookie))).json();
+  assert.equal(updatedDashboard.recentTasks[0].id, tasks.tasks[0].id);
+  assert.equal(updatedDashboard.recentTasks[0].toolSlug, "copy-polish");
+  assert.equal(updatedDashboard.recentTasks[0].input.text, "Test copy");
   const activeDeletion = await handleApi(authenticated(`/api/tasks/${tasks.tasks[0].id}`, cookie, { method: "DELETE" }));
   assert.equal(activeDeletion.status, 409);
   assert.equal((await activeDeletion.json()).error.code, "TASK_DELETE_ACTIVE");

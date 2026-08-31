@@ -1068,7 +1068,7 @@ function DashboardShortcut({ tool, locale, onRun, badge }) {
   </button>;
 }
 
-function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, onOpenTask }) {
+function Dashboard({ data, tools, tasks = [], runtime, locale, onNavigate, onSearch, onRun, onOpenTask }) {
   const t = dictionary[locale];
   const [homeQuery, setHomeQuery] = useState("");
   if (!data) return <Loading locale={locale} />;
@@ -1080,7 +1080,8 @@ function Dashboard({ data, tools, runtime, locale, onNavigate, onSearch, onRun, 
   const popular = dashboardToolSelection(tools, dashboardPopularSlugs, 6);
   const newTools = dashboardToolSelection(tools, dashboardNewSlugs, 5);
   const activity = data.recentTasks.slice(0, 4);
-  const continueTask = data.recentTasks[0];
+  const recentTask = data.recentTasks[0];
+  const continueTask = recentTask ? (tasks.find((task) => task.id === recentTask.id) || recentTask) : null;
   const continueTool = continueTask ? tools.find((item) => item.id === continueTask.toolId) : null;
   const taskTitle = continueTask ? String(continueTask.input?.title || continueTask.input?.prompt || continueTask.input?.topic || continueTask.input?.text || "").trim() : "";
   const quickActions = [
@@ -2593,9 +2594,10 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const openTask = (task) => {
-    if (!task.toolSlug) return;
-    history.pushState({}, "", `/tools/${task.toolSlug}?task=${encodeURIComponent(task.id)}`);
-    setRouteSlug(task.toolSlug); setRouteTaskId(task.id); setView("tool");
+    const taskToolSlug = task.toolSlug || tools.find((tool) => tool.id === task.toolId)?.slug;
+    if (!taskToolSlug) return setToast(t.error);
+    history.pushState({}, "", `/tools/${taskToolSlug}?task=${encodeURIComponent(task.id)}`);
+    setRouteSlug(taskToolSlug); setRouteTaskId(task.id); setView("tool");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const leaveTool = () => {
@@ -2702,7 +2704,7 @@ export function App() {
     { label: locale === "en" ? "ACCOUNT" : "账户", items: [["plans", Coins], ["settings", GearSix]] },
   ];
   const content = {
-    dashboard: <Dashboard data={privateData.dashboard} tools={tools} runtime={privateData.runtime} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} onOpenTask={openTask} />,
+    dashboard: <Dashboard data={privateData.dashboard} tools={tools} tasks={privateData.tasks} runtime={privateData.runtime} locale={locale} onNavigate={setView} onSearch={(value) => { setQuery(value); setView("marketplace"); }} onRun={openTool} onOpenTask={openTask} />,
     marketplace: <Marketplace tools={tools} locale={locale} query={query} onQuery={setQuery} onRun={openTool} data={privateData.dashboard} runtime={privateData.runtime} tasks={privateData.tasks} onNavigate={setView} favorites={favorites} onToggleFavorite={toggleFavorite} />,
     recent: <RecentUsagePage tools={tools} tasks={privateData.tasks} files={privateData.files} locale={locale} onRun={openTool} onOpenTask={openTask} onNavigate={setView} />,
     favorites: <FavoritesPage tools={tools} tasks={privateData.tasks} files={privateData.files} favorites={privateData.favorites} collections={privateData.favoriteCollections} counts={privateData.favoriteCounts} locale={locale} onRun={openTool} onOpenTask={openTask} onNavigate={setView} onAdd={toggleLibraryFavorite} onRemove={removeFavorite} onMove={moveFavorite} onCreateCollection={createFavoriteCollection} />,

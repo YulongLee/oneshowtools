@@ -52,3 +52,37 @@ The implementation preserves the selected hierarchy: one dominant product card, 
 - Automated checks: production build passed; 197 automated tests passed
 
 final result: passed
+
+## Sliding Ancestor and Food Nutrition commercial layout QA
+
+- Reference: user-provided AI Music Studio commercial tool hierarchy.
+- Routes: `/tools/sliding-ancestor-generator` and `/tools/food-nutrition-analyzer`.
+- Implementation screenshots: `qa/sliding-ancestor-commercial-layout.png` and `qa/food-nutrition-commercial-layout.png`.
+- Combined visual comparison: `qa/commercial-tool-layout-comparison.png`.
+- Navigation: both pages now place “返回工具市场” in an independent row above the product surface.
+- Product hierarchy: each page has a dedicated commercial hero containing product identity, outcome-led headline, trust signals, product artwork, and per-run pricing.
+- Functional hierarchy: generation steps, input configuration, results, timeline/history, and supporting actions stay in clearly separated framed work areas.
+- Responsive result: the commercial hero artwork remains visible at the normal desktop workspace width and collapses only when the actual tool container becomes narrow.
+- Interaction result: Sliding Ancestor style selection and advanced editor expansion passed; Food Nutrition meal-context selection persisted as `dinner`.
+- Runtime result: neither page produced browser console errors or warnings.
+- Automated result: production build passed; full automated suite passed 197/197.
+- Visual review: reference and both implementations were inspected in one combined comparison; no actionable P0, P1, or P2 findings remain.
+
+final result: passed
+
+## AI Fridge Recipe workspace redesign QA
+
+- Reference: user-provided AI Music Studio commercial tool header and workspace hierarchy.
+- Route: `/tools/ai-fridge-recipe`
+- Implementation screenshot: `qa/fridge-recipe-redesign.png`
+- Combined reference comparison: `qa/fridge-recipe-comparison.png`
+- Navigation: “返回工具市场” is now an independent navigation row above the product surface.
+- Product hierarchy: product identity, value proposition, trust signals, product visual, and per-run price are grouped in a dedicated commercial hero.
+- Functional hierarchy: the four-step flow, upload/preferences panel, recipe result panel, shopping list, and expiry reminder remain separate framed work areas.
+- Responsive result: at the in-app 1280 px desktop viewport, the input and result panels remain fully visible and supporting cards move to a full-width responsive row without horizontal clipping.
+- Interaction result: serving count changed from 2 to 3, and submitting without a photo displayed the expected validation message.
+- Runtime result: no browser console errors or warnings were present.
+- Automated result: production build passed.
+- Visual review: reference and implementation were inspected together; no actionable P0, P1, or P2 visual findings remain.
+
+final result: passed

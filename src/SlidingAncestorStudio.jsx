@@ -256,17 +256,18 @@ export function SlidingAncestorStudio({ tool, task, historyTasks, locale, authen
     : [["Upload portrait", "A clear front-facing portrait"], ["Choose evolution style", "One identity, multiple evolutions"], ["Generate & preview", "Create ten frames and download"]];
 
   return <div className="ancestor-page ancestor-studio-v2">
+    <button className="tool-back ancestor-page-back" onClick={onBack}><ArrowLeft size={18} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
     <header className="ancestor-studio-bar">
-      <button className="tool-back" onClick={onBack}><ArrowLeft size={18} />{zh ? "工具市场" : "Marketplace"}</button>
       <div className="ancestor-brand-row">
         <img src="/tool-icons-v2/optimized/sliding-ancestor-generator.png" alt="" />
         <div className="ancestor-brand-copy">
-          <span className="ancestor-brand-kicker">ONESHOWTOOLS · {zh ? "AI 形态进化" : "AI EVOLUTION"}</span>
-          <div className="ancestor-brand-title"><h1>{zh ? "滑动变祖器" : "Power-Up Timeline"}</h1><em><Sparkle size={13} weight="fill" />{zh ? "10 帧连续生成" : "10 continuous frames"}</em></div>
-          <p>{zh ? "上传一张照片，生成 10 帧进化形态" : "Turn one portrait into a ten-stage evolution"}</p>
+          <span className="ancestor-brand-kicker">ONESHOW AI EVOLUTION</span>
+          <div className="ancestor-brand-title"><h1>{zh ? "一张照片，生成 10 帧连续进化" : "Turn one portrait into ten evolution stages"}</h1></div>
+          <p>{zh ? "保持人物身份与构图一致，从初始形态一路滑动到巅峰状态。" : "Keep identity and framing consistent from the original portrait to its final form."}</p>
+          <div className="ancestor-hero-trust"><span><CheckCircle size={14} weight="fill" />{zh ? "项目自动保存" : "Auto-saved"}</span><span><Sparkle size={14} weight="fill" />{zh ? "10 帧连续生成" : "10 continuous frames"}</span><span><ShieldCheck size={14} weight="fill" />{zh ? "素材隐私保护" : "Private assets"}</span></div>
         </div>
       </div>
-      <div className="ancestor-save-state"><CheckCircle size={17} weight="fill" /><span><strong>{zh ? "项目自动保存" : "Auto-saved"}</strong><small>{zh ? "云端实时同步" : "Synced to cloud"}</small></span></div>
+      <div className="ancestor-hero-visual" aria-hidden="true"><img src="/tool-icons-v2/optimized/sliding-ancestor-generator.png" alt="" /></div>
       <aside className="ancestor-price"><span className="ancestor-price-icon"><Coins size={19} weight="duotone" /></span><span><strong>{tool.creditCost}</strong><small>{zh ? "积分 / 组" : "credits / set"}</small></span></aside>
     </header>
 

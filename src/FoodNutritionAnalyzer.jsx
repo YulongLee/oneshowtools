@@ -51,9 +51,18 @@ export function FoodNutritionAnalyzer({ tool, task, historyTasks = [], locale = 
   ] : [];
 
   return <main className="food-analyzer-page">
-    <header className="food-analyzer-hero"><button type="button" onClick={onBack}><ArrowLeft size={18} />{locale === "en" ? "Back" : "返回工具市场"}</button><img className="food-hero-art" src="/food-nutrition/food-nutrition-icon-v1.webp" alt="" /><div><span><ForkKnife size={20} />SMART NUTRITION</span><h1>{t.title}</h1><p>{t.intro}</p></div><aside><Coins size={19} /><strong>{tool.creditCost}</strong><small>{locale === "en" ? "credits / analysis" : "积分 / 次"}</small></aside></header>
+    <button className="food-back" type="button" onClick={onBack}><ArrowLeft size={18} />{locale === "en" ? "Back to marketplace" : "返回工具市场"}</button>
+    <header className="food-analyzer-hero">
+      <div className="food-hero-copy"><img className="food-hero-art" src="/food-nutrition/food-nutrition-icon-v1.webp" alt="" /><div><span><ForkKnife size={18} />SMART NUTRITION</span><h1>{locale === "en" ? "See what is really on your plate" : "拍下这一餐，看清热量与营养"}</h1><p>{t.intro}</p><div className="food-hero-trust"><span><ShieldCheck size={14} weight="fill" />{locale === "en" ? "Private photo analysis" : "照片隐私保护"}</span><span><CheckCircle size={14} weight="fill" />{locale === "en" ? "Honest estimate ranges" : "展示合理误差区间"}</span><span><ChartBar size={14} weight="fill" />{locale === "en" ? "Complete macro breakdown" : "完整营养拆解"}</span></div></div></div>
+      <div className="food-hero-visual" aria-hidden="true"><img src="/food-nutrition/food-nutrition-icon-v1.webp" alt="" /></div>
+      <aside><Coins size={20} /><small>{locale === "en" ? "Per analysis" : "每次分析"}</small><strong>{tool.creditCost}</strong><em>{locale === "en" ? "credits" : "积分"}</em></aside>
+    </header>
+    <nav className="food-analysis-flow" aria-label={locale === "en" ? "Analysis steps" : "分析步骤"}>
+      {[[CloudArrowUp, locale === "en" ? "Upload meal" : "上传餐食", locale === "en" ? "Clear, complete photo" : "完整清晰的食物照片"], [ForkKnife, locale === "en" ? "Add context" : "补充份量", locale === "en" ? "Portion and meal context" : "份量与用餐场景"], [ChartBar, locale === "en" ? "View analysis" : "查看分析", locale === "en" ? "Calories, macros, and ranges" : "热量、营养与误差区间"]].map(([Icon, title, detail], index) => <div key={title} className={(result ? 2 : file ? 1 : 0) >= index ? "active" : ""}><i>{index + 1}</i><Icon size={19} /><span><strong>{title}</strong><small>{detail}</small></span></div>)}
+    </nav>
     <div className="food-analyzer-grid">
       <section className="food-input-card">
+        <header className="food-card-heading"><span>1</span><div><h2>{locale === "en" ? "Meal photo and context" : "餐食照片与补充信息"}</h2><p>{locale === "en" ? "A complete overhead photo improves estimate quality." : "尽量让整份餐食入镜，可获得更准确的估算。"}</p></div></header>
         <div className={`food-dropzone ${preview ? "has-image" : ""}`}>
           {preview ? <><img src={preview} alt="" /><button type="button" onClick={() => { setFile(null); setResult(null); }}><X size={16} />{t.change}</button></> : <label><CloudArrowUp size={34} /><strong>{t.upload}</strong><small>{t.hint}</small><input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={(event) => { setFile(event.target.files?.[0] || null); setResult(null); setError(""); }} /></label>}
         </div>

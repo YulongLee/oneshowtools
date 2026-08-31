@@ -1238,12 +1238,17 @@ function dashboard(userId) {
     .prepare(
       `
     SELECT t.id, t.status, t.credit_cost AS creditCost, t.created_at AS createdAt, t.updated_at AS updatedAt,
+      t.input_json AS inputJson, x.id AS toolId, x.slug AS toolSlug,
       x.name_zh AS toolNameZh, x.name_en AS toolNameEn, x.icon
     FROM tasks t JOIN tools x ON x.id = t.tool_id
     WHERE t.user_id = ? AND t.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 5
   `,
     )
-    .all(userId);
+    .all(userId)
+    .map(({ inputJson, ...task }) => ({
+      ...task,
+      input: JSON.parse(inputJson || "{}"),
+    }));
   return {
     user: cleanUser(user),
     metrics: {

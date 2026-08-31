@@ -85,11 +85,24 @@ export function FridgeRecipePlanner({ tool, task, historyTasks = [], locale = "z
   };
 
   return <main className="fridge-recipe-page">
+    <button className="fridge-back" type="button" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
+
     <header className="fridge-recipe-head">
-      <button type="button" onClick={onBack}><ArrowLeft size={17} />{zh ? "返回工具市场" : "Back to marketplace"}</button>
-      <div className="fridge-title-icon"><img src="/fridge-recipes/fridge-recipe-icon-v1.webp" alt="" /></div>
-      <div><h1>{zh ? "AI 冰箱食谱" : "AI Fridge Recipe Planner"}</h1><p>{zh ? "拍一拍冰箱，AI 识别食材，推荐真正能做的菜和完整步骤" : "Photograph your fridge and turn visible ingredients into practical recipes."}</p></div>
-      <span className="fridge-paid"><Coins size={18} /><strong>{tool.creditCost}</strong>{zh ? "积分 / 次" : "credits / run"}</span>
+      <div className="fridge-hero-copy">
+        <div className="fridge-title-icon"><img src="/fridge-recipes/fridge-recipe-icon-v1.webp" alt="" /></div>
+        <div>
+          <p className="fridge-eyebrow">ONESHOW AI KITCHEN</p>
+          <h1>{zh ? "拍下冰箱，让 AI 安排今晚的菜" : "Photograph your fridge. Let AI plan dinner."}</h1>
+          <p>{zh ? "识别现有食材，结合饮食偏好与烹饪时间，生成真正能做的菜、采购清单和完整步骤。" : "Identify available ingredients and turn them into practical recipes, shopping gaps, and clear cooking steps."}</p>
+          <div className="fridge-hero-trust">
+            <span><ShieldCheck size={14} weight="fill" />{zh ? "照片隐私保护" : "Private photos"}</span>
+            <span><CheckCircle size={14} weight="fill" />{zh ? "食材人工确认" : "Review ingredients"}</span>
+            <span><ChefHat size={14} weight="fill" />{zh ? "完整烹饪步骤" : "Complete steps"}</span>
+          </div>
+        </div>
+      </div>
+      <div className="fridge-hero-visual" aria-hidden="true"><img src="/fridge-recipes/fridge-recipe-icon-v1.webp" alt="" /></div>
+      <span className="fridge-paid"><Coins size={20} /><small>{zh ? "每次生成" : "Per run"}</small><strong>{tool.creditCost}</strong><em>{zh ? "积分" : "credits"}</em></span>
     </header>
 
     <nav className="fridge-flow">
