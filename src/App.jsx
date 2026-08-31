@@ -34,7 +34,7 @@ const iconMap = {
   Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain, ForkKnife, UserFocus,
 };
 const commercialToolIconBySlug = {
-  "interview-assistant": "https://mianshiwen.cn/assets/brand/favicon.png",
+  "interview-assistant": "/tool-icons-v2/optimized/interview-assistant.png",
   "ai-music-studio": "/tool-icons-v2/optimized/ai-music-studio.png",
   "ai-outfit-changer": "/tool-icons-v2/optimized/ai-outfit-changer.png",
   "ai-product-photo": "/tool-icons-v2/optimized/ai-image-generation.png",
