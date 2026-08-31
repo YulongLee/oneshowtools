@@ -120,3 +120,13 @@ final result: passed
 - 自动化：布局回归测试和完整测试套件通过；生产构建通过后方可部署。
 
 final result: passed
+
+## AI Runtime desktop client page QA
+
+- Reference: supplied OneShowTools AI Runtime desktop-client screenshot.
+- Verified states: authenticated desktop layout, download entry navigation, coming-soon button feedback, and 760 px responsive layout.
+- Visual comparison: matched the reference hierarchy, Runtime tabs, platform cards, feature strip, status messaging, sidebar entry, and right-side Runtime context rail while preserving the current product design system.
+- Product truthfulness: no fake installer links are exposed; macOS and Windows are marked as in development, and iPhone/iPad are identified as a separate future mobile roadmap.
+- Functional checks: production build passed; 211 automated tests passed; both coming-soon buttons return a clear status message.
+
+final result: passed

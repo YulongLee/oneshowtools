@@ -3519,6 +3519,51 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .runtime-task-distribution li i.running { background: #665be7; }
 .runtime-task-distribution li i.failed { background: #ec6170; }
 .runtime-task-distribution li strong { color: #26364d; font-size: 9px; }
+.header-icon-button.active { border-color: #a9c7ff; color: #1769e8; background: #edf5ff; }
+.runtime-tabs button em { margin-left: 6px; padding: 2px 5px; border-radius: 8px; color: #6946e8; background: #eee9ff; font-size: 6px; font-style: normal; font-weight: 800; letter-spacing: .04em; }
+.desktop-client-section { display: grid; gap: 18px; background: linear-gradient(180deg,#fff 0%,#fbfcff 100%); }
+.desktop-client-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.desktop-client-heading > div > span { color: #5664ea; font-size: 8px; font-weight: 800; letter-spacing: .15em; }
+.desktop-client-heading h2 { margin: 6px 0 6px; color: #14213a; font-size: 18px; letter-spacing: -.025em; }
+.desktop-client-heading p { max-width: 650px; margin: 0; color: #74839a; font-size: 10px; line-height: 1.7; }
+.desktop-client-status { min-height: 28px; padding: 0 10px; border: 1px solid #dfe7f3; border-radius: 999px; display: inline-flex; align-items: center; gap: 7px; color: #617088; background: #fff; font-size: 8px; font-weight: 700; white-space: nowrap; }
+.desktop-client-status > span { width: 7px; height: 7px; border-radius: 50%; background: #f3a52e; box-shadow: 0 0 0 4px #fff2dd; }
+.desktop-client-cards { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.desktop-client-card { min-width: 0; border: 1px solid #dfe6f2; border-radius: 16px; overflow: hidden; background: #fff; box-shadow: 0 12px 28px rgba(43,60,105,.05); transition: transform .18s ease,box-shadow .18s ease; }
+.desktop-client-card:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(43,60,105,.09); }
+.desktop-client-visual { position: relative; height: 170px; padding: 18px 24px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.desktop-client-card.macos .desktop-client-visual { background: linear-gradient(135deg,#f1ecff 0%,#f8f6ff 42%,#eaf1ff 100%); }
+.desktop-client-card.windows .desktop-client-visual { background: linear-gradient(135deg,#eaf5ff 0%,#f5f9ff 46%,#e8efff 100%); }
+.desktop-client-visual::after { content: ""; position: absolute; inset: auto 11% 10px; height: 28px; border-radius: 50%; background: rgba(73,83,190,.13); filter: blur(18px); }
+.desktop-client-visual > img { position: relative; z-index: 1; width: 78%; height: 138px; object-fit: cover; border: 6px solid rgba(255,255,255,.92); border-radius: 10px; box-shadow: 0 13px 34px rgba(47,58,116,.2); }
+.desktop-client-card.windows .desktop-client-visual > img { object-fit: contain; background: #fff; }
+.desktop-platform-icon { position: absolute; z-index: 2; top: 16px; left: 18px; width: 54px; height: 54px; border: 1px solid rgba(255,255,255,.8); border-radius: 16px; display: grid; place-items: center; color: #18233a; background: rgba(255,255,255,.88); box-shadow: 0 9px 24px rgba(47,60,110,.12); backdrop-filter: blur(12px); }
+.desktop-client-card.windows .desktop-platform-icon { color: #1769e8; }
+.desktop-client-copy { padding: 17px 18px 18px; }
+.desktop-client-copy > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.desktop-client-copy h3 { margin: 0; color: #16243c; font-size: 13px; }
+.desktop-client-copy > div > span { padding: 3px 7px; border-radius: 999px; color: #6b4fe5; background: #f0ecff; font-size: 7px; font-weight: 750; }
+.desktop-client-copy p { min-height: 32px; margin: 8px 0 10px; color: #718096; font-size: 9px; line-height: 1.65; }
+.desktop-client-copy ul { margin: 0 0 13px; padding: 0; display: flex; flex-wrap: wrap; gap: 7px; list-style: none; }
+.desktop-client-copy li { padding: 4px 8px; border-radius: 7px; color: #5b6b81; background: #f3f6fa; font-size: 7px; font-weight: 650; }
+.desktop-client-copy button { width: 100%; min-height: 38px; padding: 0 14px; border: 0; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #fff; background: linear-gradient(90deg,#6655ef,#9845e8); font-size: 9px; font-weight: 750; cursor: pointer; }
+.desktop-client-card.windows .desktop-client-copy button { background: linear-gradient(90deg,#1769e8,#318bef); }
+.desktop-client-copy button svg:last-child { margin-left: auto; }
+.desktop-client-features { border: 1px solid #e0e7f1; border-radius: 13px; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); background: #fff; overflow: hidden; }
+.desktop-client-features article { min-width: 0; padding: 15px 10px; display: grid; justify-items: center; text-align: center; }
+.desktop-client-features article + article { border-left: 1px solid #edf1f6; }
+.desktop-client-features article > span { width: 34px; height: 34px; margin-bottom: 8px; border-radius: 10px; display: grid; place-items: center; color: #236fe4; background: #edf4ff; }
+.desktop-client-features strong { color: #24334c; font-size: 9px; }
+.desktop-client-features small { margin-top: 4px; color: #8490a2; font-size: 7px; line-height: 1.4; }
+.desktop-mobile-roadmap { min-height: 58px; padding: 10px 13px; border: 1px solid #e4e8f2; border-radius: 12px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; background: linear-gradient(90deg,#faf9ff,#f7fbff); }
+.desktop-mobile-roadmap > span { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: #7652e9; background: #eeeaff; }
+.desktop-mobile-roadmap strong,.desktop-mobile-roadmap small { display: block; }
+.desktop-mobile-roadmap strong { color: #2a3850; font-size: 9px; }
+.desktop-mobile-roadmap small { margin-top: 4px; color: #8190a5; font-size: 7px; }
+.desktop-mobile-roadmap em { padding: 4px 8px; border-radius: 999px; color: #7652e9; background: #eeeaff; font-size: 7px; font-style: normal; font-weight: 750; }
+.desktop-client-help { display: flex; align-items: center; gap: 7px; color: #7c899c; font-size: 8px; }
+.desktop-client-help > svg { color: #2c74dd; }
+.desktop-client-help a { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: #1769e8; font-weight: 700; }
 
 @media (max-width: 1320px) {
   .runtime-v3 { grid-template-columns: minmax(0,1fr) 250px; }
@@ -3541,6 +3586,10 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
   .runtime-connection-filters { width: 100%; }
   .runtime-connection-filters label { width: 100%; }
   .runtime-v3 .runtime-side { grid-template-columns: 1fr; }
+  .desktop-client-cards { grid-template-columns: 1fr; }
+  .desktop-client-features { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .desktop-client-features article + article { border-left: 0; }
+  .desktop-client-features article { border-bottom: 1px solid #edf1f6; }
 }
 @media (max-width: 560px) {
   .runtime-v3 .runtime-title-row > img { right: -82px; width: 235px; }
@@ -3552,6 +3601,17 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
   .runtime-v3 .runtime-connection-row { grid-template-columns: auto minmax(0,1fr); }
   .runtime-v3 .runtime-connection-row > .runtime-connected,.runtime-v3 .runtime-connection-row > .runtime-disconnected { grid-column: 2; }
   .runtime-v3 .runtime-connection-row .connection-actions { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; }
+  .desktop-client-heading { flex-direction: column; }
+  .desktop-client-visual { height: 142px; padding-inline: 14px; }
+  .desktop-client-visual > img { height: 112px; }
+  .desktop-platform-icon { width: 44px; height: 44px; }
+  .desktop-client-features { grid-template-columns: 1fr; }
+  .desktop-client-features article { grid-template-columns: auto minmax(0,1fr); justify-items: start; column-gap: 10px; text-align: left; }
+  .desktop-client-features article > span { grid-row: 1 / 3; margin: 0; }
+  .desktop-mobile-roadmap { grid-template-columns: auto minmax(0,1fr); }
+  .desktop-mobile-roadmap em { grid-column: 2; justify-self: start; }
+  .desktop-client-help { align-items: flex-start; flex-wrap: wrap; }
+  .desktop-client-help a { margin-left: 23px; }
 }
 
 .fridge-settings > .fridge-image-option {
