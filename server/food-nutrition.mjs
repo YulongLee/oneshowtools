@@ -69,8 +69,14 @@ function sanitizeAnalysis(raw, modelId) {
   };
 }
 
-function buildPrompt({ portionHint, mealContext, locale }) {
+function recognizedFood(raw) {
+  return raw?.isFood !== false && Array.isArray(raw?.items) && raw.items.length > 0;
+}
+
+function buildPrompt({ portionHint, mealContext, locale, verification = false }) {
   return `你是 OneShowTools 的食物营养估算引擎。请分析用户上传的食物照片，仅返回一个 JSON 对象，不要 Markdown，不要解释。
+
+${verification ? "这是一次食物识别复核。第一次识别可能过于保守，请重新仔细检查整张图片中的餐盘、碗、杯子、包装食品、菜肴、主食、水果、甜点和饮品。" : ""}
 
 任务规则：
 1. 识别每一种可见食物，并估算可见份量、克重、热量、蛋白质、碳水、脂肪、膳食纤维和钠。
@@ -78,7 +84,8 @@ function buildPrompt({ portionHint, mealContext, locale }) {
 3. 总计应覆盖整张图片中准备食用的食物；餐具和包装不要计入。
 4. 看不清或无法确认的菜品要降低 confidence，并写入 hiddenUncertainties；不要臆测品牌、疾病或食用者身份。
 5. tips 只给普通、温和、非医疗性的饮食记录建议，不诊断、不提供治疗或减肥处方。
-6. 如果图片不是食物，返回 {"isFood":false,"items":[]}。
+6. 只要画面中存在可能供人食用的菜肴、食材、零食、水果、甜点或饮品，就返回 isFood:true；看不清时使用 low confidence 和较宽区间，不要因为摆盘、包装、拍摄角度或食物种类不熟悉而判定为非食物。
+7. 只有在整张图片明确完全没有任何可食用内容时，才返回 {"isFood":false,"items":[]}。
 
 用户补充份量：${portionHint || "未提供"}
 用餐场景：${mealContext || "unspecified"}
@@ -104,18 +111,24 @@ export async function analyzeFoodNutrition(form, { userId = null, modelConnectio
   const portionHint = String(form.get("portionHint") || "").trim().slice(0, 300);
   const mealContext = String(form.get("mealContext") || "unspecified").slice(0, 30);
   const locale = String(form.get("locale") || "zh") === "en" ? "en" : "zh";
-  const result = await modelInvoker({
+  const invoke = (verification = false) => modelInvoker({
     userId,
     connectionId: modelConnectionId,
     capability: "vision:food_nutrition",
     service: "food-nutrition-analyzer",
     instruction: "Return valid JSON only. Never include markdown fences.",
-    prompt: buildPrompt({ portionHint, mealContext, locale }),
+    prompt: buildPrompt({ portionHint, mealContext, locale, verification }),
     imageDataUrl: `data:image/jpeg;base64,${optimized.toString("base64")}`,
     timeoutMs: 90_000,
   });
+  let result = await invoke(false);
+  let raw = parseJson(result.text);
+  if (!recognizedFood(raw)) {
+    result = await invoke(true);
+    raw = parseJson(result.text);
+  }
   return {
-    output: sanitizeAnalysis(parseJson(result.text), result.modelId),
+    output: sanitizeAnalysis(raw, result.modelId),
     safeInput: { fileName: String(file.name || "food-photo").slice(0, 160), fileSize: file.size, portionHint, mealContext },
   };
 }

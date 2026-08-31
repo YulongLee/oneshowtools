@@ -212,7 +212,8 @@ export function listMusicTracks(userId) {
     WHERE m.user_id = ? ORDER BY m.created_at DESC, m.variant_index ASC LIMIT 100
   `).all(userId).map((track) => ({
     ...track,
-    options: JSON.parse(track.optionsJson || "{}"),
+    options: Object.fromEntries(Object.entries(JSON.parse(track.optionsJson || "{}"))
+      .filter(([key]) => key !== "prompt" && key !== "coverFeatureId" && key !== "referenceFileId")),
     optionsJson: undefined,
     downloadUrl: track.fileId ? `/api/files/${track.fileId}/download` : null,
     streamUrl: track.fileId ? `/api/files/${track.fileId}/download?preview=1` : null,
@@ -279,7 +280,7 @@ export async function createMusicCover(user, trackId, fetchImpl = fetch) {
       .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
     const tool = db.prepare("SELECT id FROM tools WHERE slug = 'ai-music-studio'").get();
     db.prepare("INSERT INTO tasks (id, user_id, tool_id, status, input_json, output_json, credit_cost, created_at, updated_at, completed_at) VALUES (?, ?, ?, 'completed', ?, ?, ?, ?, ?, ?)")
-      .run(taskId, user.id, tool.id, JSON.stringify({ action: "music_cover", trackId, prompt }), JSON.stringify({ kind: "music_cover", trackId, fileId }), configuration.creditCost, timestamp, timestamp, timestamp);
+      .run(taskId, user.id, tool.id, JSON.stringify({ action: "music_cover", title: track.title }), JSON.stringify({ kind: "music_cover", trackId, fileId }), configuration.creditCost, timestamp, timestamp, timestamp);
     db.prepare("INSERT INTO task_files (task_id, file_id) VALUES (?, ?)").run(taskId, fileId);
     db.prepare("INSERT INTO credit_ledger (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at) VALUES (?, ?, 'consumption', ?, '生成音乐封面', 'Generated music cover', 'task', ?, ?)")
       .run(randomUUID(), user.id, -configuration.creditCost, taskId, timestamp);

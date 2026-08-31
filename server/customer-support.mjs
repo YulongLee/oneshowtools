@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./database.mjs";
 import { invokeModel } from "./model-gateway.mjs";
+import { supportToolManuals } from "./tool-manuals.mjs";
 
 const now = () => Date.now();
 const statuses = new Set(["open", "awaiting_agent", "in_progress", "resolved", "closed"]);
@@ -41,13 +42,13 @@ function tokenize(value) {
 
 function relevantKnowledge(question, locale) {
   const tokens = tokenize(question);
-  const articles = db.prepare(`
+  const articles = [...db.prepare(`
     SELECT id, title, question, answer, keywords, locale, source_conversation_id AS sourceConversationId,
       updated_at AS updatedAt
     FROM support_knowledge_articles
     WHERE status = 'active' AND locale IN (?, 'zh-CN')
     ORDER BY updated_at DESC LIMIT 200
-  `).all(locale === "en" ? "en" : "zh-CN");
+  `).all(locale === "en" ? "en" : "zh-CN"), ...supportToolManuals(locale)];
   return articles.map((article) => {
     const haystack = `${article.title} ${article.question} ${article.keywords}`.toLowerCase();
     const score = tokens.reduce((total, token) => total + (haystack.includes(token) ? Math.min(4, token.length) : 0), 0);

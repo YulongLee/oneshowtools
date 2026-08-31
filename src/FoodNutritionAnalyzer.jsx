@@ -41,7 +41,7 @@ export function FoodNutritionAnalyzer({ tool, task, historyTasks = [], locale = 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw Object.assign(new Error(data?.error?.code || "REQUEST_FAILED"), { status: response.status });
       setResult(data.output); onCompleted?.(data);
-    } catch (caught) { setError((locale === "zh" && errors[caught.message]) || (locale === "en" ? `Analysis failed (${caught.message}). Please try again.` : `分析失败（${caught.message}），请稍后重试。`)); }
+    } catch (caught) { const isZh = String(locale).toLowerCase().startsWith("zh"); setError((isZh && errors[caught.message]) || (!isZh ? `Analysis failed (${caught.message}). Please try again.` : `分析失败（${caught.message}），请稍后重试。`)); }
     finally { setBusy(false); }
   };
 

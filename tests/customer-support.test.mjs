@@ -14,6 +14,7 @@ process.env.ALLOW_DEV_EMAIL_DELIVERY = "true";
 const { handleApi } = await import(`../server/api.mjs?support=${Date.now()}`);
 const { db } = await import("../server/database.mjs");
 const { createSessionToken, hashToken } = await import("../server/security.mjs");
+const { saveToolManual } = await import("../server/tool-manuals.mjs");
 const {
   adminSupportConversation, askCustomerSupport, replyToSupportConversation,
   submitSupportTicket, resolveSupportConversation,
@@ -90,6 +91,20 @@ test("authenticated support and admin queue APIs are connected", async () => {
   const queueData = await queue.json();
   assert.ok(queueData.conversations.some((item) => item.id === answered.conversation.id));
   assert.ok(queueData.knowledge.length >= 6);
+});
+
+test("support assistant can return a published tool guide link", async () => {
+  db.prepare("UPDATE tools SET active=1 WHERE id='tool_music_studio'").run();
+  saveToolManual("tool_music_studio", {
+    titleZh: "AI 音乐工作室使用手册", summaryZh: "查看音乐生成、试听和下载步骤。", contentZh: "填写灵感后点击生成。",
+    status: "published", homepageVisible: false, supportEnabled: true,
+  }, null);
+  const customer = makeUser(`support-manual-${Date.now()}@example.com`);
+  const conversation = await askCustomerSupport({
+    user: customer, message: "AI音乐工作室怎么用？",
+    modelInvoker: async () => { throw new Error("MODEL_OFFLINE"); },
+  });
+  assert.match(conversation.messages.at(-1).body, /https:\/\/oneshowtools\.com\/help\/ai-music-studio/);
 });
 
 test.after(async () => {

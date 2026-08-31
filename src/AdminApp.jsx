@@ -1042,7 +1042,7 @@ function CommerceView({ data, locale, onApprove, canManage, onProviderTest, onPr
         {!sections[tab]?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>}</section></div>;
 }
 
-function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing, onFeaturedPlacement, onSearchProfile }) {
+function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing, onFeaturedPlacement, onSearchProfile, onManual }) {
   const t = copy[locale];
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -1054,6 +1054,8 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
   const [featuredIds, setFeaturedIds] = useState([]);
   const [searchTool, setSearchTool] = useState(null);
   const [searchDraft, setSearchDraft] = useState({ aliasesZh: "", aliasesEn: "", exampleQueries: "", capabilities: "", exclusions: "", searchPriority: 0, enabled: true, reason: "" });
+  const [manualTool, setManualTool] = useState(null);
+  const [manualDraft, setManualDraft] = useState({ titleZh: "", titleEn: "", summaryZh: "", summaryEn: "", contentZh: "", contentEn: "", status: "draft", homepageVisible: false, supportEnabled: true, reason: "" });
   const [saving, setSaving] = useState(false);
   const tools = data?.tools || [];
   useEffect(() => {
@@ -1135,6 +1137,22 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
     try { if (await onSearchProfile(searchTool.id, { ...searchDraft, aliasesZh: lines(searchDraft.aliasesZh), aliasesEn: lines(searchDraft.aliasesEn), exampleQueries: lines(searchDraft.exampleQueries), capabilities: lines(searchDraft.capabilities), exclusions: lines(searchDraft.exclusions), searchPriority: Number(searchDraft.searchPriority || 0), reason: searchDraft.reason.trim() })) setSearchTool(null); }
     finally { setSaving(false); }
   };
+  const openManual = (tool) => {
+    const manual = tool.manual || {};
+    setManualTool(tool);
+    setManualDraft({
+      titleZh: manual.titleZh || `${tool.nameZh}使用手册`, titleEn: manual.titleEn || `${tool.nameEn} User Guide`,
+      summaryZh: manual.summaryZh || "", summaryEn: manual.summaryEn || "", contentZh: manual.contentZh || "", contentEn: manual.contentEn || "",
+      status: manual.status || "draft", homepageVisible: Boolean(manual.homepageVisible), supportEnabled: manual.supportEnabled !== false, reason: "",
+    });
+  };
+  const saveManual = async (event) => {
+    event.preventDefault();
+    if (!manualDraft.reason.trim()) return;
+    setSaving(true);
+    try { if (await onManual(manualTool.id, { ...manualDraft, reason: manualDraft.reason.trim() })) setManualTool(null); }
+    finally { setSaving(false); }
+  };
   return <div className="admin-tool-publication-page">
     <section className="admin-tool-publication-head">
       <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
@@ -1151,7 +1169,7 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
     <div className="admin-tool-admin-grid">{visibleTools.map((tool) => { const state = publicationState(tool); return <article className={`admin-tool-admin-card is-${state}`} key={tool.id}>
       <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${state}`}><span />{state === "published" ? t.online : state === "testing" ? t.testing : t.offline}</i></header>
       <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong className={Number(tool.creditCost || 0) === 0 ? "is-free" : ""}>{Number(tool.creditCost || 0) === 0 ? t.freeTool : tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button className={featuredIds.includes(tool.id) ? "featured-active" : ""} onClick={() => toggleFeatured(tool.id)}>{featuredIds.includes(tool.id) ? t.removeFeatured : t.addFeatured}</button><button onClick={() => openSearchProfile(tool)}>{t.configureSearch}</button><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button className={featuredIds.includes(tool.id) ? "featured-active" : ""} onClick={() => toggleFeatured(tool.id)}>{featuredIds.includes(tool.id) ? t.removeFeatured : t.addFeatured}</button><button onClick={() => openManual(tool)}>{locale === "en" ? "Configure guide" : "配置使用手册"}</button><button onClick={() => openSearchProfile(tool)}>{t.configureSearch}</button><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
     </article>; })}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
     {brandingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBrandingTool(null); }}><form className="admin-branding-dialog" onSubmit={saveBranding}>
       <header><div><small>PRODUCT IDENTITY</small><h2>{t.brandingTitle}</h2><p>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</p></div><button type="button" onClick={() => setBrandingTool(null)} aria-label={t.close}><X size={20} /></button></header>
@@ -1176,6 +1194,13 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
       <label className="admin-search-enabled"><input type="checkbox" checked={searchDraft.enabled} onChange={(event) => setSearchDraft({ ...searchDraft, enabled: event.target.checked })} />{t.searchEnabled}</label>
       <label>{t.brandingReason}<input value={searchDraft.reason} onChange={(event) => setSearchDraft({ ...searchDraft, reason: event.target.value })} required maxLength="500" /></label>
       <footer><button type="button" onClick={() => setSearchTool(null)}>{t.close}</button><button className="admin-primary" disabled={saving || !searchDraft.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.saveSearchProfile}</button></footer>
+    </form></div>}
+    {manualTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setManualTool(null); }}><form className="admin-branding-dialog admin-manual-dialog" onSubmit={saveManual}>
+      <header><div><small>TOOL GUIDE</small><h2>{locale === "en" ? "Tool user guide" : "工具使用手册"}</h2><p>{locale === "en" ? manualTool.nameEn : manualTool.nameZh}</p></div><button type="button" onClick={() => setManualTool(null)} aria-label={t.close}><X size={20} /></button></header>
+      <div className="admin-search-profile-grid"><label>{locale === "en" ? "Chinese title" : "中文标题"}<input value={manualDraft.titleZh} onChange={(event) => setManualDraft({ ...manualDraft, titleZh: event.target.value })} required /></label><label>{locale === "en" ? "English title" : "英文标题"}<input value={manualDraft.titleEn} onChange={(event) => setManualDraft({ ...manualDraft, titleEn: event.target.value })} /></label><label>{locale === "en" ? "Chinese summary" : "中文摘要"}<textarea rows="3" value={manualDraft.summaryZh} onChange={(event) => setManualDraft({ ...manualDraft, summaryZh: event.target.value })} /></label><label>{locale === "en" ? "English summary" : "英文摘要"}<textarea rows="3" value={manualDraft.summaryEn} onChange={(event) => setManualDraft({ ...manualDraft, summaryEn: event.target.value })} /></label><label>{locale === "en" ? "Chinese content" : "中文正文"}<textarea rows="10" value={manualDraft.contentZh} onChange={(event) => setManualDraft({ ...manualDraft, contentZh: event.target.value })} required /></label><label>{locale === "en" ? "English content" : "英文正文"}<textarea rows="10" value={manualDraft.contentEn} onChange={(event) => setManualDraft({ ...manualDraft, contentEn: event.target.value })} /></label></div>
+      <div className="admin-manual-options"><label><input type="checkbox" checked={manualDraft.status === "published"} onChange={(event) => setManualDraft({ ...manualDraft, status: event.target.checked ? "published" : "draft" })} />{locale === "en" ? "Publish guide" : "发布手册"}</label><label><input type="checkbox" checked={manualDraft.homepageVisible} onChange={(event) => setManualDraft({ ...manualDraft, homepageVisible: event.target.checked })} />{locale === "en" ? "Show in homepage resources" : "展示在首页资料区"}</label><label><input type="checkbox" checked={manualDraft.supportEnabled} onChange={(event) => setManualDraft({ ...manualDraft, supportEnabled: event.target.checked })} />{locale === "en" ? "Available to customer support" : "允许客服引用链接"}</label></div>
+      <label>{t.brandingReason}<input value={manualDraft.reason} onChange={(event) => setManualDraft({ ...manualDraft, reason: event.target.value })} required maxLength="500" /></label>
+      <footer><button type="button" onClick={() => setManualTool(null)}>{t.close}</button><button className="admin-primary" disabled={saving || !manualDraft.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{locale === "en" ? "Save guide" : "保存手册"}</button></footer>
     </form></div>}
   </div>;
 }
@@ -1364,6 +1389,11 @@ export function AdminApp() {
     try { await api(`/api/admin/v1/tools/${id}/search-profile`, json("PUT", draft)); await loadView(); showToast(t.searchProfileSaved); return true; }
     catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const saveToolManual = async (id, draft) => {
+    if (!draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
+    try { await api(`/api/admin/v1/tools/${id}/manual`, json("PUT", draft)); await loadView(); showToast(locale === "en" ? "Tool guide saved" : "工具手册已保存"); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const createAdmin = async (draft) => {
     if (!draft.identifier?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
@@ -1536,7 +1566,7 @@ export function AdminApp() {
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} onProviderToggle={togglePaymentProvider} />,
-    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} onFeaturedPlacement={saveFeaturedPlacement} onSearchProfile={saveToolSearchProfile} />,
+    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} onFeaturedPlacement={saveFeaturedPlacement} onSearchProfile={saveToolSearchProfile} onManual={saveToolManual} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
     audit: <AuditView data={data.audit} locale={locale} onPage={setPage} />,

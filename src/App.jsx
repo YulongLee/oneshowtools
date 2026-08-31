@@ -1096,6 +1096,14 @@ function DashboardShortcut({ tool, locale, onRun, badge }) {
   </button>;
 }
 
+function taskDisplaySummary(task, locale) {
+  const input = task?.input || {};
+  const value = String(input.title || input.idea || input.text || input.topic || input.website || "").trim();
+  if (value) return value;
+  if (input.action === "music_cover") return locale === "en" ? "Album cover" : "音乐封面";
+  return "";
+}
+
 function Dashboard({ data, tools, tasks = [], runtime, locale, onNavigate, onSearch, onRun, onOpenTask }) {
   const t = dictionary[locale];
   const [homeQuery, setHomeQuery] = useState("");
@@ -1111,7 +1119,7 @@ function Dashboard({ data, tools, tasks = [], runtime, locale, onNavigate, onSea
   const recentTask = data.recentTasks[0];
   const continueTask = recentTask ? (tasks.find((task) => task.id === recentTask.id) || recentTask) : null;
   const continueTool = continueTask ? tools.find((item) => item.id === continueTask.toolId) : null;
-  const taskTitle = continueTask ? String(continueTask.input?.title || continueTask.input?.prompt || continueTask.input?.topic || continueTask.input?.text || "").trim() : "";
+  const taskTitle = continueTask ? taskDisplaySummary(continueTask, locale) : "";
   const quickActions = [
     ["ai-music-studio", isEn ? "Generate music" : "生成音乐", isEn ? "Generate comfortable piano music" : "生成一首舒缓的钢琴纯音乐"],
     ["ai-outfit-changer", isEn ? "Change outfit" : "一键换装", isEn ? "Change my portrait into a professional outfit" : "把我的人像换成职业正装"],
@@ -1159,7 +1167,7 @@ function Dashboard({ data, tools, tasks = [], runtime, locale, onNavigate, onSea
       </div>
       <article className="surface dashboard-activity-v4">
         <DashboardSectionHeader icon={Clock} title={isEn ? "Recent activity" : "最近动态"} action={isEn ? "View more" : "查看更多"} onAction={() => onNavigate("tasks")} />
-        {activity.length ? <div>{activity.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button type="button" key={task.id} onClick={() => onOpenTask ? onOpenTask(task) : (tool && onRun(tool))}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh} · {statusLabel(task.status, locale)}</strong><small>{String(task.input?.title || task.input?.prompt || task.outputFileName || "").trim() || formatDate(task.updatedAt || task.createdAt, locale)}</small></span><time>{formatDate(task.updatedAt || task.createdAt, locale)}</time></button>; })}</div> : <div className="dashboard-empty"><Clock size={25} weight="duotone" /><strong>{isEn ? "No activity yet" : "暂无动态"}</strong><small>{isEn ? "Your completed tasks will appear here." : "完成任务后，记录会显示在这里。"}</small></div>}
+        {activity.length ? <div>{activity.map((task) => { const tool = tools.find((item) => item.id === task.toolId); return <button type="button" key={task.id} onClick={() => onOpenTask ? onOpenTask(task) : (tool && onRun(tool))}><ProductToolIcon tool={tool || { icon: task.icon }} compact /><span><strong>{isEn ? task.toolNameEn : task.toolNameZh} · {statusLabel(task.status, locale)}</strong><small>{taskDisplaySummary(task, locale) || formatDate(task.updatedAt || task.createdAt, locale)}</small></span><time>{formatDate(task.updatedAt || task.createdAt, locale)}</time></button>; })}</div> : <div className="dashboard-empty"><Clock size={25} weight="duotone" /><strong>{isEn ? "No activity yet" : "暂无动态"}</strong><small>{isEn ? "Your completed tasks will appear here." : "完成任务后，记录会显示在这里。"}</small></div>}
       </article>
     </section>
 
@@ -1186,7 +1194,7 @@ function RecentUsagePage({ tools, tasks, files, locale, onRun, onOpenTask, onNav
   const recentTasks = filteredTasks.slice(0, 6);
   const recentFiles = files.filter((file) => Number(file.createdAt || 0) >= cutoff).slice(0, 6);
   const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const taskSummary = (task) => String(task.input?.text || task.input?.prompt || task.input?.topic || task.input?.title || "").trim();
+  const taskSummary = (task) => taskDisplaySummary(task, locale);
   const fileKind = (file) => file.mimeType?.startsWith("image/") ? "image" : file.mimeType?.startsWith("audio/") ? "audio" : file.mimeType?.startsWith("video/") ? "video" : /pdf/i.test(`${file.mimeType} ${file.name}`) ? "pdf" : "document";
   const fileMeta = { image: [ImageSquare, "image"], audio: [MusicNotes, "audio"], video: [VideoCamera, "video"], pdf: [FilePdf, "pdf"], document: [FileText, "document"] };
   return <div className="recent-usage-page page-stack">
@@ -1919,7 +1927,7 @@ function Tasks({ tasks, user, credits, billing, locale, onRefresh, onCancel, onD
   const cutoff = period === "all" ? 0 : Date.now() - Number(period) * 86400000;
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = tasks.filter((task) => {
-    const input = String(task.input?.text || task.input?.prompt || task.input?.topic || task.input?.website || "").toLowerCase();
+    const input = taskDisplaySummary(task, locale).toLowerCase();
     const searchable = `${task.toolNameZh || ""} ${task.toolNameEn || ""} ${input}`.toLowerCase();
     return (statusFilter === "all" || normalizedStatus(task.status) === statusFilter)
       && (toolFilter === "all" || task.toolId === toolFilter)
@@ -2270,7 +2278,7 @@ function CapabilityNetwork({ locale }) {
   </div>;
 }
 
-function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, onRun }) {
+function GuestHome({ locale, tools, manuals = [], catalogStatus, onReload, onAuth, onLocale, onRun }) {
   const t = dictionary[locale];
   const [guestQuery, setGuestQuery] = useState("");
   const heroOrbitRef = useRef(null);
@@ -2495,9 +2503,23 @@ function GuestHome({ locale, tools, catalogStatus, onReload, onAuth, onLocale, o
       <section id="how" className="landing-section landing-how"><header><h2>{copy.stepsTitle}</h2><p>{copy.howSub}</p></header><div>{copy.steps.map(([title, body], index) => { const Icon = stepIcons[index]; return <article key={title}><span><Icon size={24} weight="duotone" /></span><div><h3>{title}</h3><p>{body}</p></div>{index < copy.steps.length - 1 && <ArrowRight className="step-arrow" size={18} />}</article>; })}</div></section>
 
       <section id="pricing" className="landing-cta landing-cta-v2"><img src="/landing-v2/cta-ai-platform.webp" alt="" loading="lazy" decoding="async" /><div><h2>{copy.ctaTitle}</h2><p>{copy.ctaBody}</p><span><button onClick={onAuth}>{copy.free}<ArrowRight size={17} /></button><a href="#tools">{copy.browse}</a></span></div></section>
+      {manuals.length > 0 && <section id="resources" className="landing-section landing-resources"><header><div><span><BookOpenText size={18} weight="duotone" /></span><h2>{isEn ? "Product guides" : "产品使用资料"}</h2></div><p>{isEn ? "Step-by-step guides maintained by the OneShowTools team." : "由 OneShowTools 团队持续维护的产品使用说明。"}</p></header><div>{manuals.map((manual) => <a key={manual.toolId} href={manual.url || `/help/${manual.slug}`}><span><BookOpenText size={21} weight="duotone" /></span><div><strong>{isEn ? (manual.titleEn || manual.titleZh) : manual.titleZh}</strong><p>{isEn ? (manual.summaryEn || manual.summaryZh) : manual.summaryZh}</p></div><ArrowRight size={16} /></a>)}</div></section>}
     </main>
     <footer className="landing-footer"><div className="footer-brand"><Brand /><p>{copy.footer}</p></div><div><strong>{copy.product}</strong><a href="#tools">{copy.nav[0]}</a><a href="#platform">AI Runtime</a><a href="#agents">AI Agent</a></div><div><strong>{copy.resources}</strong><a href="#how">{copy.nav[3]}</a><button onClick={onAuth}>{isEn ? "Account" : "账户中心"}</button></div><div><strong>{copy.company}</strong><a href="https://www.oneshowailab.com/" target="_blank" rel="noreferrer">OneShow AI Lab</a></div><div><strong>{copy.support}</strong><button onClick={onAuth}>{t.login}</button><button onClick={onLocale}>{t.language}</button><a href="/legal/terms">{isEn ? "Terms" : "用户协议"}</a><a href="/legal/privacy">{isEn ? "Privacy" : "隐私政策"}</a><a href="/legal/credits">{isEn ? "Credits & refunds" : "积分与退款"}</a></div><div className="landing-footer-record"><span>© 2026 OneShowTools. All rights reserved.</span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">浙ICP备2026052190号-2</a></div></footer>
   </div>;
+}
+
+function ToolManualPage({ slug, locale }) {
+  const [state, setState] = useState({ loading: true, manual: null });
+  const isEn = locale === "en";
+  useEffect(() => {
+    let active = true;
+    api(`/api/tool-manuals/${encodeURIComponent(slug)}`).then((result) => { if (active) setState({ loading: false, manual: result.manual }); }).catch(() => { if (active) setState({ loading: false, manual: null }); });
+    return () => { active = false; };
+  }, [slug]);
+  if (state.loading) return <Loading locale={locale} />;
+  const manual = state.manual;
+  return <div className="tool-manual-page"><header><a href="/"><Brand /></a><button onClick={() => { localStorage.setItem("ost_locale", isEn ? "zh-CN" : "en"); location.reload(); }}><Translate size={16} />{isEn ? "中文" : "English"}</button></header><main>{manual ? <><a className="tool-manual-back" href="/"><ArrowLeft size={16} />{isEn ? "Back to OneShowTools" : "返回 OneShowTools"}</a><div className="tool-manual-hero"><span><BookOpenText size={28} weight="duotone" /></span><div><small>{isEn ? "PRODUCT GUIDE" : "产品使用手册"}</small><h1>{isEn ? (manual.titleEn || manual.titleZh) : manual.titleZh}</h1><p>{isEn ? (manual.summaryEn || manual.summaryZh) : manual.summaryZh}</p></div></div><article>{String(isEn ? (manual.contentEn || manual.contentZh) : manual.contentZh).split(/\n{2,}/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</article><aside>{isEn ? "Need more help? Contact support from your OneShowTools workspace." : "还有问题？登录 OneShowTools 后可直接咨询在线客服。"}</aside></> : <div className="tool-manual-empty"><BookOpenText size={42} /><h1>{isEn ? "Guide unavailable" : "手册暂未发布"}</h1><p>{isEn ? "This guide may be unpublished or the link has changed." : "该手册可能尚未发布，或链接已经更新。"}</p><a href="/">{isEn ? "Back to homepage" : "返回首页"}</a></div>}</main></div>;
 }
 
 export function App() {
@@ -2511,6 +2533,7 @@ export function App() {
   const [session, setSession] = useState(undefined);
   const [health, setHealth] = useState({});
   const [tools, setTools] = useState([]);
+  const [manuals, setManuals] = useState([]);
   const [catalogStatus, setCatalogStatus] = useState("loading");
   const [plans, setPlans] = useState([]);
   const [writingCatalog, setWritingCatalog] = useState(null);
@@ -2526,11 +2549,11 @@ export function App() {
 
   const loadPublic = useCallback(async () => {
     setCatalogStatus("loading");
-    const [sessionResult, healthResult, toolsResult, plansResult] = await Promise.all([
+    const [sessionResult, healthResult, toolsResult, plansResult, manualsResult] = await Promise.all([
       api("/api/auth/session").catch(() => ({ user: null })), api("/api/health").catch(() => ({})),
-      api("/api/tools").catch(() => null), api("/api/plans").catch(() => ({ plans: [] })),
+      api("/api/tools").catch(() => null), api("/api/plans").catch(() => ({ plans: [] })), api("/api/tool-manuals?homepage=1").catch(() => ({ manuals: [] })),
     ]);
-    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult?.tools || []); setCatalogStatus(toolsResult ? "ready" : "error"); setPlans(plansResult.plans);
+    setSession(sessionResult.user || null); setHealth(healthResult); setTools(toolsResult?.tools || []); setCatalogStatus(toolsResult ? "ready" : "error"); setPlans(plansResult.plans); setManuals(manualsResult.manuals || []);
   }, []);
   const loadPrivate = useCallback(async (requestedAreas) => {
     if (!session) return;
@@ -2747,12 +2770,14 @@ export function App() {
   const openBillingPortal = async () => { try { const result = await api("/api/billing/portal", { method: "POST" }); location.assign(result.url); } catch { setToast(t.billingUnavailable); } };
 
   if (session === undefined) return <Loading locale={locale} />;
+  const manualSlug = location.pathname.match(/^\/help\/([^/]+)$/)?.[1];
+  if (manualSlug) return <ToolManualPage slug={decodeURIComponent(manualSlug)} locale={locale} />;
   const favorites = privateData.favorites.filter((item) => item.itemType === "tool").map((item) => item.itemId);
   const routeTool = routeSlug ? tools.find((tool) => tool.slug === routeSlug) : null;
   const routeTask = routeTaskId ? privateData.tasks.find((task) => task.id === routeTaskId) : null;
   const specialistCatalog = seoCatalogForTool(seoCatalog, routeTool);
   const activeCatalog = routeTool?.slug === "ai-writer" ? writingCatalog : (specialistCatalog || writingCatalog);
-  if (!session) return <Suspense fallback={<Loading locale={locale} />}>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</Suspense>;
+  if (!session) return <Suspense fallback={<Loading locale={locale} />}>{routeTool ? <PublicToolShell tool={routeTool} catalog={activeCatalog} locale={locale} authenticated={false} onBack={leaveTool} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} /> : <GuestHome locale={locale} tools={tools} manuals={manuals} catalogStatus={catalogStatus} onReload={loadPublic} onAuth={() => setAuthOpen(true)} onLocale={() => setLocale(locale === "en" ? "zh-CN" : "en")} onRun={openTool} />}{authOpen && <AuthDialog locale={locale} registrationEnabled={health.registrationEnabled} smsAuthEnabled={health.smsAuthEnabled} onClose={() => setAuthOpen(false)} onAuthenticated={setSession} />}</Suspense>;
 
   const navGroups = [
     { items: [["dashboard", House]] },

@@ -47,6 +47,7 @@ import {
 } from "./stock-market-provider.mjs";
 import { normalizeMainlandPhone, phoneIdentityHash } from "./sms-provider.mjs";
 import { saveToolSearchProfile, searchProfileForTool } from "./tool-search.mjs";
+import { saveToolManual, toolManualForAdmin } from "./tool-manuals.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -738,7 +739,7 @@ function listTools() {
     FROM tools t LEFT JOIN tool_branding b ON b.tool_id = t.id ORDER BY t.name_en
   `).all().map((tool) => {
     const featuredIndex = featuredSlugs.indexOf(tool.slug);
-    return { ...tool, active: Boolean(tool.active), featuredRank: featuredIndex >= 0 ? featuredIndex + 1 : null, searchProfile: searchProfileForTool(tool.id) };
+    return { ...tool, active: Boolean(tool.active), featuredRank: featuredIndex >= 0 ? featuredIndex + 1 : null, searchProfile: searchProfileForTool(tool.id), manual: toolManualForAdmin(tool.id) };
   });
 }
 
@@ -773,6 +774,19 @@ function publicBranding(row, slug) {
 }
 
 async function toolCommands(request, path, context) {
+  const manualMatch = path.match(/^\/api\/admin\/v1\/tools\/([^/]+)\/manual$/);
+  if (manualMatch && request.method === "PUT") {
+    const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
+    const data = await parseBody(request);
+    const reason = String(data.reason || "").trim().slice(0, 500);
+    if (!reason) return fail("REASON_REQUIRED");
+    const before = toolManualForAdmin(manualMatch[1]);
+    try {
+      const manual = saveToolManual(manualMatch[1], data, context.user.id);
+      richAudit({ request, actor: context.user, roles: context.roles, permission: "tools.manage", action: "admin.tool.manual.update", targetType: "tool", targetId: manualMatch[1], reason, before, after: manual });
+      return json({ ok: true, manual });
+    } catch (error) { return fail(error.code || "TOOL_MANUAL_SAVE_FAILED", error.status || 400); }
+  }
   if (path === "/api/admin/v1/tools/featured-placement" && request.method === "PUT") {
     const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
     const data = await parseBody(request);

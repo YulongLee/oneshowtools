@@ -111,6 +111,8 @@ test("music generation reserves real credits, stores a private artifact, and exp
   assert.match(tracks[0].streamUrl, /^\/api\/files\/.*\?preview=1$/);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM file_storage_objects WHERE file_id = ?").get(tracks[0].fileId).count, 1);
   assert.doesNotMatch(JSON.stringify(tracks), /music-provider-secret|provider-trace-redacted/);
+  assert.equal(Object.hasOwn(tracks[0].options, "prompt"), false);
+  assert.doesNotMatch(JSON.stringify(tracks), /Do not imitate a named artist/);
 });
 
 test("music generation rejects unowned material declarations before reserving credits", () => {

@@ -43,10 +43,30 @@ test("food nutrition analyzer returns structured estimates and safe input", asyn
 test("food nutrition analyzer rejects a non-food result", async () => {
   const form = new FormData();
   form.set("file", await imageFile());
+  let attempts = 0;
   await assert.rejects(
-    analyzeFoodNutrition(form, { modelInvoker: async () => ({ modelId: "vision-test", text: '{"isFood":false,"items":[]}' }) }),
+    analyzeFoodNutrition(form, { modelInvoker: async () => { attempts += 1; return { modelId: "vision-test", text: '{"isFood":false,"items":[]}' }; } }),
     (error) => error.code === "FOOD_NOT_RECOGNIZED" && error.status === 422,
   );
+  assert.equal(attempts, 2);
+});
+
+test("food nutrition analyzer recovers from one conservative false negative", async () => {
+  const form = new FormData();
+  form.set("file", await imageFile());
+  const prompts = [];
+  const result = await analyzeFoodNutrition(form, { modelInvoker: async ({ prompt }) => {
+    prompts.push(prompt);
+    if (prompts.length === 1) return { modelId: "vision-test", text: '{"isFood":false,"items":[]}' };
+    return { modelId: "vision-test", text: JSON.stringify({
+      isFood: true, mealName: "家常饭", confidence: "low",
+      items: [{ name: "米饭", caloriesKcal: 230, proteinG: 4, carbsG: 50, fatG: 1, fiberG: 1, sodiumMg: 5 }],
+      hiddenUncertainties: ["拍摄角度有限"],
+    }) };
+  } });
+  assert.equal(result.output.mealName, "家常饭");
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1], /食物识别复核/);
 });
 
 test("food nutrition analyzer rejects unsupported files before model invocation", async () => {

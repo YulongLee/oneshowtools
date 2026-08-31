@@ -365,6 +365,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0031_stock_market_provider.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0032_commercial_payment_lifecycle.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0033_intelligent_tool_search.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0034_tool_manuals.sql"), "utf8"));
   const taskColumns = new Set(db.prepare("PRAGMA table_info(tasks)").all().map((item) => item.name));
   if (!taskColumns.has("deleted_at")) db.exec("ALTER TABLE tasks ADD COLUMN deleted_at INTEGER");
   db.exec("CREATE INDEX IF NOT EXISTS tasks_user_visible_created_idx ON tasks(user_id, deleted_at, created_at DESC)");

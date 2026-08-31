@@ -72,6 +72,8 @@ import {
 } from "./domestic-payments.mjs";
 import { effectiveMembership } from "./membership.mjs";
 import { createAncestorTask } from "./ancestor-jobs.mjs";
+import { publicTaskInput } from "./task-presentation.mjs";
+import { listPublicToolManuals, publicToolManual } from "./tool-manuals.mjs";
 import {
   askCustomerSupport,
   getUserSupportConversation,
@@ -1248,7 +1250,7 @@ function dashboard(userId) {
     .all(userId)
     .map(({ inputJson, ...task }) => ({
       ...task,
-      input: JSON.parse(inputJson || "{}"),
+      input: publicTaskInput(JSON.parse(inputJson || "{}"), task.toolSlug),
     }));
   return {
     user: cleanUser(user),
@@ -1471,7 +1473,7 @@ function listTasks(userId) {
     .all(userId)
     .map((task) => ({
       ...task,
-      input: JSON.parse(task.inputJson || "{}"),
+      input: publicTaskInput(JSON.parse(task.inputJson || "{}"), task.toolSlug),
       output: task.outputJson ? JSON.parse(task.outputJson) : null,
       file: task.resultFileId
         ? {
@@ -2498,6 +2500,16 @@ export async function handleApi(request) {
     return json({ tools: storefrontTools(request) }, 200, {
       "cache-control": previewing ? "private, no-store" : "public, max-age=60, stale-while-revalidate=300",
     });
+  }
+  if (path === "/api/tool-manuals" && request.method === "GET") {
+    return json({ manuals: listPublicToolManuals({ homepageOnly: url.searchParams.get("homepage") === "1" }) }, 200, {
+      "cache-control": "public, max-age=60, stale-while-revalidate=300",
+    });
+  }
+  const manualMatch = path.match(/^\/api\/tool-manuals\/([^/]+)$/);
+  if (manualMatch && request.method === "GET") {
+    const manual = publicToolManual(decodeURIComponent(manualMatch[1]));
+    return manual ? json({ manual }, 200, { "cache-control": "public, max-age=60" }) : fail("TOOL_MANUAL_NOT_FOUND", 404);
   }
   if (path === "/api/marketplace/intelligent-search" && request.method === "GET") {
     const query = String(url.searchParams.get("q") || "").trim().slice(0, 300);
