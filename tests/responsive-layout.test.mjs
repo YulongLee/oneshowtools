@@ -44,6 +44,14 @@ test("marketplace marquee stays inside the available workspace width", () => {
   assert.match(workbenchStyles, /\.marketplace-page-redesign \.marketplace-featured \{[^}]*max-width: 100%;[^}]*overflow: hidden/);
   assert.match(workbenchStyles, /\.marketplace-page-redesign \.featured-carousel \{[^}]*max-width: 100%;[^}]*overflow: hidden/);
   assert.match(workbenchStyles, /@keyframes featured-marquee/);
+  assert.match(workbenchStyles, /\.marketplace-hot-tools > header > div > svg \{[^}]*color: #ff673f;[^}]*background: linear-gradient/);
+});
+
+test("smart recommendation header stays concise", () => {
+  assert.match(appSource, /Smart recommendations/);
+  assert.match(appSource, /智能推荐/);
+  assert.doesNotMatch(appSource, /Matched by your intent, not only keywords/);
+  assert.doesNotMatch(appSource, /根据任务意图匹配，不只依赖关键词/);
 });
 
 test("authenticated pages share one content width and responsive gutter system", () => {

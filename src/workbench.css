@@ -410,6 +410,7 @@
 .marketplace-hot-tools > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
 .marketplace-page-redesign .marketplace-featured > header > div,
 .marketplace-hot-tools > header > div { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.marketplace-hot-tools > header > div > svg { padding: 4px; box-sizing: content-box; border-radius: 9px; color: #ff673f; background: linear-gradient(145deg,#fff0e9,#fff7f2); filter: drop-shadow(0 5px 9px rgba(255,103,63,.16)); }
 .marketplace-page-redesign .marketplace-featured > header h2,
 .marketplace-hot-tools > header h2 { margin: 0; font-size: 17px; color: #19243c; }
 .marketplace-page-redesign .marketplace-featured > header span,

@@ -1533,7 +1533,7 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
       </section>
 
       {query.trim().length >= 2 && (smartSearch.loading || smartTools.length > 0 || smartSearch.submitted) && <section className="marketplace-smart-results surface" aria-live="polite">
-        <header><div><Sparkle size={19} weight="fill" /><span><strong>{isEn ? "Smart recommendations" : "智能推荐"}</strong><small>{isEn ? "Matched by your intent, not only keywords" : "根据任务意图匹配，不只依赖关键词"}</small></span></div>{smartSearch.loading && <SpinnerGap className="spin" size={18} />}</header>
+        <header><div><Sparkle size={19} weight="fill" /><strong>{isEn ? "Smart recommendations" : "智能推荐"}</strong></div>{smartSearch.loading && <SpinnerGap className="spin" size={18} />}</header>
         {!smartSearch.loading && smartTools.length > 0 && <div>{smartTools.map(({ result, tool }, index) => <button key={tool.slug} className={index === 0 ? "best" : ""} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={30} /><span><small>{index === 0 ? (isEn ? "BEST MATCH" : "最佳匹配") : `${Math.round((result.confidence || 0) * 100)}%`}</small><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><em>{isEn ? result.reasonEn : result.reasonZh}</em></span><ArrowRight size={17} /></button>)}</div>}
         {!smartSearch.loading && smartSearch.submitted && !smartTools.length && <p>{isEn ? "No suitable tool yet. Try describing the outcome you want." : "暂未找到合适工具，请换一种方式描述你想完成的结果。"}</p>}
       </section>}
