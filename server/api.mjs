@@ -409,6 +409,7 @@ function toolSelect() {
   return `SELECT tools.id, tools.slug, tools.name_zh AS nameZh, tools.name_en AS nameEn,
     tools.description_zh AS descriptionZh, tools.description_en AS descriptionEn,
     tools.category, tools.icon, tools.credit_cost AS creditCost, tools.runtime_kind AS runtimeKind,
+    tools.runtime_url AS runtimeUrl,
     tools.runtime_status AS runtimeStatus, tools.active,
     COALESCE((SELECT lifecycle_state FROM tool_versions WHERE tool_id = tools.id ORDER BY version DESC LIMIT 1),
       CASE WHEN tools.active = 1 THEN 'published' ELSE 'draft' END) AS lifecycleState,

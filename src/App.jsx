@@ -31,9 +31,10 @@ const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
-  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain, ForkKnife,
+  Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain, ForkKnife, UserFocus,
 };
 const commercialToolIconBySlug = {
+  "interview-assistant": "https://mianshiwen.cn/assets/brand/favicon.png",
   "ai-music-studio": "/tool-icons-v2/optimized/ai-music-studio.png",
   "ai-outfit-changer": "/tool-icons-v2/optimized/ai-outfit-changer.png",
   "ai-product-photo": "/tool-icons-v2/optimized/ai-image-generation.png",
@@ -59,10 +60,25 @@ function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false,
   ><Icon className="tool-icon-fallback" size={size} weight={weight} />{iconUrl ? <img src={iconUrl} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}</span>;
 }
 function ToolPrice({ tool, locale = "zh-CN", withUnit = true }) {
+  if (tool?.runtimeKind === "external-link") return <span className="tool-price external"><ArrowRight size={14} />{locale === "en" ? "Independent product" : "独立产品"}</span>;
   const free = Number(tool?.creditCost || 0) === 0;
   return free
     ? <span className="tool-price free"><Gift size={14} weight="duotone" />{locale === "en" ? "Free" : "免费"}</span>
     : <span className="tool-price"><Coins size={14} />{tool.creditCost}{withUnit ? (locale === "en" ? " Credits" : " 积分/次") : ""}</span>;
+}
+function safeExternalToolUrl(tool) {
+  if (tool?.runtimeKind !== "external-link" || !tool?.runtimeUrl) return "";
+  try {
+    const target = new URL(tool.runtimeUrl);
+    return target.protocol === "https:" && target.hostname === "mianshiwen.cn" ? target.href : "";
+  } catch { return ""; }
+}
+function ExternalToolRedirect({ tool, locale, onBack }) {
+  const target = safeExternalToolUrl(tool);
+  useEffect(() => {
+    if (target) location.replace(target);
+  }, [target]);
+  return <main className="external-tool-redirect"><span><Briefcase size={30} weight="duotone" /></span><h1>{locale === "en" ? "Opening Interview Ace AI Assistant" : "正在前往面试稳 AI 助手"}</h1><p>{locale === "en" ? "This is an independent OneShow AI Lab product." : "这是 OneShow AI Lab 旗下的独立求职产品。"}</p>{target ? <a href={target}>{locale === "en" ? "Continue" : "立即前往"}<ArrowRight size={15} /></a> : <button type="button" onClick={onBack}>{locale === "en" ? "Back to marketplace" : "返回工具市场"}</button>}</main>;
 }
 const aiImageToolSlugs = new Set(["ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo", "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer", "sliding-ancestor-generator"]);
 const imageToolSlugs = new Set(["background-remover", "image-compressor", "heic-to-jpg", "image-format-converter", "target-image-compressor", "batch-image-resizer", "social-image-resizer", "favicon-generator", "og-image-generator", "exif-remover", "image-watermark", "nine-grid-image", "id-photo-maker", "image-ocr", "qr-code-reader", ...aiImageToolSlugs]);
@@ -167,6 +183,7 @@ const marketplaceCategories = [
   { id: "developer", icon: Code, accepts: ["developer"] },
   { id: "startup", icon: Lightbulb, accepts: ["startup"] },
   { id: "productivity", icon: Briefcase, accepts: ["document", "productivity"] },
+  { id: "career", icon: UserFocus, accepts: ["career"] },
   { id: "social", icon: ShareNetwork, accepts: ["social"] },
   { id: "data", icon: ChartBar, accepts: ["data"] },
   { id: "searchCategory", icon: Binoculars, accepts: ["search"] },
@@ -184,7 +201,7 @@ const dictionary = {
     login: "登录", signup: "注册", logout: "退出登录", language: "EN", overview: "平台概览", recentTasks: "最近任务", openMarketplace: "打开工具市场",
     creditsBalance: "可用积分", taskCount: "任务总数", fileCount: "文件数量", completed: "已完成", noTasks: "还没有任务", noTasksHint: "从工具市场选择一个工具，创建你的第一个任务。",
     marketplace: "工具市场", marketplaceSub: "按场景发现工具，用一个账户完成从创作到交付的工作。", all: "全部工具", image: "图片工具", document: "文档工具", audio: "音频工具", music: "音乐工具", writing: "写作工具",
-    seo: "SEO 工具", marketing: "营销工具", developer: "开发工具", startup: "创业工具", productivity: "办公工具", social: "社媒工具", data: "数据工具", searchCategory: "AI 搜索", video: "视频工具", agent: "AI Agent",
+    seo: "SEO 工具", marketing: "营销工具", developer: "开发工具", startup: "创业工具", productivity: "办公工具", career: "求职工具", social: "社媒工具", data: "数据工具", searchCategory: "AI 搜索", video: "视频工具", agent: "AI Agent",
     categoryDirectory: "工具分类", availableTools: "个可用工具", marketplaceResults: "工具目录", toolsFound: "个结果", comingSoon: "该分类的工具正在接入", comingSoonHint: "你可以先查看其他分类，或搜索已经上线的能力。",
     ready: "可运行", config: "待配置", creditsUnit: "积分 / 次", run: "打开工具", runTitle: "创建 AI 任务", inputLabel: "任务内容", inputPlaceholder: "输入需要处理的文本或任务要求…",
     attach: "关联文件", createTask: "创建任务", taskCreated: "任务已创建，可在任务中心查看状态。", runtime: "AI Runtime", runtimeSub: "管理平台托管模型、个人模型连接与工具运行方式。",
@@ -221,7 +238,7 @@ const dictionary = {
     login: "Sign in", signup: "Sign up", logout: "Sign out", language: "中文", overview: "Platform overview", recentTasks: "Recent tasks", openMarketplace: "Open marketplace",
     creditsBalance: "Available credits", taskCount: "Total tasks", fileCount: "Files", completed: "Completed", noTasks: "No tasks yet", noTasksHint: "Choose a tool in the marketplace to create your first task.",
     marketplace: "Tool Marketplace", marketplaceSub: "Discover tools by workflow and get work done with one account.", all: "All tools", image: "Image", document: "Documents", audio: "Audio", music: "Music", writing: "Writing",
-    seo: "SEO", marketing: "Marketing", developer: "Developer", startup: "Startup", productivity: "Productivity", social: "Social", data: "Data", searchCategory: "AI Search", video: "Video", agent: "AI Agent",
+    seo: "SEO", marketing: "Marketing", developer: "Developer", startup: "Startup", productivity: "Productivity", career: "Career", social: "Social", data: "Data", searchCategory: "AI Search", video: "Video", agent: "AI Agent",
     categoryDirectory: "Categories", availableTools: "tools available", marketplaceResults: "Tool directory", toolsFound: "results", comingSoon: "Tools in this category are on the way", comingSoonHint: "Browse another category or search the capabilities already available.",
     ready: "Ready", config: "Setup required", creditsUnit: "credits / run", run: "Open tool", runTitle: "Create AI task", inputLabel: "Task content", inputPlaceholder: "Enter the text or instructions to process…",
     attach: "Attach files", createTask: "Create task", taskCreated: "Task created. Track it in Task Center.", runtime: "AI Runtime", runtimeSub: "Manage the hosted model, personal connections, and tool routing.",
@@ -825,6 +842,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 }
 
 function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
+  if (tool.runtimeKind === "external-link") return <ExternalToolRedirect tool={tool} locale={locale} onBack={onBack} />;
   if (tool.slug === "stock-pet") return <StockPetProduct authenticated={authenticated} account={account} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "mbti-personality-test") return <MbtiPersonalityTest tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "hang-la-tier-list-generator") return <TierListGenerator tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
@@ -2711,6 +2729,11 @@ export function App() {
   const createFavoriteCollection = async (name) => { try { applyFavoriteData(await api("/api/favorite-collections", jsonOptions("POST", { name }))); } catch { setToast(t.error); } };
   const openTool = (tool) => {
     if (session) api("/api/marketplace/behavior-events", jsonOptions("POST", { eventKind: "tool_open", toolSlug: tool.slug, category: tool.category, query: query.trim() || null })).catch(() => {});
+    const externalUrl = safeExternalToolUrl(tool);
+    if (externalUrl) {
+      location.assign(externalUrl);
+      return;
+    }
     history.pushState({}, "", `/tools/${tool.slug}`);
     setRouteSlug(tool.slug);
     setRouteTaskId(null);

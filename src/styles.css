@@ -3682,6 +3682,27 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
   .desktop-dialog-platforms,.desktop-dialog-contact { grid-template-columns: 1fr; }
 }
 
+.external-tool-redirect {
+  width: min(620px, calc(100% - 32px));
+  min-height: 360px;
+  margin: 42px auto;
+  padding: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: #17243c;
+  border: 1px solid #e0e6f2;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #fff, #f4f2ff);
+  text-align: center;
+  box-shadow: 0 22px 60px rgba(66, 72, 134, .12);
+}
+.external-tool-redirect > span { display: grid; width: 68px; height: 68px; place-items: center; color: #5a50e6; border-radius: 20px; background: #ebe9ff; }
+.external-tool-redirect h1 { margin: 22px 0 8px; font-size: 28px; }
+.external-tool-redirect p { margin: 0 0 24px; color: #71809b; }
+.external-tool-redirect a, .external-tool-redirect button { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; color: #fff; border: 0; border-radius: 12px; background: linear-gradient(135deg, #315cef, #8247eb); font: inherit; font-weight: 750; text-decoration: none; cursor: pointer; }
+
 .fridge-settings > .fridge-image-option {
   display: flex;
   align-items: flex-start;

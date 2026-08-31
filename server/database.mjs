@@ -516,6 +516,7 @@ export function initializeDatabase() {
     ["tool_stock_pet", "stock-pet", "牛来了桌面宠物", "Niu Lai Le Stock Pet", "把自选行情变成会涨会跌、会提醒的桌面小牛；一次解锁，支持 Windows 与 macOS。", "A lively desktop bull that follows your watchlist, reacts to market moves, and alerts you on Windows and macOS.", "data", "ChartLineUp", 1000, "desktop-product"],
     ["tool_hang_la_tier", "hang-la-tier-list-generator", "夯拉排行榜生成器", "Hang-La Tier List Maker", "上传图片、自定义夯拉等级并拖拽排序，一键导出适合分享的排行榜长图。", "Upload images, customize ranking tiers, drag to rank, and export a share-ready tier list.", "image", "ChartBar", 0, "builtin-tier-list"],
     ["tool_mbti_test", "mbti-personality-test", "MBTI 性格偏好自测", "Personality Preference Self-Test", "通过 64 道原创平衡情境题了解四维偏好，支持模糊维度与答题质量提示，报告可回看。", "Explore four preference dimensions with an original balanced questionnaire, ambiguity handling, response-quality checks, and saved reports.", "developer", "Brain", 0, "builtin-assessment"],
+    ["tool_interview_assistant", "interview-assistant", "面试稳 AI 助手", "Interview Ace AI Assistant", "结合简历、目标岗位和知识资料，提供实时语音识别、截图解题、技术题回答思路与面试复盘。", "Use your resume, target role, and knowledge materials for live transcription, screenshot questions, technical-answer guidance, and interview review.", "career", "UserFocus", 0, "external-link"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
     ["tool_seo", "seo-workbench", "SEO 工作台", "SEO Workspace", "覆盖关键词、内容优化、网站诊断、排名、外链、竞品与报告的证据驱动 SEO 工具。", "Evidence-driven keyword, content, audit, rank, backlink, competitor, and reporting tools.", "seo", "ChartLineUp", 10, "openai"],
@@ -625,6 +626,27 @@ export function initializeDatabase() {
       .run(stockPetPublicationKey, JSON.stringify({ slug: "stock-pet", published: true }), timestamp);
   }
 
+  const interviewAssistantPublicationKey = "tool_interview_assistant_publication_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(interviewAssistantPublicationKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`
+        UPDATE tools SET runtime_url = ?, runtime_status = 'ready', active = 1, updated_at = ?
+        WHERE slug = 'interview-assistant'
+      `).run("https://mianshiwen.cn/", timestamp);
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+        .run(interviewAssistantPublicationKey, JSON.stringify({
+          slug: "interview-assistant",
+          published: true,
+          externalUrl: "https://mianshiwen.cn/",
+        }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   const lyricsStudioMergeKey = "tool_lyrics_music_studio_merge_v1";
   if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(lyricsStudioMergeKey)) {
     db.exec("BEGIN IMMEDIATE");
@@ -649,6 +671,18 @@ export function initializeDatabase() {
         toolSlugs: ["ai-music-studio", "ai-outfit-changer", "ai-fridge-recipe", "mbti-personality-test", "sliding-ancestor-generator"],
       }), timestamp);
   }
+  const interviewAssistantFeaturedKey = "marketplace_interview_assistant_featured_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(interviewAssistantFeaturedKey)) {
+    const featuredRow = db.prepare("SELECT value_json FROM platform_settings WHERE key = ?").get(marketplaceFeaturedKey);
+    let featuredConfig = { toolSlugs: [] };
+    try { featuredConfig = JSON.parse(featuredRow?.value_json || "{}"); } catch { /* Use a safe empty placement. */ }
+    const toolSlugs = Array.isArray(featuredConfig.toolSlugs) ? featuredConfig.toolSlugs.filter(Boolean).slice(0, 20) : [];
+    if (!toolSlugs.includes("interview-assistant") && toolSlugs.length < 20) toolSlugs.push("interview-assistant");
+    db.prepare("UPDATE platform_settings SET value_json = ?, updated_at = ? WHERE key = ?")
+      .run(JSON.stringify({ ...featuredConfig, toolSlugs }), timestamp, marketplaceFeaturedKey);
+    db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+      .run(interviewAssistantFeaturedKey, JSON.stringify({ slug: "interview-assistant", featured: true }), timestamp);
+  }
 
   const plans = billingPlanSeeds;
   const insertPlan = db.prepare(`
@@ -672,6 +706,12 @@ export function refreshRuntimeStatuses() {
     .run(externalReady ? "ready" : "configuration_required", process.env.TOOL_RUNTIME_BASE_URL || null);
   db.prepare("UPDATE tools SET runtime_status = 'ready' WHERE (runtime_kind LIKE 'builtin-%' AND runtime_kind <> 'builtin-music') OR runtime_kind = 'browser'").run();
   db.prepare("UPDATE tools SET runtime_status = 'ready' WHERE runtime_kind = 'desktop-product'").run();
+  db.prepare(`
+    UPDATE tools SET runtime_status = CASE
+      WHEN runtime_url LIKE 'https://mianshiwen.cn/%' THEN 'ready'
+      ELSE 'configuration_required'
+    END WHERE runtime_kind = 'external-link'
+  `).run();
   const musicReady = db.prepare("SELECT 1 AS ready FROM music_provider_configs WHERE status = 'active' LIMIT 1").get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'builtin-music'")
     .run(musicReady ? "ready" : "configuration_required");

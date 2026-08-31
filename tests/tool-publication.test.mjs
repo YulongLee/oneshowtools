@@ -14,7 +14,7 @@ const request = (path, options = {}) => new Request(`http://localhost${path}`, o
 
 test("new installations publish the approved launch tools", async () => {
   const published = db.prepare("SELECT slug FROM tools WHERE active = 1 ORDER BY slug").all().map((tool) => tool.slug);
-  assert.deepEqual(published, ["ai-music-studio", "ai-outfit-changer", "hang-la-tier-list-generator", "mbti-personality-test", "stock-pet"]);
+  assert.deepEqual(published, ["ai-music-studio", "ai-outfit-changer", "hang-la-tier-list-generator", "interview-assistant", "mbti-personality-test", "stock-pet"]);
 
   const storefront = await (await handleApi(request("/api/tools"))).json();
   assert.deepEqual(storefront.tools.map((tool) => tool.slug).sort(), published);
@@ -29,6 +29,29 @@ test("new installations publish the approved launch tools", async () => {
   assert.equal(musicStatusBody.lyrics.slug, "lyrics-generator");
   assert.equal(typeof musicStatusBody.lyrics.creditCost, "number");
   assert.equal(published.includes("lyrics-generator"), false);
+});
+
+test("career marketplace entry opens the official independent interview product", async () => {
+  const storefront = await (await handleApi(request("/api/tools"))).json();
+  const tool = storefront.tools.find((item) => item.slug === "interview-assistant");
+  assert.deepEqual(
+    {
+      category: tool?.category,
+      runtimeKind: tool?.runtimeKind,
+      runtimeStatus: tool?.runtimeStatus,
+      runtimeUrl: tool?.runtimeUrl,
+      creditCost: tool?.creditCost,
+      featuredRank: tool?.featuredRank,
+    },
+    {
+      category: "career",
+      runtimeKind: "external-link",
+      runtimeStatus: "ready",
+      runtimeUrl: "https://mianshiwen.cn/",
+      creditCost: 0,
+      featuredRank: 6,
+    },
+  );
 });
 
 test("publication settings survive database reinitialization", async () => {
