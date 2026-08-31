@@ -3534,7 +3534,8 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .desktop-client-benefits svg { color: #5ee0bb; }
 .desktop-client-hero-actions { margin-top: 26px; display: flex; align-items: center; gap: 18px; }
 .desktop-client-hero-actions button { min-height: 42px; padding: 0 18px; border: 0; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; color: #2a2154; background: #fff; box-shadow: 0 11px 26px rgba(9,12,37,.22); font-size: 10px; font-weight: 800; cursor: pointer; }
-.desktop-client-hero-actions a { display: inline-flex; align-items: center; gap: 5px; color: #c8d9ff; font-size: 9px; font-weight: 700; }
+.desktop-client-hero-actions a,.desktop-client-hero-actions .desktop-hero-link { min-height: auto; padding: 0; border: 0; display: inline-flex; align-items: center; gap: 5px; color: #c8d9ff; background: transparent; box-shadow: none; font-size: 9px; font-weight: 700; }
+.desktop-client-hero-actions .desktop-hero-link:hover { color: #fff; }
 .desktop-client-hero-visual { min-height: 246px; display: grid; place-items: center; }
 .desktop-client-hero-visual > img { width: min(100%,520px); height: 238px; border: 7px solid rgba(255,255,255,.94); border-radius: 15px; object-fit: cover; box-shadow: 0 30px 70px rgba(6,8,31,.42); }
 .desktop-client-platform-float { position: absolute; min-width: 150px; padding: 10px 12px; border: 1px solid rgba(255,255,255,.55); border-radius: 12px; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 9px; color: #1b2540; background: rgba(255,255,255,.93); box-shadow: 0 15px 34px rgba(9,13,42,.24); backdrop-filter: blur(12px); }
@@ -3594,6 +3595,32 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .desktop-release-contact strong { color: #2d3a51; font-size: 9px; }
 .desktop-release-contact small { margin-top: 4px; color: #7f8da1; font-size: 7px; line-height: 1.45; }
 .desktop-release-contact a { grid-column: 1 / -1; min-height: 32px; border: 1px solid #d7dff0; border-radius: 8px; display: flex; align-items: center; justify-content: center; gap: 5px; color: #5c4fd5; background: rgba(255,255,255,.72); font-size: 8px; font-weight: 750; }
+.desktop-release-dialog { width: min(650px,100%); }
+.desktop-release-dialog-body { padding: 22px; display: grid; gap: 16px; }
+.desktop-dialog-status { min-height: 66px; padding: 15px 17px; border: 1px solid #e5e9f4; border-radius: 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; background: linear-gradient(135deg,#f7f5ff,#f5f9ff); }
+.desktop-dialog-status span { display: flex; align-items: center; gap: 8px; color: #5d56dc; font-size: 10px; font-weight: 750; }
+.desktop-dialog-status i { width: 8px; height: 8px; border-radius: 50%; background: #f3a52e; box-shadow: 0 0 0 5px #ffedd2; }
+.desktop-dialog-status strong { color: #293951; font-size: 11px; }
+.desktop-dialog-platforms { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.desktop-dialog-platforms:has(> article:only-child) { grid-template-columns: 1fr; }
+.desktop-dialog-platforms article { min-width: 0; padding: 14px; border: 1px solid #e5eaf2; border-radius: 12px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; }
+.desktop-dialog-platforms article > svg { color: #293b57; }
+.desktop-dialog-platforms article:last-child > svg { color: #1769e8; }
+.desktop-dialog-platforms strong,.desktop-dialog-platforms small { display: block; }
+.desktop-dialog-platforms strong { color: #293951; font-size: 10px; }
+.desktop-dialog-platforms small { margin-top: 4px; color: #8491a4; font-size: 8px; }
+.desktop-dialog-platforms em { padding: 5px 7px; border-radius: 999px; color: #9a681b; background: #fff4df; font-size: 7px; font-style: normal; font-weight: 750; white-space: nowrap; }
+.desktop-dialog-security { margin: 0; padding: 12px 14px; border-radius: 10px; display: flex; align-items: flex-start; gap: 8px; color: #687890; background: #f7f9fc; font-size: 9px; line-height: 1.6; }
+.desktop-dialog-security svg { flex: 0 0 auto; margin-top: 1px; color: #199b73; }
+.desktop-dialog-contact { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.desktop-dialog-contact > div { min-width: 0; padding: 12px; border: 1px solid #e3e8f1; border-radius: 11px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; }
+.desktop-dialog-contact > div > span { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #5d55df; background: #efedff; }
+.desktop-dialog-contact p { min-width: 0; margin: 0; }
+.desktop-dialog-contact small,.desktop-dialog-contact strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-dialog-contact small { color: #8b97a8; font-size: 8px; }
+.desktop-dialog-contact strong { margin-top: 3px; color: #33445d; font-size: 9px; }
+.desktop-dialog-contact button { min-height: 29px; padding: 0 8px; border: 1px solid #dde4ef; border-radius: 7px; display: inline-flex; align-items: center; gap: 4px; color: #5b62d9; background: #fff; font-size: 8px; font-weight: 750; cursor: pointer; }
+.desktop-release-dialog-footer { padding: 14px 22px; border-top: 1px solid #edf0f5; display: flex; justify-content: flex-end; }
 
 @media (max-width: 1320px) {
   .runtime-v3 { grid-template-columns: minmax(0,1fr) 250px; }
@@ -3651,6 +3678,8 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
   .desktop-client-feature-block > div { grid-template-columns: 1fr; }
   .desktop-client-help { align-items: flex-start; flex-wrap: wrap; }
   .desktop-client-help a { margin-left: 23px; }
+  .desktop-dialog-status { align-items: flex-start; flex-direction: column; }
+  .desktop-dialog-platforms,.desktop-dialog-contact { grid-template-columns: 1fr; }
 }
 
 .fridge-settings > .fridge-image-option {
