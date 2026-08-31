@@ -281,7 +281,6 @@ export async function runToolAction(request, user, tool) {
   if (available < tool.creditCost) throw toolError("INSUFFICIENT_CREDITS", 402);
   const alwaysCreatesFile = tool.slug === "background-remover" || tool.slug === "image-compressor"
     || tool.slug === "hang-la-tier-list-generator"
-    || tool.slug === "ai-fridge-recipe"
     || imageToolSlugs.has(tool.slug) || aiImageToolSlugs.has(tool.slug) || pdfToolSlugSet.has(tool.slug)
     || mediaToolSlugs.has(tool.slug) || dataFileToolSlugs.has(tool.slug);
   if (alwaysCreatesFile) assertUserFileCapacity(user.id, tool.slug === "sliding-ancestor-generator" ? 10 : 1);

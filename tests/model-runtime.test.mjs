@@ -62,6 +62,7 @@ const {
   listPlatformModelConfigurations,
   listToolModelPreferences,
   resolveModelRequestTimeout,
+  supportsLatencyOptimizedThinking,
   runtimeSummary,
   savePlatformModelConfiguration,
   setToolModelPreference,
@@ -91,6 +92,12 @@ test("model requests support a longer capability-specific timeout with safety bo
   assert.equal(resolveModelRequestTimeout(1_000, {}), 5_000);
   assert.equal(resolveModelRequestTimeout(900_000, {}), 180_000);
   assert.equal(resolveModelRequestTimeout(null, { MODEL_REQUEST_TIMEOUT_MS: "not-a-number" }), 45_000);
+});
+
+test("latency optimization disables thinking only for supported DashScope Qwen models", () => {
+  assert.equal(supportsLatencyOptimizedThinking("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.7-flash"), true);
+  assert.equal(supportsLatencyOptimizedThinking("https://api.openai.com/v1", "qwen3.7-flash"), false);
+  assert.equal(supportsLatencyOptimizedThinking("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-vl-plus"), false);
 });
 
 test("managed runtime returns a provider-neutral result and redacted status", async () => {

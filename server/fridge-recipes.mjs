@@ -80,9 +80,9 @@ function buildPrompt({ locale, dietaryPreference, allergies, maxCookTime, servin
 1. 只记录图片中可见或高概率可确认的食材；模糊包装、遮挡物要降低 confidence，不猜品牌。
 2. ingredients 最多 40 项，按 protein、vegetable、staple、dairy、fruit、condiment、other 分类；quantity 用自然语言描述。
 3. 推荐 6 道差异明显的食谱，优先消耗现有和容易过期食材。matchPercent 必须根据已有/缺少食材真实计算，不可全部写 100。
-4. 每道食谱包含完整步骤、用到的食材、缺少食材、时间、份数、单份热量估算、难度和标签。
+4. 每道食谱包含 4–6 个简洁但可执行的步骤；每步 detail 不超过 80 个中文字符。包含用到的食材、缺少食材、时间、份数、单份热量估算、难度和标签。
 5. 缺少食材集中写入 shoppingList；不确定是否变质的内容写入 safetyNotes。不要提供医疗建议。
-6. imagePrompt 为第一道菜生成商业化菜品图的英文提示词：单盘成品、自然光、真实中式家常菜摄影、无文字、无水印、1:1。
+6. imagePrompt 只需一句简短英文菜品摄影描述。
 7. 若不是冰箱/橱柜/食材照片，返回 {"isFridge":false,"ingredients":[],"recipes":[]}。
 
 饮食偏好：${dietaryPreference || "不限"}
@@ -109,8 +109,8 @@ export async function analyzeFridgeRecipes(form, {
   let optimized;
   try {
     optimized = await sharp(source, { limitInputPixels: 32_000_000 })
-      .rotate().resize({ width: 1440, height: 1440, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 86, mozjpeg: true }).toBuffer();
+      .rotate().resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 78, chromaSubsampling: "4:2:0" }).toBuffer();
   } catch { throw fridgeError("IMAGE_INVALID", 422); }
 
   const locale = String(form.get("locale") || "zh") === "en" ? "en" : "zh";
@@ -118,6 +118,7 @@ export async function analyzeFridgeRecipes(form, {
   const allergies = text(form.get("allergies"), 180);
   const maxCookTime = number(form.get("maxCookTime") || 45, 10, 180);
   const servings = number(form.get("servings") || 2, 1, 12);
+  const generateDishImage = String(form.get("generateDishImage") || "false") === "true";
   const result = await modelInvoker({
     userId,
     connectionId: modelConnectionId,
@@ -126,19 +127,25 @@ export async function analyzeFridgeRecipes(form, {
     instruction: "Return valid JSON only. Never include markdown fences.",
     prompt: buildPrompt({ locale, dietaryPreference, allergies, maxCookTime, servings }),
     imageDataUrl: `data:image/jpeg;base64,${optimized.toString("base64")}`,
-    timeoutMs: 120_000,
+    timeoutMs: 75_000,
+    maxOutputTokens: 3200,
+    latencyOptimized: true,
   });
   const output = sanitizeAnalysis(parseJson(result.text), result.modelId);
   const primary = output.recipes[0];
-  const generated = await imageGenerator(primary.imagePrompt || `Photorealistic home-cooked dish: ${primary.name}, natural daylight, single plate, no text, no watermark`);
+  const generated = generateDishImage
+    ? await imageGenerator(primary.imagePrompt || `Photorealistic home-cooked dish: ${primary.name}, natural daylight, single plate, no text, no watermark`)
+    : null;
   return {
-    output: { ...output, primaryRecipeId: primary.id, generatedImageModel: true },
+    output: { ...output, primaryRecipeId: primary.id, generatedImageModel: Boolean(generated) },
     safeInput: {
       fileName: text(file.name || "fridge-photo", 160), fileSize: file.size,
-      dietaryPreference, allergies: allergies ? "provided" : "not_provided", maxCookTime, servings,
+      dietaryPreference, allergies: allergies ? "provided" : "not_provided", maxCookTime, servings, generateDishImage,
     },
-    buffer: generated.buffer,
-    name: `fridge-recipe-${Date.now()}.${generated.extension || "png"}`,
-    mimeType: generated.mimeType || "image/png",
+    ...(generated ? {
+      buffer: generated.buffer,
+      name: `fridge-recipe-${Date.now()}.${generated.extension || "png"}`,
+      mimeType: generated.mimeType || "image/png",
+    } : {}),
   };
 }

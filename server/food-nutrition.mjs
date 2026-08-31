@@ -80,7 +80,7 @@ ${verification ? "这是一次食物识别复核。第一次识别可能过于�
 
 任务规则：
 1. 识别每一种可见食物，并估算可见份量、克重、热量、蛋白质、碳水、脂肪、膳食纤维和钠。
-2. 所有营养值都必须同时给出 estimate、min、max。区间必须真实反映份量、烹饪油、酱汁和隐藏配料的不确定性，不能伪造精确值。
+2. 每项营养值只返回一个最合理的数字估算；服务端会根据 confidence 自动生成误差区间。
 3. 总计应覆盖整张图片中准备食用的食物；餐具和包装不要计入。
 4. 看不清或无法确认的菜品要降低 confidence，并写入 hiddenUncertainties；不要臆测品牌、疾病或食用者身份。
 5. tips 只给普通、温和、非医疗性的饮食记录建议，不诊断、不提供治疗或减肥处方。
@@ -91,8 +91,8 @@ ${verification ? "这是一次食物识别复核。第一次识别可能过于�
 用餐场景：${mealContext || "unspecified"}
 界面语言：${locale === "en" ? "English" : "简体中文"}
 
-JSON Schema：
-{"isFood":true,"mealName":"","summary":"","confidence":"high|medium|low","total":{"caloriesKcal":{"estimate":0,"min":0,"max":0},"proteinG":{"estimate":0,"min":0,"max":0},"carbsG":{"estimate":0,"min":0,"max":0},"fatG":{"estimate":0,"min":0,"max":0},"fiberG":{"estimate":0,"min":0,"max":0},"sodiumMg":{"estimate":0,"min":0,"max":0}},"items":[{"name":"","portionDescription":"","estimatedWeightG":0,"caloriesKcal":{"estimate":0,"min":0,"max":0},"proteinG":{"estimate":0,"min":0,"max":0},"carbsG":{"estimate":0,"min":0,"max":0},"fatG":{"estimate":0,"min":0,"max":0},"fiberG":{"estimate":0,"min":0,"max":0},"sodiumMg":{"estimate":0,"min":0,"max":0},"confidence":"high|medium|low","assumptions":[]}],"visibleEvidence":[],"hiddenUncertainties":[],"tips":[]}`;
+JSON Schema（所有营养字段均为数字）：
+{"isFood":true,"mealName":"","summary":"","confidence":"high|medium|low","total":{"caloriesKcal":0,"proteinG":0,"carbsG":0,"fatG":0,"fiberG":0,"sodiumMg":0},"items":[{"name":"","portionDescription":"","estimatedWeightG":0,"caloriesKcal":0,"proteinG":0,"carbsG":0,"fatG":0,"fiberG":0,"sodiumMg":0,"confidence":"high|medium|low","assumptions":[]}],"visibleEvidence":[],"hiddenUncertainties":[],"tips":[]}`;
 }
 
 export async function analyzeFoodNutrition(form, { userId = null, modelConnectionId = null, modelInvoker = invokeVisionModel } = {}) {
@@ -104,8 +104,8 @@ export async function analyzeFoodNutrition(form, { userId = null, modelConnectio
   let optimized;
   try {
     optimized = await sharp(source, { limitInputPixels: 24_000_000 })
-      .rotate().resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 84, mozjpeg: true }).toBuffer();
+      .rotate().resize({ width: 960, height: 960, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 78, chromaSubsampling: "4:2:0" }).toBuffer();
   } catch { throw nutritionError("IMAGE_INVALID", 422); }
 
   const portionHint = String(form.get("portionHint") || "").trim().slice(0, 300);
@@ -119,7 +119,9 @@ export async function analyzeFoodNutrition(form, { userId = null, modelConnectio
     instruction: "Return valid JSON only. Never include markdown fences.",
     prompt: buildPrompt({ portionHint, mealContext, locale, verification }),
     imageDataUrl: `data:image/jpeg;base64,${optimized.toString("base64")}`,
-    timeoutMs: 90_000,
+    timeoutMs: 60_000,
+    maxOutputTokens: 1800,
+    latencyOptimized: true,
   });
   let result = await invoke(false);
   let raw = parseJson(result.text);

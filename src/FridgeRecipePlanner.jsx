@@ -37,6 +37,7 @@ export function FridgeRecipePlanner({ tool, task, historyTasks = [], locale = "z
   const [allergies, setAllergies] = useState("");
   const [maxCookTime, setMaxCookTime] = useState("45");
   const [servings, setServings] = useState("2");
+  const [generateDishImage, setGenerateDishImage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(task?.output || null);
@@ -73,6 +74,7 @@ export function FridgeRecipePlanner({ tool, task, historyTasks = [], locale = "z
       const form = new FormData();
       form.set("file", file); form.set("locale", locale); form.set("dietaryPreference", dietaryPreference);
       form.set("allergies", allergies); form.set("maxCookTime", maxCookTime); form.set("servings", servings);
+      form.set("generateDishImage", String(generateDishImage));
       const response = await fetch(`/api/tool-actions/${tool.slug}`, { method: "POST", credentials: "include", body: form });
       const data = await response.json().catch(() => ({}));
       const code = data?.error?.code || "REQUEST_FAILED";
@@ -119,10 +121,11 @@ export function FridgeRecipePlanner({ tool, task, historyTasks = [], locale = "z
           <label><span>{zh ? "饮食偏好" : "Diet"}</span><input value={dietaryPreference} onChange={(event) => setDietaryPreference(event.target.value)} placeholder={zh ? "例如：少油、素食、高蛋白" : "e.g. vegetarian, high protein"} maxLength={100} /></label>
           <label><span>{zh ? "过敏原 / 忌口" : "Allergies"}</span><input value={allergies} onChange={(event) => setAllergies(event.target.value)} placeholder={zh ? "例如：花生、海鲜" : "e.g. peanuts, shellfish"} maxLength={180} /></label>
           <div><label><span>{zh ? "最长时间" : "Max time"}</span><select value={maxCookTime} onChange={(event) => setMaxCookTime(event.target.value)}><option value="20">20 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="90">90 min</option></select></label><label><span>{zh ? "用餐人数" : "Servings"}</span><span className="serving-stepper"><button type="button" onClick={() => setServings(String(Math.max(1, Number(servings) - 1)))}><Minus /></button><b>{servings}</b><button type="button" onClick={() => setServings(String(Math.min(12, Number(servings) + 1)))}><Plus /></button></span></label></div>
+          <label className="fridge-image-option"><input type="checkbox" checked={generateDishImage} onChange={(event) => setGenerateDishImage(event.target.checked)} /><span><b>{zh ? "同时生成菜品示意图" : "Generate a dish image"}</b><small>{zh ? "默认关闭以最快返回；开启后需要额外等待图片模型" : "Off by default for the fastest result; image generation adds waiting time"}</small></span></label>
         </div>
         {error && <p className="fridge-error"><Warning size={18} />{error}</p>}
         <button className="fridge-submit" type="button" disabled={busy} onClick={submit}>{busy ? <SpinnerGap className="spin" /> : <Sparkle />} {authenticated ? (busy ? (zh ? "正在识别并生成食谱…" : "Analyzing…") : (zh ? "识别食材并生成食谱" : "Generate recipes")) : (zh ? "登录后开始" : "Sign in to start")}</button>
-        <p className="fridge-privacy"><ShieldCheck size={15} />{zh ? "原始冰箱照片仅用于识别；生成的菜品图与结果会保存在你的任务和文件中心。" : "The source photo is used for recognition; results and the generated dish image are saved to your account."}</p>
+        <p className="fridge-privacy"><ShieldCheck size={15} />{zh ? "原始照片仅用于识别；食谱会保存到任务中心，勾选时菜品图会进入文件中心。" : "The source photo is used for recognition. Recipes go to Tasks; optional dish images go to Files."}</p>
       </div>
 
       <div className="fridge-result-column">

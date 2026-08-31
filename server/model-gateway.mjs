@@ -477,7 +477,15 @@ function normalizePayload(payload, protocol) {
   };
 }
 
-function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId = null, messages = null) {
+export function supportsLatencyOptimizedThinking(baseUrl, modelId) {
+  try {
+    const url = baseUrl instanceof URL ? baseUrl : new URL(baseUrl);
+    return url.hostname.endsWith("dashscope.aliyuncs.com") && /^qwen3\.[5-9]/i.test(String(modelId || ""));
+  } catch { return false; }
+}
+
+function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId = null, messages = null, maxOutputTokens = null, latencyOptimized = false) {
+  const outputLimit = Number.isFinite(Number(maxOutputTokens)) ? Math.min(8192, Math.max(64, Number(maxOutputTokens))) : null;
   const root = safeBase.href.replace(/\/$/, "");
   if (protocol === "anthropic") {
     const suffix = safeBase.pathname.replace(/\/$/, "").endsWith("/v1") ? "messages" : "v1/messages";
@@ -490,7 +498,7 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, wo
       },
       body: {
         model: modelId,
-        max_tokens: Math.min(Math.max(Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 4096), 64), 8192),
+        max_tokens: outputLimit || Math.min(Math.max(Number(process.env.MODEL_MAX_OUTPUT_TOKENS || 4096), 64), 8192),
         system: instruction,
         messages: messages || [{ role: "user", content: text }],
       },
@@ -506,6 +514,8 @@ function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, wo
     body: {
       model: modelId,
       messages: [{ role: "system", content: instruction }, ...(messages || [{ role: "user", content: text }])],
+      ...(outputLimit ? { max_tokens: outputLimit } : {}),
+      ...(latencyOptimized && supportsLatencyOptimizedThinking(safeBase, modelId) ? { enable_thinking: false } : {}),
     },
   };
 }
@@ -515,14 +525,14 @@ export function resolveModelRequestTimeout(timeoutMs = null, env = process.env) 
   return Math.min(180_000, Math.max(5_000, Number.isFinite(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT_MS));
 }
 
-async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, messages = null, signal, timeoutMs = null }) {
+async function requestModel({ baseUrl, protocol = "openai", apiKey, modelId, workspaceId = null, instruction, text, messages = null, signal, timeoutMs = null, maxOutputTokens = null, latencyOptimized = false }) {
   const controller = new AbortController();
   const requestTimeout = resolveModelRequestTimeout(timeoutMs);
   const timeout = setTimeout(() => controller.abort(), requestTimeout);
   signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     const safeBase = await assertSafeEndpoint(baseUrl);
-    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId, messages);
+    const request = modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId, messages, maxOutputTokens, latencyOptimized);
     const response = await fetch(request.endpoint, {
       method: "POST",
       redirect: "manual",
@@ -787,6 +797,8 @@ export async function invokeVisionModel({
   connectionId = null,
   signal,
   timeoutMs = null,
+  maxOutputTokens = null,
+  latencyOptimized = false,
 }) {
   if (!userId) throw gatewayError("MODEL_USER_REQUIRED", 400);
   const route = resolveRoute(userId, connectionId);
@@ -813,6 +825,8 @@ export async function invokeVisionModel({
       messages: [{ role: "user", content }],
       signal,
       timeoutMs,
+      maxOutputTokens,
+      latencyOptimized,
     });
     db.prepare(`
       UPDATE model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,

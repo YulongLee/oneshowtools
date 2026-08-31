@@ -40,11 +40,14 @@ test("AI 冰箱食谱输出可执行食谱并生成菜品图", async () => {
   const image = await sampleImage();
   form.set("file", new File([image], "fridge.jpg", { type: "image/jpeg" }));
   form.set("locale", "zh"); form.set("maxCookTime", "45"); form.set("servings", "2");
+  form.set("generateDishImage", "true");
   let receivedCapability = "";
   const result = await analyzeFridgeRecipes(form, {
     userId: "user-test",
     modelInvoker: async (request) => {
       receivedCapability = request.capability;
+      assert.equal(request.latencyOptimized, true);
+      assert.equal(request.maxOutputTokens, 3200);
       return { text: JSON.stringify(modelPayload), modelId: "OneShowModel" };
     },
     imageGenerator: async () => ({ buffer: await sharp(image).resize(512, 512).png().toBuffer(), mimeType: "image/png", extension: "png" }),
@@ -56,6 +59,22 @@ test("AI 冰箱食谱输出可执行食谱并生成菜品图", async () => {
   assert.equal(result.output.recipes[0].name, "西红柿炒鸡蛋");
   assert.ok(result.buffer.length > 100);
   assert.equal(result.safeInput.allergies, "not_provided");
+});
+
+test("AI 冰箱食谱默认跳过慢速菜品图以优先返回结果", async () => {
+  const form = new FormData();
+  const image = await sampleImage();
+  form.set("file", new File([image], "fridge-fast.jpg", { type: "image/jpeg" }));
+  let imageCalls = 0;
+  const result = await analyzeFridgeRecipes(form, {
+    userId: "user-fast",
+    modelInvoker: async () => ({ text: JSON.stringify(modelPayload), modelId: "OneShowModel" }),
+    imageGenerator: async () => { imageCalls += 1; throw new Error("should not run"); },
+  });
+  assert.equal(imageCalls, 0);
+  assert.equal(result.buffer, undefined);
+  assert.equal(result.output.generatedImageModel, false);
+  assert.equal(result.safeInput.generateDishImage, false);
 });
 
 test("非冰箱或未识别食材时返回明确错误", async () => {
