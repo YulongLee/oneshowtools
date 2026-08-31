@@ -121,12 +121,35 @@ final result: passed
 
 final result: passed
 
-## AI Runtime desktop client page QA
+## AI Runtime desktop client commercial redesign QA
 
-- Reference: supplied OneShowTools AI Runtime desktop-client screenshot.
-- Verified states: authenticated desktop layout, download entry navigation, coming-soon button feedback, and 760 px responsive layout.
-- Visual comparison: matched the reference hierarchy, Runtime tabs, platform cards, feature strip, status messaging, sidebar entry, and right-side Runtime context rail while preserving the current product design system.
-- Product truthfulness: no fake installer links are exposed; macOS and Windows are marked as in development, and iPhone/iPad are identified as a separate future mobile roadmap.
-- Functional checks: production build passed; 211 automated tests passed; both coming-soon buttons return a clear status message.
+- Source visual truth: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-27076033-4e5f-43ca-a978-f25485bc0015.png` (user-provided previous implementation, 1574 × 958 px).
+- Implementation screenshot: `artifacts/design-qa/desktop-downloads-commercial-1574.png` (browser-rendered full page, 931 × 1255 px after the in-app browser's 0.591 display scaling).
+- Combined comparison input: `artifacts/design-qa/desktop-downloads-before-after.png` (1824 × 744 px, both sides normalized to 900 × 720 containment boxes).
+- CSS viewport and state: authenticated `?view=downloads`, desktop override 1574 × 958; responsive overflow also checked at an 820 × 900 override. The browser exposed 1211 CSS px at the desktop override and 631 CSS px at the responsive override because of its display scale.
+
+### Findings and comparison history
+
+- Pass 1 — P1: the page repeated two oversized image cards with unrelated artwork, weak hierarchy, tiny supporting copy, and duplicated security messaging. The left navigation also gave an unfinished client equal weight to core product areas.
+- Fix: removed the left `下载客户端` navigation item while retaining the global header entry and the AI Runtime tab; replaced the duplicate artwork cards with one product-led hero, compact platform selectors, a release plan, truthful launch states, and four outcome-oriented capability cards.
+- Pass 2 — P2: the primary hero action implied a notification subscription that was not persisted. It was renamed to `查看发布状态`, while the click continues to show the real development status.
+- Pass 3: the rendered implementation and source were inspected together. No actionable P0, P1, or P2 findings remain.
+
+### Required fidelity surfaces
+
+- Typography: the new hero establishes a clear headline, supporting copy, platform labels, and readable feature descriptions instead of uniformly small UI text.
+- Spacing and layout rhythm: the main hero, platform panel, capability panel, and right release rail use the existing Runtime container and token rhythm; desktop and responsive layouts have no document-level horizontal overflow.
+- Colors and tokens: the dark indigo hero, purple/blue states, green completion states, white surfaces, radii, and shadows stay within the established OneShowTools commercial system.
+- Image quality: the single hero visual reuses the existing production Runtime artwork at its intended aspect ratio; the unrelated dashboard artwork was removed. Platform marks use the existing Phosphor icon system.
+- Copy and product truth: macOS and Windows remain clearly marked as under development, no fake installer is exposed, official distribution is stated, and iPhone/iPad remain a future roadmap item.
+
+### Interaction and accessibility checks
+
+- The left navigation contains no `下载客户端` item; the top download button and Runtime `桌面客户端` tab remain available.
+- `查看发布状态` and both platform actions return the development-status feedback.
+- The desktop page has no horizontal overflow; the 820 × 900 responsive check also returned `scrollWidth === clientWidth`.
+- Browser console errors/warnings: none.
+- Production build: passed.
+- Automated tests: 211 passed, 0 failed.
 
 final result: passed
