@@ -46,6 +46,7 @@ import {
   saveStockMarketProviderConfiguration, stockMarketProviderConfiguration, testStockMarketProviderConfiguration,
 } from "./stock-market-provider.mjs";
 import { normalizeMainlandPhone, phoneIdentityHash } from "./sms-provider.mjs";
+import { saveToolSearchProfile, searchProfileForTool } from "./tool-search.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -737,7 +738,7 @@ function listTools() {
     FROM tools t LEFT JOIN tool_branding b ON b.tool_id = t.id ORDER BY t.name_en
   `).all().map((tool) => {
     const featuredIndex = featuredSlugs.indexOf(tool.slug);
-    return { ...tool, active: Boolean(tool.active), featuredRank: featuredIndex >= 0 ? featuredIndex + 1 : null };
+    return { ...tool, active: Boolean(tool.active), featuredRank: featuredIndex >= 0 ? featuredIndex + 1 : null, searchProfile: searchProfileForTool(tool.id) };
   });
 }
 
@@ -790,6 +791,21 @@ async function toolCommands(request, path, context) {
     `).run(key, safeJson(next), now());
     richAudit({ request, actor: context.user, roles: context.roles, permission: "tools.manage", action: "admin.marketplace.featured.update", targetType: "marketplace_placement", targetId: "featured", reason, before: previous, after: next });
     return json({ ok: true, toolIds });
+  }
+  const searchProfileMatch = path.match(/^\/api\/admin\/v1\/tools\/([^/]+)\/search-profile$/);
+  if (searchProfileMatch && request.method === "PUT") {
+    const denied = requirePermission(context, "tools.manage"); if (denied) return denied;
+    const tool = db.prepare("SELECT id, slug FROM tools WHERE id = ?").get(searchProfileMatch[1]);
+    if (!tool) return fail("TOOL_NOT_FOUND", 404);
+    const data = await parseBody(request);
+    const reason = String(data.reason || "").trim().slice(0, 500);
+    if (!reason) return fail("REASON_REQUIRED");
+    const fields = ["aliasesZh", "aliasesEn", "exampleQueries", "capabilities", "exclusions"];
+    if (fields.some((field) => !Array.isArray(data[field]) || data[field].length > 40 || data[field].some((item) => typeof item !== "string" || !item.trim() || item.length > 120))) return fail("INVALID_SEARCH_PROFILE");
+    const previous = searchProfileForTool(tool.id);
+    const next = saveToolSearchProfile(tool.id, data, context.user.id);
+    richAudit({ request, actor: context.user, roles: context.roles, permission: "tools.manage", action: "admin.tool.search_profile.update", targetType: "tool", targetId: tool.id, reason, before: previous, after: next });
+    return json({ ok: true, searchProfile: next });
   }
   let brandingMatch = path.match(/^\/api\/admin\/v1\/tools\/([^/]+)\/branding$/);
   if (brandingMatch && request.method === "PUT") {

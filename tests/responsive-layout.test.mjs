@@ -19,6 +19,16 @@ test("music studio responds to its actual container without horizontal overflow"
   assert.match(styles, /\.music-track \{ min-width: 0;[\s\S]*grid-template-columns: 52px minmax\(0,1fr\)/);
 });
 
+test("shared tools use the commercial hero, journey, and responsive workspace shell", () => {
+  assert.match(appSource, /commercial-tool-page/);
+  assert.match(appSource, /commercial-tool-hero/);
+  assert.match(appSource, /commercial-tool-journey/);
+  assert.match(appSource, /commercial-tool-workspace/);
+  assert.match(styles, /\.commercial-tool-page \{[^}]*max-width: none/);
+  assert.match(styles, /\.commercial-tool-journey \{[^}]*grid-template-columns: repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(styles, /@media \(max-width: 680px\)[\s\S]*\.commercial-tool-journey \{ grid-template-columns: 1fr;/);
+});
+
 test("commercial homepage prevents overflow and stacks its capability cards on narrow screens", () => {
   assert.match(styles, /html, body, #root \{[^}]*min-width: 0;[^}]*overflow-x: clip/);
   assert.match(styles, /\.commercial-header \.brand-lockup \{[^}]*padding: 0/);

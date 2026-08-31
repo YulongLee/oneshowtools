@@ -76,6 +76,7 @@ const copy = {
     pricingReason: "本次调整原因", savePricing: "保存计费设置", pricingSaved: "应用计费设置已保存",
     featuredPlacement: "精选轮播广告位", featuredPlacementHint: "选择并排序需要在工具市场持续滚动展示的产品；配置保存在数据库中，版本更新不会重置。",
     featuredEmpty: "暂未选择广告产品", addFeatured: "加入广告位", removeFeatured: "移出广告位", saveFeatured: "保存广告位", featuredSaved: "精选广告位已保存",
+    configureSearch: "配置智能搜索", searchProfileTitle: "智能搜索画像", searchProfileHint: "配置用户可能使用的自然语言。每行一项，部署更新不会覆盖。", aliasesZh: "中文别名 / 意图", aliasesEn: "英文别名 / 意图", exampleQueries: "示例问题", capabilities: "能力关键词", exclusions: "排除关键词", searchPriority: "搜索优先级", searchEnabled: "参与智能搜索", saveSearchProfile: "保存搜索画像", searchProfileSaved: "智能搜索画像已保存",
     orders: "订单", subscriptions: "订阅", invoices: "发票", refunds: "退款",
     disputes: "争议", exceptions: "对账异常", approvals: "待审批", approve: "批准",
     jobs: "作业队列", alerts: "运营告警", retry: "重试", policies: "政策版本",
@@ -169,6 +170,7 @@ const copy = {
     pricingReason: "Reason for change", savePricing: "Save pricing", pricingSaved: "App pricing saved",
     featuredPlacement: "Featured carousel placement", featuredPlacementHint: "Choose and order the products shown in the continuously moving marketplace placement. This configuration persists across releases.",
     featuredEmpty: "No featured products selected", addFeatured: "Add to placement", removeFeatured: "Remove from placement", saveFeatured: "Save placement", featuredSaved: "Featured placement saved",
+    configureSearch: "Configure search", searchProfileTitle: "Intelligent search profile", searchProfileHint: "Add natural-language phrases users may use. One per line; releases never overwrite this configuration.", aliasesZh: "Chinese aliases / intents", aliasesEn: "English aliases / intents", exampleQueries: "Example queries", capabilities: "Capability keywords", exclusions: "Excluded keywords", searchPriority: "Search priority", searchEnabled: "Include in intelligent search", saveSearchProfile: "Save search profile", searchProfileSaved: "Search profile saved",
     orders: "Orders", subscriptions: "Subscriptions", invoices: "Invoices", refunds: "Refunds",
     disputes: "Disputes", exceptions: "Exceptions", approvals: "Approvals", approve: "Approve",
     jobs: "Jobs", alerts: "Alerts", retry: "Retry", policies: "Policies", deletions: "Deletion queue",
@@ -1040,7 +1042,7 @@ function CommerceView({ data, locale, onApprove, canManage, onProviderTest, onPr
         {!sections[tab]?.length && <tr><td colSpan="5" className="admin-empty">{t.noData}</td></tr>}</tbody></table></div>}</section></div>;
 }
 
-function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing, onFeaturedPlacement }) {
+function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onPricing, onFeaturedPlacement, onSearchProfile }) {
   const t = copy[locale];
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -1050,6 +1052,8 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
   const [pricingTool, setPricingTool] = useState(null);
   const [pricing, setPricing] = useState({ mode: "paid", creditCost: 1, reason: "" });
   const [featuredIds, setFeaturedIds] = useState([]);
+  const [searchTool, setSearchTool] = useState(null);
+  const [searchDraft, setSearchDraft] = useState({ aliasesZh: "", aliasesEn: "", exampleQueries: "", capabilities: "", exclusions: "", searchPriority: 0, enabled: true, reason: "" });
   const [saving, setSaving] = useState(false);
   const tools = data?.tools || [];
   useEffect(() => {
@@ -1116,6 +1120,21 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
     setSaving(true);
     try { await onFeaturedPlacement(featuredIds); } finally { setSaving(false); }
   };
+  const openSearchProfile = (tool) => {
+    const profile = tool.searchProfile || {};
+    setSearchTool(tool); setSearchDraft({
+      aliasesZh: (profile.aliasesZh || []).join("\n"), aliasesEn: (profile.aliasesEn || []).join("\n"),
+      exampleQueries: (profile.exampleQueries || []).join("\n"), capabilities: (profile.capabilities || []).join("\n"),
+      exclusions: (profile.exclusions || []).join("\n"), searchPriority: Number(profile.searchPriority || 0), enabled: profile.enabled !== false, reason: "",
+    });
+  };
+  const saveSearchProfile = async (event) => {
+    event.preventDefault(); if (!searchDraft.reason.trim()) return;
+    const lines = (value) => String(value || "").split(/[\n,，]/).map((item) => item.trim()).filter(Boolean);
+    setSaving(true);
+    try { if (await onSearchProfile(searchTool.id, { ...searchDraft, aliasesZh: lines(searchDraft.aliasesZh), aliasesEn: lines(searchDraft.aliasesEn), exampleQueries: lines(searchDraft.exampleQueries), capabilities: lines(searchDraft.capabilities), exclusions: lines(searchDraft.exclusions), searchPriority: Number(searchDraft.searchPriority || 0), reason: searchDraft.reason.trim() })) setSearchTool(null); }
+    finally { setSaving(false); }
+  };
   return <div className="admin-tool-publication-page">
     <section className="admin-tool-publication-head">
       <div><small>TOOL PUBLICATION</small><h2>{t.publicationTitle}</h2><p>{t.publicationHint}</p></div>
@@ -1132,7 +1151,7 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
     <div className="admin-tool-admin-grid">{visibleTools.map((tool) => { const state = publicationState(tool); return <article className={`admin-tool-admin-card is-${state}`} key={tool.id}>
       <header><span className="admin-product-icon" style={{ color: tool.iconColor || "#2768EB", background: tool.iconBackground || "#EDF4FF" }}>{tool.iconUrl ? <img src={tool.iconUrl} alt="" /> : <Wrench size={22} />}</span><div><small>{tool.slug}</small><h3>{locale === "en" ? tool.nameEn : tool.nameZh}</h3></div><i className={`admin-badge ${state}`}><span />{state === "published" ? t.online : state === "testing" ? t.testing : t.offline}</i></header>
       <p>{locale === "en" ? tool.descriptionEn : tool.descriptionZh}</p><div className="admin-tool-meta"><div><small>{t.cost}</small><strong className={Number(tool.creditCost || 0) === 0 ? "is-free" : ""}>{Number(tool.creditCost || 0) === 0 ? t.freeTool : tool.creditCost}</strong></div><div><small>{t.runtime}</small><strong>{tool.runtimeStatus}</strong></div><div><small>Health</small><strong>{tool.healthStatus || "—"}</strong></div></div>
-      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button className={featuredIds.includes(tool.id) ? "featured-active" : ""} onClick={() => toggleFeatured(tool.id)}>{featuredIds.includes(tool.id) ? t.removeFeatured : t.addFeatured}</button><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
+      <footer className="admin-tool-publication-action"><span>{tool.category}</span><div><button className={featuredIds.includes(tool.id) ? "featured-active" : ""} onClick={() => toggleFeatured(tool.id)}>{featuredIds.includes(tool.id) ? t.removeFeatured : t.addFeatured}</button><button onClick={() => openSearchProfile(tool)}>{t.configureSearch}</button><button onClick={() => openPricing(tool)}>{t.configurePricing}</button><button onClick={() => openBranding(tool)}>{t.configureBranding}</button><button className="testing" disabled={state === "testing"} onClick={() => onLifecycle(tool.id, "testing")}>{t.putTesting}</button><button className="primary" disabled={state === "published"} onClick={() => onLifecycle(tool.id, "published")}>{t.putOnline}</button><button className="danger" disabled={state === "offline"} onClick={() => onLifecycle(tool.id, "retired")}>{t.takeOffline}</button></div></footer>
     </article>; })}{!visibleTools.length && <div className="admin-empty admin-tool-publication-empty">{t.noData}</div>}</div>
     {brandingTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setBrandingTool(null); }}><form className="admin-branding-dialog" onSubmit={saveBranding}>
       <header><div><small>PRODUCT IDENTITY</small><h2>{t.brandingTitle}</h2><p>{locale === "en" ? brandingTool.nameEn : brandingTool.nameZh}</p></div><button type="button" onClick={() => setBrandingTool(null)} aria-label={t.close}><X size={20} /></button></header>
@@ -1149,6 +1168,14 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
       <label>{t.creditsPerRun}<div className="admin-credit-input"><Coins size={18} /><input type="number" min="1" max="100000" value={pricing.creditCost} disabled={pricing.mode === "free"} onChange={(event) => setPricing({ ...pricing, creditCost: event.target.value })} /><span>Credits</span></div></label>
       <label>{t.pricingReason}<input value={pricing.reason} onChange={(event) => setPricing({ ...pricing, reason: event.target.value })} required maxLength="500" /></label>
       <footer><button type="button" onClick={() => setPricingTool(null)}>{t.close}</button><button className="admin-primary" disabled={saving || !pricing.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.savePricing}</button></footer>
+    </form></div>}
+    {searchTool && <div className="admin-branding-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSearchTool(null); }}><form className="admin-branding-dialog admin-search-profile-dialog" onSubmit={saveSearchProfile}>
+      <header><div><small>SEARCH DISCOVERY</small><h2>{t.searchProfileTitle}</h2><p>{locale === "en" ? searchTool.nameEn : searchTool.nameZh}</p></div><button type="button" onClick={() => setSearchTool(null)} aria-label={t.close}><X size={20} /></button></header>
+      <p className="admin-pricing-hint">{t.searchProfileHint}</p>
+      <div className="admin-search-profile-grid"><label>{t.aliasesZh}<textarea rows="4" value={searchDraft.aliasesZh} onChange={(event) => setSearchDraft({ ...searchDraft, aliasesZh: event.target.value })} /></label><label>{t.aliasesEn}<textarea rows="4" value={searchDraft.aliasesEn} onChange={(event) => setSearchDraft({ ...searchDraft, aliasesEn: event.target.value })} /></label><label>{t.exampleQueries}<textarea rows="4" value={searchDraft.exampleQueries} onChange={(event) => setSearchDraft({ ...searchDraft, exampleQueries: event.target.value })} /></label><label>{t.capabilities}<textarea rows="4" value={searchDraft.capabilities} onChange={(event) => setSearchDraft({ ...searchDraft, capabilities: event.target.value })} /></label><label>{t.exclusions}<textarea rows="3" value={searchDraft.exclusions} onChange={(event) => setSearchDraft({ ...searchDraft, exclusions: event.target.value })} /></label><label>{t.searchPriority}<input type="number" min="-100" max="100" value={searchDraft.searchPriority} onChange={(event) => setSearchDraft({ ...searchDraft, searchPriority: event.target.value })} /></label></div>
+      <label className="admin-search-enabled"><input type="checkbox" checked={searchDraft.enabled} onChange={(event) => setSearchDraft({ ...searchDraft, enabled: event.target.checked })} />{t.searchEnabled}</label>
+      <label>{t.brandingReason}<input value={searchDraft.reason} onChange={(event) => setSearchDraft({ ...searchDraft, reason: event.target.value })} required maxLength="500" /></label>
+      <footer><button type="button" onClick={() => setSearchTool(null)}>{t.close}</button><button className="admin-primary" disabled={saving || !searchDraft.reason.trim()}>{saving ? <SpinnerGap className="spin" size={16} /> : <Check size={16} />}{t.saveSearchProfile}</button></footer>
     </form></div>}
   </div>;
 }
@@ -1333,6 +1360,10 @@ export function AdminApp() {
       await loadView(); showToast(t.featuredSaved); return true;
     } catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const saveToolSearchProfile = async (id, draft) => {
+    try { await api(`/api/admin/v1/tools/${id}/search-profile`, json("PUT", draft)); await loadView(); showToast(t.searchProfileSaved); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
   const retry = async (id) => { try { await api(`/api/admin/v1/jobs/${id}/retry`, json("POST", { reason: "operator_retry" })); await loadView(); showToast(); } catch (error) { setMessage(error.code); } };
   const createAdmin = async (draft) => {
     if (!draft.identifier?.trim() || !draft.reason?.trim()) { setMessage(t.reasonRequired); return false; }
@@ -1505,7 +1536,7 @@ export function AdminApp() {
     seoSources: <SeoSourcesView data={data.seoSources} locale={locale} canManage={allowed(session, "seo_sources.manage")} onTest={testSeoProvider} onSave={saveSeoProvider} />,
     infrastructure: <InfrastructureView data={data.infrastructure} locale={locale} />,
     commerce: <CommerceView data={data.commerce} locale={locale} onApprove={approve} canManage={allowed(session, "billing.manage")} onProviderTest={testPaymentProvider} onProviderSave={savePaymentProvider} onProviderToggle={togglePaymentProvider} />,
-    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} onFeaturedPlacement={saveFeaturedPlacement} />,
+    tools: <ToolsView data={data.tools} locale={locale} onLifecycle={lifecycle} onBranding={saveToolBranding} onResetBranding={resetToolBranding} onPricing={saveToolPricing} onFeaturedPlacement={saveFeaturedPlacement} onSearchProfile={saveToolSearchProfile} />,
     operations: <OperationsView data={data.operations} locale={locale} onRetry={retry} />,
     privacy: <PrivacyView data={data.privacy} locale={locale} />,
     audit: <AuditView data={data.audit} locale={locale} onPage={setPage} />,

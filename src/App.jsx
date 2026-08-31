@@ -873,6 +873,29 @@ function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, au
   const isText = tool.slug === "copy-polish";
   const isSpeech = tool.slug === "speech-to-text";
   const runtimeTool = runtime?.tools?.find((item) => item.id === tool.id);
+  const workspaceKind = isPdf ? "document" : isMedia ? "media" : isDataFile ? "data" : isUtility ? "utility" : isSpeech ? "audio" : isText ? "writing" : "image";
+  const workspaceLabel = {
+    document: locale === "en" ? "DOCUMENT WORKSPACE" : "智能文档工作台",
+    media: locale === "en" ? "MEDIA WORKSPACE" : "音视频处理工作台",
+    data: locale === "en" ? "DATA WORKSPACE" : "数据处理工作台",
+    utility: locale === "en" ? "PRODUCTIVITY WORKSPACE" : "效率工具工作台",
+    audio: locale === "en" ? "VOICE WORKSPACE" : "语音处理工作台",
+    writing: locale === "en" ? "WRITING WORKSPACE" : "智能写作工作台",
+    image: locale === "en" ? "VISUAL WORKSPACE" : "视觉创作工作台",
+  }[workspaceKind];
+  const journey = isFile
+    ? [
+      [locale === "en" ? "Add source" : "添加素材", locale === "en" ? "Upload a supported file" : "上传支持的文件素材"],
+      [locale === "en" ? "Set options" : "调整参数", locale === "en" ? "Choose the output settings" : "选择需要的处理参数"],
+      [locale === "en" ? "Process" : "开始处理", locale === "en" ? "Run securely in your workspace" : "在私有工作区安全处理"],
+      [locale === "en" ? "Download" : "下载结果", locale === "en" ? "Review and save the result" : "预览并保存处理结果"],
+    ]
+    : [
+      [locale === "en" ? "Add content" : "输入内容", locale === "en" ? "Provide the source information" : "填写需要处理的信息"],
+      [locale === "en" ? "Set options" : "调整参数", locale === "en" ? "Choose how the tool should work" : "选择符合需求的设置"],
+      [locale === "en" ? "Generate" : "生成结果", locale === "en" ? "Create with the selected capability" : "使用所选能力生成结果"],
+      [locale === "en" ? "Use result" : "使用结果", locale === "en" ? "Copy, save, or continue editing" : "复制、保存或继续编辑"],
+    ];
 
   useEffect(() => () => recognitionRef.current?.stop?.(), []);
   useEffect(() => {
@@ -986,10 +1009,15 @@ function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, au
     }
   };
 
-  return <div className="tool-page">
+  return <div className={`tool-page commercial-tool-page ${workspaceKind}`}>
     <button className="tool-back" onClick={onBack}><ArrowLeft size={17} />{t.backToMarket}</button>
-    <header className="tool-page-header"><ProductToolIcon tool={tool} size={31} className="large" /><div><p className="eyebrow">{t.toolWorkspace}</p><h1>{name}</h1><p>{description}</p></div><div className="tool-run-meta"><StatusPill status={tool.runtimeStatus} locale={locale} /><span><Coins size={16} />{tool.creditCost} {t.creditsUnit}</span></div></header>
-    <div className="tool-workspace-grid">
+    <header className="tool-page-header commercial-tool-hero">
+      <div className="commercial-tool-lockup"><ProductToolIcon tool={tool} size={38} className="large" /><div><p className="eyebrow">{workspaceLabel}</p><h1>{name}</h1><p>{description}</p><div className="commercial-tool-trust"><span><ShieldCheck size={14} weight="fill" />{locale === "en" ? "Private workspace" : "私有空间处理"}</span><span><CheckCircle size={14} weight="fill" />{locale === "en" ? "Results are saved" : "结果自动保存"}</span><span><Sparkle size={14} weight="fill" />{locale === "en" ? "Ready to use" : "开箱即用"}</span></div></div></div>
+      <div className="tool-run-meta"><StatusPill status={tool.runtimeStatus} locale={locale} /><span><Coins size={17} /><strong>{tool.creditCost}</strong>{t.creditsUnit}</span></div>
+      <div className="commercial-tool-hero-art" aria-hidden="true"><ProductToolIcon tool={tool} size={72} /></div>
+    </header>
+    <nav className="commercial-tool-journey" aria-label={locale === "en" ? "Tool workflow" : "工具使用流程"}>{journey.map(([title, body], index) => <div className={index === 0 ? "active" : ""} key={title}><span>{index + 1}</span><p><strong>{title}</strong><small>{body}</small></p>{index < journey.length - 1 && <ArrowRight size={16} />}</div>)}</nav>
+    <div className="tool-workspace-grid commercial-tool-workspace">
       <section className="surface tool-input-panel">
         <h2>{tool.slug === "og-image-generator" ? (locale === "en" ? "Configure social image" : "设置分享图内容") : isImage ? t.imageInput : isPdf ? (tool.slug === "images-to-pdf" ? (locale === "en" ? "Upload images" : "上传图片") : t.pdfInput) : isMedia ? (locale === "en" ? "Upload media" : "上传媒体文件") : isDataFile ? (locale === "en" ? "Upload data file" : "上传数据文件") : isUtility ? (locale === "en" ? "Tool input" : "工具输入") : isSpeech ? t.speechInput : t.textInput}</h2>
         {tool.slug === "ai-outfit-changer" && <OutfitUploadStudio files={files} mode={outfitMode} locale={locale} onModeChange={setOutfitMode} onFilesChange={(selected) => { setFiles(selected); setFile(selected[0] || null); setResult(null); setError(""); }} />}
@@ -1435,19 +1463,21 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
   const [category, setCategory] = useState("all");
   const [filter, setFilter] = useState("all");
   const [limit, setLimit] = useState(12);
+  const [smartSearch, setSmartSearch] = useState({ query: "", results: [], loading: false, submitted: false });
   const isEn = locale === "en";
   const selectedCategory = marketplaceCategories.find((item) => item.id === category) || marketplaceCategories[0];
+  const smartRank = new Map(smartSearch.query === query.trim() ? smartSearch.results.map((item, index) => [item.slug, index]) : []);
   const matching = tools.filter((tool) => {
     const text = `${tool.nameZh} ${tool.nameEn} ${tool.descriptionZh} ${tool.descriptionEn}`.toLowerCase();
     const categoryMatches = category === "all" || selectedCategory.accepts.includes(tool.category);
-    const queryMatches = !query || text.includes(query.toLowerCase());
+    const queryMatches = !query || (smartRank.size ? smartRank.has(tool.slug) : text.includes(query.toLowerCase()));
     const filterMatches = filter === "all"
       || (filter === "free" && Number(tool.creditCost || 0) === 0)
       || (filter === "paid" && Number(tool.creditCost || 0) > 0)
       || (filter === "agent" && tool.category === "agent")
       || (filter === "local" && tool.runtimeKind !== "openai");
     return categoryMatches && queryMatches && filterMatches;
-  });
+  }).sort((left, right) => smartRank.size ? (smartRank.get(left.slug) ?? 999) - (smartRank.get(right.slug) ?? 999) : 0);
   const visible = matching.slice(0, limit);
   const categoryCount = (item) => item.id === "all" ? tools.length : tools.filter((tool) => item.accepts.includes(tool.category)).length;
   const featured = [...tools].sort((a, b) => (a.featuredRank || 999) - (b.featuredRank || 999)).slice(0, 6);
@@ -1468,6 +1498,28 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
     ["local", isEn ? "Local tools" : "本地工具", ShieldCheck],
   ];
   useEffect(() => setLimit(12), [category, filter, query]);
+  useEffect(() => {
+    const normalized = query.trim();
+    if (normalized.length < 2) { setSmartSearch({ query: normalized, results: [], loading: false, submitted: false }); return undefined; }
+    const controller = new AbortController();
+    setSmartSearch((current) => ({ ...current, query: normalized, loading: true, submitted: false }));
+    const timer = setTimeout(async () => {
+      try {
+        const result = await api(`/api/marketplace/intelligent-search?q=${encodeURIComponent(normalized)}&mode=instant`, { signal: controller.signal });
+        setSmartSearch({ query: normalized, results: result.results || [], loading: false, submitted: false });
+      } catch (error) { if (error.name !== "AbortError") setSmartSearch({ query: normalized, results: [], loading: false, submitted: false }); }
+    }, 260);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query]);
+  const submitSmartSearch = async (event) => {
+    event?.preventDefault(); const normalized = query.trim(); if (normalized.length < 2) return;
+    setSmartSearch((current) => ({ ...current, query: normalized, loading: true, submitted: true }));
+    try {
+      const result = await api(`/api/marketplace/intelligent-search?q=${encodeURIComponent(normalized)}&mode=submit`);
+      setSmartSearch({ query: normalized, results: result.results || [], loading: false, submitted: true });
+    } catch { setSmartSearch((current) => ({ ...current, loading: false, submitted: true })); }
+  };
+  const smartTools = smartSearch.query === query.trim() ? smartSearch.results.map((result) => ({ result, tool: tools.find((tool) => tool.slug === result.slug) })).filter((item) => item.tool).slice(0, 3) : [];
   return <div className="marketplace-page marketplace-page-redesign">
     <div className="marketplace-primary">
       <section className="marketplace-hero">
@@ -1475,10 +1527,16 @@ function Marketplace({ tools, locale, query, onQuery, onRun, data, runtime, task
           <p>ONSHOWTOOLS · AI WORKSPACE</p>
           <h1>{isEn ? "AI Tool Marketplace" : "AI 工具市场"}</h1>
           <span>{isEn ? `Explore ${tools.length}+ practical AI tools and get more done.` : `探索 ${tools.length}+ 款强大的 AI 工具，让 AI 帮你完成更多工作。`}</span>
-          <div className="marketplace-search"><MagnifyingGlass size={21} /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={t.search} />{query ? <button aria-label={t.close} onClick={() => onQuery("")}><X size={16} /></button> : <button className="marketplace-search-submit" aria-label={isEn ? "Search tools" : "搜索工具"}><ArrowRight size={20} /></button>}</div>
+          <form className="marketplace-search" onSubmit={submitSmartSearch}><MagnifyingGlass size={21} /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder={t.search} />{query && <button type="button" aria-label={t.close} onClick={() => onQuery("")}><X size={16} /></button>}<button className="marketplace-search-submit" aria-label={isEn ? "Search tools" : "搜索工具"} disabled={smartSearch.loading}>{smartSearch.loading ? <SpinnerGap className="spin" size={19} /> : <ArrowRight size={20} />}</button></form>
         </div>
         <img src="/dashboard/oneshowtools-ai-toolkit-900.png" alt="" aria-hidden="true" />
       </section>
+
+      {query.trim().length >= 2 && (smartSearch.loading || smartTools.length > 0 || smartSearch.submitted) && <section className="marketplace-smart-results surface" aria-live="polite">
+        <header><div><Sparkle size={19} weight="fill" /><span><strong>{isEn ? "Smart recommendations" : "智能推荐"}</strong><small>{isEn ? "Matched by your intent, not only keywords" : "根据任务意图匹配，不只依赖关键词"}</small></span></div>{smartSearch.loading && <SpinnerGap className="spin" size={18} />}</header>
+        {!smartSearch.loading && smartTools.length > 0 && <div>{smartTools.map(({ result, tool }, index) => <button key={tool.slug} className={index === 0 ? "best" : ""} onClick={() => onRun(tool)}><ProductToolIcon tool={tool} size={30} /><span><small>{index === 0 ? (isEn ? "BEST MATCH" : "最佳匹配") : `${Math.round((result.confidence || 0) * 100)}%`}</small><strong>{isEn ? tool.nameEn : tool.nameZh}</strong><em>{isEn ? result.reasonEn : result.reasonZh}</em></span><ArrowRight size={17} /></button>)}</div>}
+        {!smartSearch.loading && smartSearch.submitted && !smartTools.length && <p>{isEn ? "No suitable tool yet. Try describing the outcome you want." : "暂未找到合适工具，请换一种方式描述你想完成的结果。"}</p>}
+      </section>}
 
       <nav className="marketplace-category-nav" aria-label={isEn ? "Tool categories" : "工具分类"}>{marketplaceCategories.filter((item) => item.id === "all" || categoryCount(item) > 0).map((item) => { const CategoryIcon = item.icon; return <button className={category === item.id ? "active" : ""} key={item.id} onClick={() => setCategory(item.id)}><CategoryIcon size={16} />{t[item.id]}<small>{categoryCount(item)}</small></button>; })}</nav>
 

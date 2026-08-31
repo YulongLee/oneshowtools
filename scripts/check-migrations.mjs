@@ -20,6 +20,7 @@ const toolBrandingMigration = await readFile(new URL("../db/migrations/0027_tool
 const domesticPaymentsMigration = await readFile(new URL("../db/migrations/0028_domestic_payment_providers.sql", import.meta.url), "utf8");
 const favoritesLibraryMigration = await readFile(new URL("../db/migrations/0029_favorites_library.sql", import.meta.url), "utf8");
 const workspaceMigration = await readFile(new URL("../db/migrations/0030_workspace_projects_and_preferences.sql", import.meta.url), "utf8");
+const intelligentSearchMigration = await readFile(new URL("../db/migrations/0033_intelligent_tool_search.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -120,6 +121,9 @@ for (const table of ["workspace_projects", "project_items", "user_preferences"])
   if (!workspaceMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
     throw new Error(`Workspace migration is missing table: ${table}`);
   }
+}
+if (!intelligentSearchMigration.includes("CREATE TABLE IF NOT EXISTS tool_search_profiles ")) {
+  throw new Error("Intelligent search migration is missing tool_search_profiles");
 }
 
 for (const table of [

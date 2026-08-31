@@ -53,6 +53,20 @@ The implementation preserves the selected hierarchy: one dominant product card, 
 
 final result: passed
 
+## Shared commercial tool workspace QA
+
+- Scope: every tool rendered by the shared workspace, including image, PDF, audio, video, data, writing, developer, SEO utility, and marketing utilities.
+- Reference: the approved commercial hierarchy used by AI Fridge Recipe, Sliding Ancestor, and Food Nutrition Analyzer.
+- Product hierarchy: each shared tool now has an independent back action, outcome-led product hero, product artwork, trust signals, runtime state, and per-run pricing.
+- Functional hierarchy: every shared tool exposes a four-stage journey above separate input and result surfaces without changing its existing processing logic.
+- Category identity: visual, document, media, data, utility, voice, and writing tools use category-specific accent tokens while preserving one consistent component structure.
+- Responsive result: journey steps collapse from four columns to two and then one; hero metadata and workspace panels stack without horizontal overflow.
+- Interaction result: AI Outfit Changer rendered the new shell with all four stages and retained description/reference upload mode behavior.
+- Runtime result: the inspected page produced no browser console errors.
+- Automated result: production build passed; full automated suite passed 198/198.
+
+final result: passed
+
 ## Sliding Ancestor and Food Nutrition commercial layout QA
 
 - Reference: user-provided AI Music Studio commercial tool hierarchy.
@@ -86,3 +100,10 @@ final result: passed
 - Visual review: reference and implementation were inspected together; no actionable P0, P1, or P2 visual findings remain.
 
 final result: passed
+# 2026-08-31 智能工具搜索验收
+
+- 自然语言“我想生成一个歌”即时推荐 `AI 音乐工作室`，展示推荐原因并支持一键进入。
+- 回车/搜索按钮触发低置信度模型兜底；模型未配置或故障时自动退回本地混合排序，不阻塞工具市场。
+- 搜索画像（中英文别名、示例问题、能力词、排除词、优先级、开关）由后台持久化管理，版本更新不覆盖。
+- 1280px 实机检查无横向溢出（`scrollWidth === clientWidth`），浏览器控制台无错误。
+- 自动化：202 tests passed；生产构建与迁移检查通过。

@@ -59,6 +59,7 @@ import {
   recordMarketplaceBehavior,
   recordMarketplaceSearch,
 } from "./market-intelligence.mjs";
+import { intelligentToolSearch } from "./tool-search.mjs";
 import { cancelExecutionJob, enqueueTask, runNextJob } from "./jobs.mjs";
 import { billingPlanPayload } from "./billing-catalog.mjs";
 import {
@@ -2497,6 +2498,13 @@ export async function handleApi(request) {
     return json({ tools: storefrontTools(request) }, 200, {
       "cache-control": previewing ? "private, no-store" : "public, max-age=60, stale-while-revalidate=300",
     });
+  }
+  if (path === "/api/marketplace/intelligent-search" && request.method === "GET") {
+    const query = String(url.searchParams.get("q") || "").trim().slice(0, 300);
+    if (query.length < 2) return json({ query, results: [], source: "hybrid", fallbackUsed: false });
+    const allowModel = url.searchParams.get("mode") === "submit";
+    const result = await intelligentToolSearch({ query, tools: storefrontTools(request), allowModel });
+    return json({ query, ...result }, 200, { "cache-control": "private, no-store" });
   }
   if (path === "/api/products/stock-pet" && request.method === "GET") {
     if (!toolIsAccessible("stock-pet", request)) return unpublishedToolResponse();
