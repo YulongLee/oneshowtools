@@ -29,3 +29,9 @@
 @media(max-width:760px){
   .mbti-question-card h2{min-height:unset}
 }
+
+/* Keep the assessment aligned with the shared authenticated workspace shell. */
+.mbti-page{width:min(1280px,100%);max-width:1280px;padding:0 0 56px;container:mbti-page / inline-size}
+.mbti-hero{grid-template-columns:92px minmax(320px,1fr) minmax(220px,300px) 150px}
+@container mbti-page (max-width:1080px){.mbti-hero{grid-template-columns:82px minmax(300px,1fr) 260px}.mbti-hero aside{display:none}.mbti-intro-grid{grid-template-columns:240px 1fr}.mbti-sample{grid-column:1/-1}.mbti-history>div{grid-template-columns:repeat(2,1fr)}}
+@container mbti-page (max-width:760px){.mbti-page{padding:0 0 48px}.mbti-hero{grid-template-columns:64px 1fr;padding:20px;min-height:0}.mbti-hero-art{display:none}.mbti-intro-grid{grid-template-columns:1fr}.mbti-history>div{grid-template-columns:1fr}}

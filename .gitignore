@@ -18,6 +18,7 @@ qa/
 qa-tool-*
 qa-compare.html
 reference-current-live.png
+.design-audit/
 apps/**/.swc/
 apps/**/dist-check/
 apps/**/dist/

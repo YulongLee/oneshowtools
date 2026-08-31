@@ -5,6 +5,8 @@ import test from "node:test";
 const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
 const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
 const workbenchStyles = await readFile(new URL("../src/workbench.css", import.meta.url), "utf8");
+const mbtiStyles = await readFile(new URL("../src/mbti-personality-test.css", import.meta.url), "utf8");
+const tierListStyles = await readFile(new URL("../src/tier-list-generator.css", import.meta.url), "utf8");
 
 test("every authenticated tool receives the full workspace instead of the account context rail", () => {
   assert.match(appSource, /const isToolWorkspace = Boolean\(routeTool\)/);
@@ -42,6 +44,16 @@ test("marketplace marquee stays inside the available workspace width", () => {
   assert.match(workbenchStyles, /\.marketplace-page-redesign \.marketplace-featured \{[^}]*max-width: 100%;[^}]*overflow: hidden/);
   assert.match(workbenchStyles, /\.marketplace-page-redesign \.featured-carousel \{[^}]*max-width: 100%;[^}]*overflow: hidden/);
   assert.match(workbenchStyles, /@keyframes featured-marquee/);
+});
+
+test("authenticated pages share one content width and responsive gutter system", () => {
+  assert.match(styles, /--workspace-content-max: 1280px/);
+  assert.match(styles, /--workspace-gutter: clamp\(20px, 2\.6vw, 44px\)/);
+  assert.match(styles, /\.workspace-main :where\([\s\S]*\.marketplace-page-redesign[\s\S]*\.music-studio-page[\s\S]*\.fridge-recipe-page[\s\S]*\.food-analyzer-page[\s\S]*\.ancestor-studio-v2[\s\S]*\) \{[\s\S]*max-width: var\(--workspace-content-max\)/);
+  assert.match(styles, /\.fridge-recipe-page,[\s\S]*\.food-analyzer-page,[\s\S]*\.ancestor-studio-v2 \{[\s\S]*padding: 0 0 56px/);
+  assert.match(styles, /@media \(max-width: 560px\)[\s\S]*padding: 12px 12px 84px/);
+  assert.match(mbtiStyles, /\.mbti-page\{width:min\(1280px,100%\);max-width:1280px;padding:0 0 56px/);
+  assert.match(tierListStyles, /\.tier-tool-page\{width:min\(1280px,100%\);max-width:1280px/);
 });
 
 test("guest homepage exposes real catalog states and a stable reference-led hero", () => {
