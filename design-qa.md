@@ -153,3 +153,13 @@ final result: passed
 - Automated tests: 211 passed, 0 failed.
 
 final result: passed
+
+## Promotion Center guided launchpad QA
+
+- Reference: selected guided launchpad concept (option 1).
+- Build state: production build succeeds.
+- Interaction state: onboarding, prerequisite routing, channel setup, optional campaign setup, and link creation states are implemented.
+- Automated checks: 214 tests passed.
+- Visual comparison: blocked because the in-app browser rejected refreshing the local admin URL during this run.
+
+final result: blocked
