@@ -2,7 +2,7 @@
 
 Electron + React + TypeScript 桌面客户端。正式发布前必须配置代码签名和安装包下载地址。
 
-- Web 权益：`product_code=stock_pet`，1000 积分终身解锁
+- Web 权益：`product_code=stock_pet`，积分价格统一读取后台工具治理配置，终身解锁
 - 设备：每个权益最多 3 台
 - 行情：默认由 OneShowTools 服务端读取腾讯财经公开行情，支持 A 股、港股和美股；桌面端不直接连接行情源
 - 安全：`contextIsolation=true`、`nodeIntegration=false`、`sandbox=true`、IPC 白名单

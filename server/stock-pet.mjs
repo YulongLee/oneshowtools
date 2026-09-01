@@ -9,9 +9,14 @@ import {
 import { objectStorageStatus, signStockPetRelease } from "./object-storage.mjs";
 
 export const STOCK_PET_PRODUCT_CODE = "stock_pet";
-export const STOCK_PET_PRICE = 1000;
+export const STOCK_PET_FALLBACK_PRICE = 2000;
 export const STOCK_PET_DEVICE_LIMIT = 3;
 export const STOCK_PET_DOWNLOAD_TTL_SECONDS = 60;
+
+export function stockPetPrice() {
+  const configured = Number(db.prepare("SELECT credit_cost AS creditCost FROM tools WHERE slug = 'stock-pet'").get()?.creditCost);
+  return Number.isInteger(configured) && configured > 0 ? configured : STOCK_PET_FALLBACK_PRICE;
+}
 
 function shanghaiDate(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -114,7 +119,7 @@ export function stockPetPublicProduct() {
   return {
     code: STOCK_PET_PRODUCT_CODE,
     name: "牛来了桌面宠物",
-    priceCredits: STOCK_PET_PRICE,
+    priceCredits: stockPetPrice(),
     entitlement: "lifetime",
     deviceLimit: STOCK_PET_DEVICE_LIMIT,
     supportedMarkets: ["A股", "港股", "美股"],
@@ -165,6 +170,7 @@ export function stockPetLicense(userId) {
 export function unlockStockPet(userId) {
   const existing = entitlement(userId);
   if (existing) return { alreadyOwned: true, ...stockPetLicense(userId) };
+  const priceCredits = stockPetPrice();
   const current = Number(
     db
       .prepare(
@@ -172,7 +178,7 @@ export function unlockStockPet(userId) {
       )
       .get(userId)?.total || 0,
   );
-  if (current < STOCK_PET_PRICE)
+  if (current < priceCredits)
     throw Object.assign(new Error("INSUFFICIENT_CREDITS"), {
       code: "INSUFFICIENT_CREDITS",
       status: 402,
@@ -185,7 +191,7 @@ export function unlockStockPet(userId) {
       `INSERT INTO product_entitlements
       (id, user_id, product_code, entitlement_type, status, credit_cost, granted_at)
       VALUES (?, ?, ?, 'lifetime', 'active', ?, ?)`,
-    ).run(id, userId, STOCK_PET_PRODUCT_CODE, STOCK_PET_PRICE, timestamp);
+    ).run(id, userId, STOCK_PET_PRODUCT_CODE, priceCredits, timestamp);
     db.prepare(
       `INSERT INTO credit_ledger
       (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at)
@@ -193,7 +199,7 @@ export function unlockStockPet(userId) {
     ).run(
       randomUUID(),
       userId,
-      -STOCK_PET_PRICE,
+      -priceCredits,
       "解锁牛来了桌面宠物",
       "Unlocked Niu Lai Le Stock Pet",
       id,

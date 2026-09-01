@@ -54,6 +54,22 @@ test("career marketplace entry opens the official independent interview product"
   );
 });
 
+test("stock pet product page and checkout share the operator-managed tool price", async () => {
+  db.prepare("UPDATE tools SET credit_cost = 2000 WHERE slug = 'stock-pet'").run();
+  const timestamp = Date.now();
+  const userId = "stock-price-user";
+  db.prepare("INSERT INTO users (id, name, email, password_hash, email_verified, created_at, updated_at) VALUES (?, 'Stock price tester', ?, 'unused', 1, ?, ?)")
+    .run(userId, "stock-price@example.test", timestamp, timestamp);
+  db.prepare("INSERT INTO credit_ledger (id, user_id, type, amount, description_zh, description_en, reference_type, reference_id, created_at) VALUES ('stock-price-grant', ?, 'grant', 2500, '测试积分', 'Test credits', 'test', ?, ?)")
+    .run(userId, userId, timestamp);
+  const { stockPetPrice, stockPetPublicProduct, unlockStockPet } = await import("../server/stock-pet.mjs");
+  assert.equal(stockPetPrice(), 2000);
+  assert.equal(stockPetPublicProduct().priceCredits, 2000);
+  const license = unlockStockPet(userId);
+  assert.equal(license.entitlement.creditCost, 2000);
+  assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id = ?").get(userId).balance, 500);
+});
+
 test("publication settings survive database reinitialization", async () => {
   db.prepare("UPDATE tools SET active = 1 WHERE slug = 'lyrics-generator'").run();
   const { initializeDatabase } = await import("../server/database.mjs");

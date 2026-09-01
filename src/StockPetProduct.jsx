@@ -36,7 +36,7 @@ export function StockPetProduct({ authenticated, account, onBack, onAuth, onComp
   useEffect(() => { load().catch(() => setNotice("产品信息加载失败，请稍后重试。")); }, [authenticated]);
   const balance = Number(account?.credits?.balance || 0);
   const owned = Boolean(license?.entitled);
-  const canAfford = balance >= Number(product?.priceCredits || 1000);
+  const canAfford = balance >= Number(product?.priceCredits || 2000);
   const downloadReady = useMemo(() => product?.downloads?.windows || product?.downloads?.macos, [product]);
 
   const unlock = async () => {
@@ -95,7 +95,7 @@ export function StockPetProduct({ authenticated, account, onBack, onAuth, onComp
         {tab === "devices" && <section className="stock-pet-panel"><h3>授权设备 {license?.devices?.length || 0} / {product?.deviceLimit || 3}</h3>{!owned ? <p>解锁产品后，可在这里查看和移除授权设备。</p> : license.devices.length ? license.devices.map((device) => <div className="stock-device" key={device.id}><Laptop /><span><b>{device.name}</b><small>{device.platform} · {device.appVersion || "未知版本"}</small></span><button aria-label="移除设备" onClick={async () => { await request(`/api/products/stock-pet/devices/${device.id}`, { method: "DELETE" }); await load(); }}><X /></button></div>) : <p>尚未绑定设备。安装桌面端并登录后会自动显示。</p>}</section>}
       </main>
 
-      <aside className="stock-pet-buy-card"><span>下载解锁</span><strong>{product?.priceCredits?.toLocaleString() || "1,000"}<small> 积分</small></strong><p>一次付费，永久使用</p>
+      <aside className="stock-pet-buy-card"><span>下载解锁</span><strong>{product?.priceCredits?.toLocaleString() || "2,000"}<small> 积分</small></strong><p>一次付费，永久使用</p>
         {owned ? <><div className="owned"><CheckCircle weight="fill" />已永久解锁</div><button onClick={() => download('windows')} disabled={busy || !product?.downloads?.windows}><DownloadSimple />下载 Windows</button><button className="secondary" onClick={() => download('macos')} disabled={busy || !product?.downloads?.macos}><DownloadSimple />下载 macOS</button></> : <button onClick={unlock} disabled={busy || (authenticated && !canAfford)}><LockKey />{busy ? "处理中…" : authenticated && !canAfford ? "积分不足" : "立即解锁"}</button>}
         <small>{downloadReady ? "兑换后可在授权设备永久使用" : "安装包签名与安全检测中，解锁权益将永久保留"}</small>
         {notice && <div className="stock-pet-notice">{notice}</div>}

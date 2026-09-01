@@ -645,7 +645,7 @@ function App() {
     </main>
   );
   if (!session.license?.entitled) return (
-    <main className="control-app control-auth"><section><img src="./niu-lai-le-sleep.png" alt="牛来了" /><div className="control-locked"><h1>尚未解锁牛来了</h1><p>前往 OneShowTools 使用 1,000 积分永久解锁。</p><button onClick={() => window.stockPet.openLogin()}>前往产品页</button><button className="secondary" onClick={async () => setSession(await window.stockPet.logout())}>退出账号</button></div></section></main>
+    <main className="control-app control-auth"><section><img src="./niu-lai-le-sleep.png" alt="牛来了" /><div className="control-locked"><h1>尚未解锁牛来了</h1><p>前往 OneShowTools 产品页查看当前积分价格并永久解锁。</p><button onClick={() => window.stockPet.openLogin()}>前往产品页</button><button className="secondary" onClick={async () => setSession(await window.stockPet.logout())}>退出账号</button></div></section></main>
   );
   return (
     <main className="control-app">
