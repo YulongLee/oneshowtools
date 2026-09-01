@@ -26,6 +26,7 @@ const FridgeRecipePlanner = lazy(() => import("./FridgeRecipePlanner.jsx").then(
 const TierListGenerator = lazy(() => import("./TierListGenerator.jsx").then((module) => ({ default: module.TierListGenerator })));
 const MbtiPersonalityTest = lazy(() => import("./MbtiPersonalityTest.jsx").then((module) => ({ default: module.MbtiPersonalityTest })));
 const StockPetProduct = lazy(() => import("./StockPetProduct.jsx").then((module) => ({ default: module.StockPetProduct })));
+const FortuneCatProduct = lazy(() => import("./FortuneCatProduct.jsx").then((module) => ({ default: module.FortuneCatProduct })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -49,6 +50,7 @@ const commercialToolIconBySlug = {
   "food-nutrition-analyzer": "/food-nutrition/food-nutrition-icon-v1.webp",
   "ai-fridge-recipe": "/fridge-recipes/fridge-recipe-icon-v1.webp",
   "stock-pet": "/stock-pet/niu-lai-le-mascot.png",
+  "fortune-cat": "/fortune-cat/zhaocai-gungun-v1.webp",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
@@ -61,6 +63,7 @@ function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false,
 }
 function ToolPrice({ tool, locale = "zh-CN", withUnit = true }) {
   if (tool?.runtimeKind === "external-link") return <span className="tool-price external"><ArrowRight size={14} />{locale === "en" ? "Independent product" : "独立产品"}</span>;
+  if (tool?.runtimeKind === "desktop-product") return <span className="tool-price"><Coins size={14} />{Number(tool?.creditCost || 0).toLocaleString()}{locale === "en" ? " credits · lifetime" : " 积分兑换"}</span>;
   const free = Number(tool?.creditCost || 0) === 0;
   return free
     ? <span className="tool-price free"><Gift size={14} weight="duotone" />{locale === "en" ? "Free" : "免费"}</span>
@@ -844,6 +847,7 @@ function OutfitUploadStudio({ files, mode, locale, onModeChange, onFilesChange }
 function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, authenticated, runtime, account, onBack, onAuth, onCompleted, onModelChange }) {
   if (tool.runtimeKind === "external-link") return <ExternalToolRedirect tool={tool} locale={locale} onBack={onBack} />;
   if (tool.slug === "stock-pet") return <StockPetProduct authenticated={authenticated} account={account} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
+  if (tool.slug === "fortune-cat") return <FortuneCatProduct authenticated={authenticated} account={account} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "mbti-personality-test") return <MbtiPersonalityTest tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "hang-la-tier-list-generator") return <TierListGenerator tool={tool} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;

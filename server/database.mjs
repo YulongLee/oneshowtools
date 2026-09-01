@@ -515,6 +515,7 @@ export function initializeDatabase() {
     ["tool_food_nutrition", "food-nutrition-analyzer", "AI 食物热量分析", "AI Food Nutrition Analyzer", "上传一张食物照片，识别菜品与份量，估算热量、蛋白质、碳水、脂肪、膳食纤维和钠，并说明误差来源。", "Upload a food photo to estimate portions, calories, protein, carbs, fat, fiber, and sodium with transparent uncertainty.", "image", "ChartBar", 8, "openai"],
     ["tool_fridge_recipe", "ai-fridge-recipe", "AI 冰箱食谱", "AI Fridge Recipe Planner", "上传冰箱照片识别现有食材，生成匹配度、缺少食材、采购清单与完整烹饪步骤。", "Upload a fridge photo to identify ingredients and get matched recipes, shopping gaps, and complete cooking steps.", "image", "ForkKnife", 30, "openai"],
     ["tool_stock_pet", "stock-pet", "牛来了桌面宠物", "Niu Lai Le Stock Pet", "把自选行情变成会涨会跌、会提醒的桌面小牛；一次解锁，支持 Windows 与 macOS。", "A lively desktop bull that follows your watchlist, reacts to market moves, and alerts you on Windows and macOS.", "data", "ChartLineUp", 2000, "desktop-product"],
+    ["tool_fortune_cat", "fortune-cat", "招财滚滚", "Fortune Cat", "输入工资与工作时间，让招财猫在桌面实时告诉你今天和本月已经赚了多少钱。", "A lucky-cat desktop companion that turns salary and work hours into live earnings progress.", "productivity", "Coins", 1000, "desktop-product"],
     ["tool_hang_la_tier", "hang-la-tier-list-generator", "夯拉排行榜生成器", "Hang-La Tier List Maker", "上传图片、自定义夯拉等级并拖拽排序，一键导出适合分享的排行榜长图。", "Upload images, customize ranking tiers, drag to rank, and export a share-ready tier list.", "image", "ChartBar", 0, "builtin-tier-list"],
     ["tool_mbti_test", "mbti-personality-test", "MBTI 性格偏好自测", "Personality Preference Self-Test", "通过 64 道原创平衡情境题了解四维偏好，支持模糊维度与答题质量提示，报告可回看。", "Explore four preference dimensions with an original balanced questionnaire, ambiguity handling, response-quality checks, and saved reports.", "developer", "Brain", 0, "builtin-assessment"],
     ["tool_interview_assistant", "interview-assistant", "面试稳 AI 助手", "Interview Ace AI Assistant", "结合简历、目标岗位和知识资料，提供实时语音识别、截图解题、技术题回答思路与面试复盘。", "Use your resume, target role, and knowledge materials for live transcription, screenshot questions, technical-answer guidance, and interview review.", "career", "UserFocus", 0, "external-link"],
@@ -625,6 +626,27 @@ export function initializeDatabase() {
     db.prepare("UPDATE tools SET active = 1, updated_at = ? WHERE slug = 'stock-pet'").run(timestamp);
     db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
       .run(stockPetPublicationKey, JSON.stringify({ slug: "stock-pet", published: true }), timestamp);
+  }
+
+  const fortuneCatTestingKey = "tool_fortune_cat_testing_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(fortuneCatTestingKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE tools SET active = 0, runtime_status = 'ready', updated_at = ? WHERE slug = 'fortune-cat'").run(timestamp);
+      db.prepare(`INSERT INTO tool_versions
+        (id, tool_id, version, lifecycle_state, visibility, name_zh, name_en, description_zh,
+          description_en, category, icon, credit_cost, contract_version, runtime_kind, created_at)
+        SELECT ?, id, 1, 'testing', 'private', name_zh, name_en, description_zh,
+          description_en, category, icon, credit_cost, 'v1', runtime_kind, ?
+        FROM tools WHERE slug = 'fortune-cat' AND NOT EXISTS
+          (SELECT 1 FROM tool_versions WHERE tool_id = 'tool_fortune_cat')`).run(randomUUID(), timestamp);
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+        .run(fortuneCatTestingKey, JSON.stringify({ slug: "fortune-cat", lifecycle: "testing", adminOnly: true }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   const interviewAssistantPublicationKey = "tool_interview_assistant_publication_v1";

@@ -1,0 +1,30 @@
+{
+  "name": "oneshowtools-fortune-cat",
+  "version": "0.1.0-test",
+  "description": "OneShowTools 招财滚滚实时收入桌面宠物",
+  "author": "OneShow AI Lab",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1 --port 5182\" \"wait-on http://127.0.0.1:5182 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5182 electron .\"",
+    "build:main": "esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "check": "tsc --noEmit",
+    "package:mac:test": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --universal --publish never",
+    "package:windows:test": "npm run build && electron-builder --win nsis portable --x64 --publish never"
+  },
+  "dependencies": { "@phosphor-icons/react": "^2.1.10", "react": "19.2.0", "react-dom": "19.2.0" },
+  "devDependencies": { "@types/node": "^24.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "@vitejs/plugin-react": "^5.0.4", "concurrently": "^9.2.1", "cross-env": "^10.0.0", "electron": "^38.0.0", "electron-builder": "^26.0.12", "esbuild": "^0.25.12", "typescript": "^5.9.2", "vite": "^6.4.3", "wait-on": "^9.0.1" },
+  "build": {
+    "appId": "com.oneshowtools.fortunecat",
+    "productName": "招财滚滚",
+    "icon": "public/zhaocai-gungun-desktop.png",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
+    "mac": { "category": "public.app-category.productivity", "target": ["dmg", "zip"], "hardenedRuntime": false },
+    "win": { "target": ["nsis", "portable"] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+  }
+}

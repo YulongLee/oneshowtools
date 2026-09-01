@@ -308,6 +308,11 @@ const stockPetReleaseFiles = {
   macos: { suffix: "macos-universal.dmg", mimeType: "application/x-apple-diskimage" },
 };
 
+const fortuneCatReleaseFiles = {
+  windows: { suffix: "windows-setup.exe", mimeType: "application/vnd.microsoft.portable-executable" },
+  macos: { suffix: "macos-universal.dmg", mimeType: "application/x-apple-diskimage" },
+};
+
 function safeReleaseVersion(version) {
   const normalized = String(version || "0.1.4").trim();
   if (!/^[0-9A-Za-z][0-9A-Za-z._-]{0,39}$/.test(normalized)) {
@@ -373,6 +378,60 @@ export async function signStockPetRelease(platform, {
       throw storageError("DOWNLOAD_NOT_CONFIGURED", 503);
     }
     if (error?.code?.startsWith?.("OSS_") || error?.code === "DOWNLOAD_NOT_CONFIGURED") throw error;
+    const failure = storageError("OSS_RELEASE_DOWNLOAD_FAILED", error?.status || 502);
+    failure.details = String(error?.code || error?.message || "unknown").slice(0, 120);
+    throw failure;
+  }
+}
+
+export function fortuneCatReleaseObject(platform, version = process.env.FORTUNE_CAT_VERSION || "0.1.0-test", env = process.env) {
+  const file = fortuneCatReleaseFiles[platform];
+  if (!file) throw storageError("DOWNLOAD_PLATFORM_INVALID", 400);
+  const releaseVersion = safeReleaseVersion(version);
+  const fileName = `zhaocai-gungun-${releaseVersion}-${file.suffix}`;
+  return {
+    platform,
+    version: releaseVersion,
+    fileName,
+    mimeType: file.mimeType,
+    objectKey: `${objectStorageConfig(env).prefix}/releases/fortune-cat/${releaseVersion}/${fileName}`,
+  };
+}
+
+export async function putFortuneCatRelease({ platform, version, filePath, env = process.env }, clientFactory) {
+  const release = fortuneCatReleaseObject(platform, version, env);
+  const instance = createClient(objectStorageConfig(env), clientFactory);
+  try {
+    const headers = { "content-type": release.mimeType, "x-oss-object-acl": "private" };
+    const file = await stat(filePath);
+    const result = file.size >= 64 * 1024 * 1024 && typeof instance.multipartUpload === "function"
+      ? await instance.multipartUpload(release.objectKey, filePath, { parallel: 4, partSize: 10 * 1024 * 1024, headers })
+      : await instance.put(release.objectKey, filePath, { headers });
+    return { ...release, etag: result?.res?.headers?.etag || result?.etag || null };
+  } catch (error) {
+    const failure = storageError("OSS_RELEASE_UPLOAD_FAILED", error?.status || 502);
+    failure.details = String(error?.code || error?.message || "unknown").slice(0, 120);
+    throw failure;
+  }
+}
+
+export async function signFortuneCatRelease(platform, {
+  version = process.env.FORTUNE_CAT_VERSION || "0.1.0-test",
+  expires = 900,
+  env = process.env,
+} = {}, clientFactory) {
+  const release = fortuneCatReleaseObject(platform, version, env);
+  const ttl = Math.max(60, Math.min(Number(expires) || 900, 3600));
+  const instance = createClient(objectStorageConfig(env), clientFactory);
+  try {
+    await instance.head(release.objectKey);
+    const url = typeof instance.signatureUrlV4 === "function"
+      ? await instance.signatureUrlV4("GET", ttl, {}, release.objectKey)
+      : await instance.asyncSignatureUrl(release.objectKey, { expires: ttl });
+    return { ...release, url, expiresAt: Date.now() + ttl * 1000 };
+  } catch (error) {
+    if (error?.status === 404 || error?.statusCode === 404 || error?.code === "NoSuchKey") throw storageError("DOWNLOAD_NOT_CONFIGURED", 503);
+    if (error?.code?.startsWith?.("OSS_")) throw error;
     const failure = storageError("OSS_RELEASE_DOWNLOAD_FAILED", error?.status || 502);
     failure.details = String(error?.code || error?.message || "unknown").slice(0, 120);
     throw failure;

@@ -117,6 +117,15 @@ import {
   updateStockWatchlist,
   verifyStockPetDevice,
 } from "./stock-pet.mjs";
+import {
+  fortuneCatDownload,
+  fortuneCatLicense,
+  fortuneCatPublicProduct,
+  registerFortuneCatDevice,
+  removeFortuneCatDevice,
+  unlockFortuneCat,
+  verifyFortuneCatDevice,
+} from "./fortune-cat.mjs";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -2528,6 +2537,10 @@ export async function handleApi(request) {
       "cache-control": activeAdministrator(currentUser(request)?.id) ? "private, no-store" : "public, max-age=60",
     });
   }
+  if (path === "/api/products/fortune-cat" && request.method === "GET") {
+    if (!toolIsAccessible("fortune-cat", request)) return unpublishedToolResponse();
+    return json(fortuneCatPublicProduct(), 200, { "cache-control": "private, no-store" });
+  }
   if (path === "/api/writing/catalog" && request.method === "GET") {
     return toolIsAccessible("ai-writer", request)
       ? json(writingCatalog())
@@ -2562,6 +2575,34 @@ export async function handleApi(request) {
 
   if (path.startsWith("/api/products/stock-pet") && !toolIsAccessible("stock-pet", request))
     return unpublishedToolResponse();
+  if (path.startsWith("/api/products/fortune-cat") && !toolIsAccessible("fortune-cat", request))
+    return unpublishedToolResponse();
+
+  if (path === "/api/products/fortune-cat/license" && request.method === "GET")
+    return json(fortuneCatLicense(user.id));
+  if (path === "/api/products/fortune-cat/unlock" && request.method === "POST") {
+    try { return json(unlockFortuneCat(user.id), 201); }
+    catch (error) { return fail(error.code || "PRODUCT_UNLOCK_FAILED", error.status || 500); }
+  }
+  if (path === "/api/products/fortune-cat/devices" && request.method === "POST") {
+    try { return json(registerFortuneCatDevice(user.id, await body(request)), 201); }
+    catch (error) { return fail(error.code || "DEVICE_REGISTRATION_FAILED", error.status || 500); }
+  }
+  const fortuneCatDeviceMatch = path.match(/^\/api\/products\/fortune-cat\/devices\/([^/]+)$/);
+  if (fortuneCatDeviceMatch && request.method === "DELETE") return json(removeFortuneCatDevice(user.id, fortuneCatDeviceMatch[1]));
+  if (path.startsWith("/api/products/fortune-cat/") && request.headers.get("x-oneshow-client") === "desktop") {
+    try { verifyFortuneCatDevice(user.id, request.headers.get("x-fortune-cat-device")); }
+    catch (error) { return fail(error.code || "DEVICE_NOT_REGISTERED", error.status || 403); }
+  }
+  if (path === "/api/products/fortune-cat/download" && request.method === "GET") {
+    const platform = url.searchParams.get("platform");
+    if (rateLimited(request, "fortune-cat-download", user.id, 6, 60 * 60 * 1000)) return fail("DOWNLOAD_RATE_LIMITED", 429);
+    try {
+      const result = await fortuneCatDownload(user.id, platform);
+      recordPromotionEvent(user.id, "download", "fortune_cat_release", `${platform || "unknown"}:${result.version || result.expiresAt}`, { platform });
+      return json(result, 200, { "cache-control": "private, no-store, max-age=0", pragma: "no-cache" });
+    } catch (error) { return fail(error.code || "DOWNLOAD_NOT_CONFIGURED", error.status || 503); }
+  }
 
   if (path === "/api/products/stock-pet/license" && request.method === "GET")
     return json(stockPetLicense(user.id));
