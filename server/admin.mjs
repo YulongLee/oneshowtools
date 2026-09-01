@@ -48,6 +48,10 @@ import {
 import { normalizeMainlandPhone, phoneIdentityHash } from "./sms-provider.mjs";
 import { saveToolSearchProfile, searchProfileForTool } from "./tool-search.mjs";
 import { saveToolManual, toolManualForAdmin } from "./tool-manuals.mjs";
+import {
+  createPromotionCampaign, createPromotionChannel, createPromotionCost,
+  createPromotionLink, promotionOverview, updatePromotionStatus,
+} from "./promotion-center.mjs";
 
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status,
@@ -75,6 +79,8 @@ const permissions = [
   ["finance.manage", "Create and post internal financial journals"],
   ["finance.close", "Close or reopen internal financial periods"],
   ["analytics.read", "View privacy-safe tool usage analytics"],
+  ["promotion.read", "View first-party promotion attribution and funnel analytics"],
+  ["promotion.manage", "Manage promotion channels, campaigns, links and costs"],
   ["intelligence.read", "View market intelligence reports and evidence"],
   ["intelligence.manage", "Run the market intelligence agent"],
   ["models.read", "View redacted platform model configuration"],
@@ -101,12 +107,12 @@ const permissions = [
 ];
 const roleDefinitions = {
   super_admin: permissions.map(([code]) => code),
-  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "storage.read", "seo_sources.read", "audit.read", "support.read", "support.manage"],
+  operations: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "tools.read", "jobs.read", "jobs.manage", "infrastructure.read", "alerts.manage", "intelligence.read", "intelligence.manage", "models.read", "storage.read", "seo_sources.read", "audit.read", "support.read", "support.manage", "promotion.read", "promotion.manage"],
   support: ["dashboard.read", "users.read", "users.manage", "credits.read", "credits.adjust", "credits.manage", "billing.read", "jobs.read", "support.read", "support.manage"],
   finance: ["dashboard.read", "users.read", "credits.read", "credits.adjust", "credits.manage", "credits.approve", "billing.read", "billing.manage", "finance.read", "finance.manage", "finance.close", "metrics.export", "audit.read"],
-  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage", "storage.read", "storage.manage", "seo_sources.read", "seo_sources.manage"],
+  tool_manager: ["dashboard.read", "tools.read", "tools.manage", "jobs.read", "analytics.read", "intelligence.read", "intelligence.manage", "models.read", "models.manage", "storage.read", "storage.manage", "seo_sources.read", "seo_sources.manage", "promotion.read", "promotion.manage"],
   privacy: ["dashboard.read", "users.read", "privacy.read", "privacy.manage", "audit.read"],
-  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "storage.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read", "support.read"],
+  read_only: ["dashboard.read", "users.read", "credits.read", "billing.read", "finance.read", "tools.read", "analytics.read", "intelligence.read", "models.read", "storage.read", "seo_sources.read", "infrastructure.read", "privacy.read", "jobs.read", "audit.read", "support.read", "promotion.read"],
 };
 const roleNames = {
   super_admin: ["超级管理员", "Super Administrator"],
@@ -1571,6 +1577,52 @@ export function createAdminHandler(dependencies) {
     if (path === "/api/admin/v1/analytics/tools" && request.method === "GET") {
       const denied = requirePermission(context, "analytics.read"); if (denied) return denied;
       return json(toolAnalytics(request));
+    }
+    if (path === "/api/admin/v1/promotion/overview" && request.method === "GET") {
+      const denied = requirePermission(context, "promotion.read"); if (denied) return denied;
+      return json(promotionOverview(request));
+    }
+    if (path === "/api/admin/v1/promotion/channels" && request.method === "POST") {
+      const denied = requirePermission(context, "promotion.manage"); if (denied) return denied;
+      try {
+        const channel = createPromotionChannel(await parseBody(request), context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "promotion.manage", action: "admin.promotion.channel.create", targetType: "promotion_channel", targetId: channel.id, after: channel });
+        return json({ channel }, 201);
+      } catch (error) { return fail(error.code || "PROMOTION_CHANNEL_CREATE_FAILED", 400); }
+    }
+    if (path === "/api/admin/v1/promotion/campaigns" && request.method === "POST") {
+      const denied = requirePermission(context, "promotion.manage"); if (denied) return denied;
+      try {
+        const campaign = createPromotionCampaign(await parseBody(request), context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "promotion.manage", action: "admin.promotion.campaign.create", targetType: "promotion_campaign", targetId: campaign.id, after: campaign });
+        return json({ campaign }, 201);
+      } catch (error) { return fail(error.code || "PROMOTION_CAMPAIGN_CREATE_FAILED", 400); }
+    }
+    if (path === "/api/admin/v1/promotion/links" && request.method === "POST") {
+      const denied = requirePermission(context, "promotion.manage"); if (denied) return denied;
+      try {
+        const link = createPromotionLink(await parseBody(request), context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "promotion.manage", action: "admin.promotion.link.create", targetType: "promotion_link", targetId: link.id, after: link });
+        return json({ link }, 201);
+      } catch (error) { return fail(error.code || "PROMOTION_LINK_CREATE_FAILED", 400); }
+    }
+    if (path === "/api/admin/v1/promotion/costs" && request.method === "POST") {
+      const denied = requirePermission(context, "promotion.manage"); if (denied) return denied;
+      try {
+        const cost = createPromotionCost(await parseBody(request), context.user.id);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "promotion.manage", action: "admin.promotion.cost.create", targetType: "promotion_cost", targetId: cost.id, after: cost });
+        return json({ cost }, 201);
+      } catch (error) { return fail(error.code || "PROMOTION_COST_CREATE_FAILED", 400); }
+    }
+    const promotionStatusMatch = path.match(/^\/api\/admin\/v1\/promotion\/(channels|campaigns|links)\/([^/]+)\/status$/);
+    if (promotionStatusMatch && request.method === "PATCH") {
+      const denied = requirePermission(context, "promotion.manage"); if (denied) return denied;
+      try {
+        const data = await parseBody(request);
+        const record = updatePromotionStatus(promotionStatusMatch[1], promotionStatusMatch[2], data.status);
+        richAudit({ request, actor: context.user, roles: context.roles, permission: "promotion.manage", action: `admin.promotion.${promotionStatusMatch[1]}.status`, targetType: `promotion_${promotionStatusMatch[1]}`, targetId: record.id, after: record });
+        return json({ record });
+      } catch (error) { return fail(error.code || "PROMOTION_STATUS_UPDATE_FAILED", error.code === "PROMOTION_RECORD_NOT_FOUND" ? 404 : 400); }
     }
     if (path === "/api/admin/v1/support" && request.method === "GET") {
       const denied = requirePermission(context, "support.read"); if (denied) return denied;

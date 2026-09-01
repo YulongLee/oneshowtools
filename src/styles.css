@@ -2348,6 +2348,44 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
 .admin-page-stack { display: grid; gap: 14px; }
 .admin-v2-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
 .admin-v2-metrics-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.promotion-center { --promotion: #1768e5; }
+.promotion-hero { min-height: 168px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 28px 32px; color: #fff; border: 0; background: radial-gradient(circle at 82% 20%, rgba(65,177,255,.32), transparent 28%), linear-gradient(125deg, #102342 0%, #164d91 56%, #1579dc 100%); box-shadow: 0 18px 42px rgba(22,73,135,.18); }
+.promotion-hero > div:first-child { max-width: 760px; }
+.promotion-hero small { color: #7fd4ff; font-size: 9px; font-weight: 800; letter-spacing: .16em; }
+.promotion-hero h2 { margin: 10px 0 8px; font-size: 27px; letter-spacing: -.03em; }
+.promotion-hero p { margin: 0; color: #bfd5ee; font-size: 11px; line-height: 1.8; }
+.promotion-hero > div:last-child { flex: 0 0 168px; display: grid; gap: 5px; padding: 18px 20px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; background: rgba(255,255,255,.08); backdrop-filter: blur(8px); }
+.promotion-hero > div:last-child span, .promotion-hero > div:last-child em { color: #a8c5e6; font-size: 8px; font-style: normal; }
+.promotion-hero > div:last-child strong { font-size: 21px; }
+.promotion-tabs { display: flex; align-items: center; gap: 4px; min-height: 54px; padding: 7px; overflow-x: auto; border: 1px solid #e0e6ee; border-radius: 12px; background: #fff; }
+.promotion-tabs button { min-height: 38px; padding: 0 14px; border: 0; border-radius: 8px; color: #647389; background: transparent; font-size: 10px; white-space: nowrap; }
+.promotion-tabs button.active { color: #1768e5; background: #edf4ff; font-weight: 800; }
+.promotion-tabs .promotion-export { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; border: 1px solid #dbe3ee; color: #34445b; background: #fff; }
+.promotion-metrics { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.promotion-form { padding: 16px; border-bottom: 1px solid #e7ebf1; background: #f8fbff; }
+.promotion-form button { align-self: end; justify-self: start; min-width: 130px; }
+.promotion-trend > div, .promotion-ranking > div { padding: 14px 18px; }
+.promotion-trend > div > div:not(.admin-empty) { min-height: 34px; display: grid; grid-template-columns: 40px 1fr 34px 34px; align-items: center; gap: 8px; }
+.promotion-trend time { color: #7b899c; font-size: 8px; }
+.promotion-trend span { height: 8px; overflow: hidden; border-radius: 999px; background: #edf2f8; }
+.promotion-trend i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#1768e5,#53a9ff); }
+.promotion-trend b, .promotion-trend em { font-size: 9px; font-style: normal; }
+.promotion-trend em { color: #13845c; }
+.promotion-ranking > div > div:not(.admin-empty) { min-height: 54px; display: grid; grid-template-columns: 26px 1fr auto 48px; align-items: center; gap: 10px; border-bottom: 1px solid #eef2f6; }
+.promotion-ranking > div > div > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; color: #1768e5; background: #edf4ff; font-size: 9px; font-weight: 800; }
+.promotion-ranking strong { display: grid; gap: 3px; font-size: 10px; }
+.promotion-ranking strong small { color: #8895a7; font-size: 8px; font-weight: 400; }
+.promotion-ranking b { font-size: 9px; }
+.promotion-ranking em { color: #13845c; font-size: 9px; font-style: normal; text-align: right; }
+.promotion-funnel > div { display: grid; justify-items: center; gap: 9px; padding: 24px; }
+.promotion-funnel article { min-height: 58px; display: grid; grid-template-columns: 36px 1fr auto 56px; align-items: center; gap: 12px; padding: 0 18px; border-radius: 10px; color: #fff; background: linear-gradient(90deg,#144e92,#1780e8); box-shadow: 0 8px 18px rgba(23,104,229,.12); }
+.promotion-funnel article:nth-child(2) { opacity: .92; }.promotion-funnel article:nth-child(3) { opacity: .84; }.promotion-funnel article:nth-child(4) { opacity: .76; }.promotion-funnel article:nth-child(5) { opacity: .68; }
+.promotion-funnel article span { display: grid; place-items: center; }.promotion-funnel article strong { font-size: 11px; }.promotion-funnel article b { font-size: 16px; }.promotion-funnel article em { color: #d9ecff; font-size: 9px; font-style: normal; text-align: right; }
+.promotion-cost > .promotion-form { border: 0; }
+.promotion-qr-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(12,24,42,.48); backdrop-filter: blur(4px); }
+.promotion-qr-backdrop article { position: relative; width: min(380px,92vw); display: grid; justify-items: center; gap: 10px; padding: 28px; border-radius: 18px; background: #fff; box-shadow: 0 24px 70px rgba(8,22,42,.28); }
+.promotion-qr-backdrop article > button:first-child { position: absolute; top: 13px; right: 13px; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: #f1f4f8; }
+.promotion-qr-backdrop img { width: 230px; height: 230px; }.promotion-qr-backdrop h3 { margin: 0; font-size: 16px; }.promotion-qr-backdrop p { max-width: 100%; margin: 0; overflow-wrap: anywhere; color: #76849a; font-size: 9px; }
 .admin-v2-metric { min-width: 0; min-height: 104px; display: flex; align-items: flex-start; gap: 13px; padding: 18px; border: 1px solid #e0e6ee; border-radius: 13px; background: #fff; box-shadow: 0 5px 20px rgba(43,65,94,.035); }
 .metric-symbol { flex: 0 0 auto; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #1768e5; background: #edf4ff; }
 .metric-symbol.green { color: #13845c; background: #eaf8f2; }

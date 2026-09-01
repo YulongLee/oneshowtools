@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { handleApi } from "./api.mjs";
+import { handlePromotionRedirect } from "./promotion-center.mjs";
 import { getServerConfig, validateServerConfig } from "./config.mjs";
 import { startWorker, stopWorker } from "./jobs.mjs";
 
@@ -69,6 +70,10 @@ function serveFile(res, pathname) {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const promotionMatch = url.pathname.match(/^\/r\/([a-zA-Z0-9_-]+)$/);
+    if (promotionMatch && req.method === "GET") {
+      return sendResponse(res, handlePromotionRedirect(toRequest(req), promotionMatch[1]));
+    }
     if (url.pathname.startsWith("/api/")) {
       return sendResponse(res, await handleApi(toRequest(req)));
     }

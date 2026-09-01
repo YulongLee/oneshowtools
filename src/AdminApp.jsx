@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import {
   Pulse, ArrowClockwise, Bank, Bell, Check, CheckCircle, Coins, CreditCard,
   File, Gauge, Gear, Globe, IdentificationCard, Key, ListChecks, LockKey,
@@ -6,6 +7,7 @@ import {
   Translate, User, UserCircle, Users, Warning, Wrench, X, ChartLineUp, HardDrives,
   BookOpenText, Gift, Megaphone, CaretUp, CaretDown,
   Binoculars, Lightning, LinkSimple, TrendUp, ChatCircleDots, PaperPlaneTilt, MusicNotes, ImageSquare, Clock, Robot,
+  Copy as CopyIcon, DownloadSimple, Plus, QrCode, Target,
 } from "@phosphor-icons/react";
 
 const copy = {
@@ -15,7 +17,7 @@ const copy = {
     password: "密码", secureLogin: "安全登录", back: "返回 OneShowTools", emailLogin: "邮箱密码", smsLogin: "手机号验证码",
     phone: "手机号", smsCode: "短信验证码", sendSmsCode: "获取验证码", resendSmsIn: "秒后重试", smsCodeSent: "验证码已发送，请查看手机。",
     noPermission: "当前账户没有管理员权限。", loginFailed: "登录失败，请检查邮箱、密码和验证状态。",
-    loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营",
+    loadFailed: "管理数据加载失败，请稍后重试。", overview: "经营概览", command: "指挥中心", users: "用户运营", promotion: "推广中心",
     creditLedger: "积分与账本", finance: "财务与对账", analytics: "工具分析", infrastructure: "系统健康",
     intelligence: "市场情报", runIntelligence: "立即看盘", intelligenceAgent: "需求分析 Agent",
     supportCenter: "客服中心", supportQueue: "客服工单", supportKnowledge: "解决方案知识库", awaitingAgent: "待处理工单", inProgress: "处理中", resolvedSupport: "已解决",
@@ -109,7 +111,7 @@ const copy = {
     password: "Password", secureLogin: "Secure sign in", back: "Back to OneShowTools", emailLogin: "Email & password", smsLogin: "Mobile code",
     phone: "Mobile number", smsCode: "Verification code", sendSmsCode: "Send code", resendSmsIn: "s to retry", smsCodeSent: "Code sent. Check your phone.",
     noPermission: "This account does not have administrator access.", loginFailed: "Sign in failed. Check the email, password, and verification status.",
-    loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers",
+    loadFailed: "Admin data could not be loaded.", overview: "Overview", command: "Command Center", users: "Customers", promotion: "Promotion Center",
     creditLedger: "Credits & Ledger", finance: "Finance & Reconciliation", analytics: "Tool Analytics", infrastructure: "System Health",
     intelligence: "Market Intelligence", runIntelligence: "Run analysis", intelligenceAgent: "Demand Analysis Agent",
     supportCenter: "Support Center", supportQueue: "Support tickets", supportKnowledge: "Resolution knowledge", awaitingAgent: "Pending tickets", inProgress: "In progress", resolvedSupport: "Resolved",
@@ -1205,6 +1207,71 @@ function ToolsView({ data, locale, onLifecycle, onBranding, onResetBranding, onP
   </div>;
 }
 
+function PromotionCenterView({ data, locale, canManage, onCreate, onStatus }) {
+  const zh = locale !== "en";
+  const [tab, setTab] = useState("overview");
+  const [qr, setQr] = useState(null);
+  const [form, setForm] = useState({});
+  const labels = zh ? { overview: "推广总览", links: "推广链接", campaigns: "营销活动", channels: "渠道分析", funnel: "转化漏斗", cost: "成本录入" }
+    : { overview: "Overview", links: "Links", campaigns: "Campaigns", channels: "Channels", funnel: "Funnel", cost: "Costs" };
+  const totals = data?.totals || {};
+  const money = (minor) => new Intl.NumberFormat(locale, { style: "currency", currency: "CNY" }).format(Number(minor || 0) / 100);
+  const rate = (value, base) => base ? `${(Number(value || 0) / Number(base) * 100).toFixed(1)}%` : "0%";
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = async (kind, payload) => {
+    if (await onCreate(kind, payload)) setForm({});
+  };
+  const copyLink = async (code) => navigator.clipboard.writeText(`${data.shortLinkBase}${code}`);
+  const showQr = async (link) => setQr({ ...link, image: await QRCode.toDataURL(`${data.shortLinkBase}${link.code}`, { width: 320, margin: 2, color: { dark: "#12213a", light: "#ffffff" } }) });
+  const exportCsv = () => {
+    const rows = [["channel", "platform", "visitors", "registrations", "users", "orders", "revenue_cny"], ...(data?.channels || []).map((row) => [row.name, row.platform, row.visitors, row.registrations, row.users, row.orders, Number(row.revenueMinor || 0) / 100])];
+    const blob = new Blob([`\ufeff${rows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(",")).join("\n")}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `promotion-${new Date().toISOString().slice(0, 10)}.csv`; anchor.click(); URL.revokeObjectURL(url);
+  };
+  const funnel = [
+    [zh ? "推广访问" : "Visits", totals.visitors, Users],
+    [zh ? "完成注册" : "Registrations", totals.registrations, UserCircle],
+    [zh ? "客户端下载" : "Downloads", totals.downloads, DownloadSimple],
+    [zh ? "实际使用" : "Activated users", totals.users, Lightning],
+    [zh ? "创建订单" : "Orders", totals.orders, Receipt],
+    [zh ? "支付成功" : "Paid", totals.paidOrders, CreditCard],
+  ];
+  return <div className="admin-page-stack promotion-center">
+    <section className="promotion-hero admin-v2-panel"><div><small>GROWTH OPERATIONS · PHASE 1</small><h2>{zh ? "让每一次推广都能被衡量" : "Measure every promotion"}</h2><p>{zh ? "第一方短链接串联访问、注册、使用、下单和支付，数据直接来自现有业务系统。" : "First-party links connect visits, registrations, usage, orders and payments."}</p></div><div><span>{zh ? "归因窗口" : "Attribution"}</span><strong>30 {zh ? "天" : "days"}</strong><em>{zh ? "末次非直接访问" : "Last non-direct"}</em></div></section>
+    <section className="promotion-tabs">{Object.entries(labels).map(([key, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{label}</button>)}<button className="promotion-export" onClick={exportCsv}><DownloadSimple size={16} />{zh ? "导出 CSV" : "Export CSV"}</button></section>
+
+    {tab === "overview" && <>
+      <section className="admin-v2-metrics promotion-metrics">
+        <Metric icon={Users} label={zh ? "独立访客" : "Visitors"} value={number(totals.visitors, locale)} sub={`${data?.windowDays || 30}d`} />
+        <Metric icon={UserCircle} label={zh ? "注册用户" : "Registrations"} value={number(totals.registrations, locale)} sub={rate(totals.registrations, totals.visitors)} tone="purple" />
+        <Metric icon={Lightning} label={zh ? "激活使用" : "Activated"} value={number(totals.users, locale)} sub={rate(totals.users, totals.registrations)} tone="green" />
+        <Metric icon={CreditCard} label={zh ? "支付订单" : "Paid orders"} value={number(totals.paidOrders, locale)} sub={rate(totals.paidOrders, totals.registrations)} tone="orange" />
+        <Metric icon={Bank} label={zh ? "推广收入" : "Revenue"} value={money(totals.revenueMinor)} tone="gold" />
+        <Metric icon={Receipt} label={zh ? "推广成本" : "Cost"} value={money(totals.costMinor)} tone="red" />
+        <Metric icon={TrendUp} label="ROI" value={totals.costMinor ? `${((totals.revenueMinor - totals.costMinor) / totals.costMinor * 100).toFixed(1)}%` : "—"} tone="green" />
+        <Metric icon={Target} label={zh ? "获客成本" : "CAC"} value={totals.registrations ? money(totals.costMinor / totals.registrations) : "—"} />
+      </section>
+      <section className="admin-v2-grid two">
+        <article className="admin-v2-panel promotion-trend"><header><div><small>DAILY TREND</small><h2>{zh ? "每日访问与注册" : "Daily visits and registrations"}</h2></div><TrendUp size={22} /></header><div>{(data?.daily || []).length ? data.daily.map((row) => { const max = Math.max(...data.daily.map((item) => Number(item.visitors || 0)), 1); return <div key={row.day}><time>{row.day.slice(5)}</time><span><i style={{ width: `${Number(row.visitors || 0) / max * 100}%` }} /></span><b>{row.visitors}</b><em>+{row.registrations}</em></div>; }) : <div className="admin-empty">{zh ? "创建推广链接后，这里会出现真实趋势" : "Create a link to start collecting trends"}</div>}</div></article>
+        <article className="admin-v2-panel promotion-ranking"><header><div><small>CHANNEL PERFORMANCE</small><h2>{zh ? "渠道效果排名" : "Channel ranking"}</h2></div><ChartLineUp size={22} /></header><div>{(data?.channels || []).slice(0, 6).map((row, index) => <div key={row.id}><span>{index + 1}</span><strong>{row.name}<small>{row.platform}</small></strong><b>{row.visitors} {zh ? "访客" : "visits"}</b><em>{rate(row.registrations, row.visitors)}</em></div>)}{!data?.channels?.length && <div className="admin-empty">{zh ? "请先创建渠道" : "Create your first channel"}</div>}</div></article>
+      </section>
+    </>}
+
+    {tab === "links" && <section className="admin-v2-panel admin-table-panel"><header><div><small>TRACKABLE LINKS</small><h2>{zh ? "专属推广链接" : "Trackable promotion links"}</h2></div>{canManage && <button className="admin-primary" onClick={() => setForm({ kind: "link" })}><Plus size={15} />{zh ? "新建链接" : "New link"}</button>}</header>
+      {form.kind === "link" && <div className="promotion-form admin-form-grid"><label>{zh ? "链接名称" : "Name"}<input value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></label><label>{zh ? "落地页地址" : "Destination"}<input placeholder="https://oneshowtools.com/#tools" value={form.destinationUrl || ""} onChange={(e) => set("destinationUrl", e.target.value)} /></label><label>{zh ? "渠道" : "Channel"}<select value={form.channelId || ""} onChange={(e) => set("channelId", e.target.value)}><option value="">—</option>{data.channels.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>{zh ? "营销活动" : "Campaign"}<select value={form.campaignId || ""} onChange={(e) => set("campaignId", e.target.value)}><option value="">{zh ? "不归属活动" : "No campaign"}</option>{data.campaigns.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>{zh ? "内容标题" : "Content title"}<input placeholder={zh ? "例如：小红书秋招笔记 01" : "e.g. Autumn hiring post 01"} value={form.contentTitle || ""} onChange={(e) => set("contentTitle", e.target.value)} /></label><label>{zh ? "自定义短码（可选）" : "Custom code (optional)"}<input value={form.code || ""} onChange={(e) => set("code", e.target.value)} /></label><button className="admin-primary" disabled={!form.name || !form.destinationUrl || !form.channelId} onClick={() => submit("links", form)}>{zh ? "生成推广链接" : "Create link"}</button></div>}
+      <div className="admin-v2-table-wrap"><table><thead><tr><th>{zh ? "内容 / 链接" : "Content / Link"}</th><th>{zh ? "渠道" : "Channel"}</th><th>{zh ? "活动" : "Campaign"}</th><th>{zh ? "访客" : "Visitors"}</th><th>{zh ? "注册" : "Registrations"}</th><th>{zh ? "转化率" : "CVR"}</th><th /></tr></thead><tbody>{data?.links?.map((row) => <tr key={row.id}><td><strong>{row.name}</strong><small>{data.shortLinkBase}{row.code}</small></td><td>{row.channelName}</td><td>{row.campaignName || "—"}</td><td>{row.visitors}</td><td>{row.registrations}</td><td>{rate(row.registrations, row.visitors)}</td><td><button className="admin-link" onClick={() => copyLink(row.code)}><CopyIcon size={15} /></button><button className="admin-link" onClick={() => showQr(row)}><QrCode size={15} /></button>{canManage && <button className="admin-link" onClick={() => onStatus("links", row.id, row.status === "active" ? "inactive" : "active")}>{row.status === "active" ? (zh ? "停用" : "Disable") : (zh ? "启用" : "Enable")}</button>}</td></tr>)}</tbody></table></div></section>}
+
+    {tab === "campaigns" && <section className="admin-v2-panel admin-table-panel"><header><div><small>CAMPAIGNS</small><h2>{zh ? "营销活动" : "Marketing campaigns"}</h2></div>{canManage && <button className="admin-primary" onClick={() => setForm({ kind: "campaign" })}><Plus size={15} />{zh ? "新建活动" : "New campaign"}</button>}</header>{form.kind === "campaign" && <div className="promotion-form admin-form-grid"><label>{zh ? "活动名称" : "Name"}<input value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></label><label>{zh ? "推广目标" : "Objective"}<input value={form.objective || ""} onChange={(e) => set("objective", e.target.value)} /></label><button className="admin-primary" disabled={!form.name} onClick={() => submit("campaigns", form)}>{zh ? "创建活动" : "Create campaign"}</button></div>}<div className="admin-v2-table-wrap"><table><thead><tr><th>{zh ? "活动" : "Campaign"}</th><th>{zh ? "状态" : "Status"}</th><th>{zh ? "链接" : "Links"}</th><th>{zh ? "访客" : "Visitors"}</th><th>{zh ? "注册" : "Registrations"}</th><th>{zh ? "成本" : "Cost"}</th><th /></tr></thead><tbody>{data?.campaigns?.map((row) => <tr key={row.id}><td><strong>{row.name}</strong><small>{row.objective || "—"}</small></td><td><span className={`admin-badge ${row.status}`}>{row.status}</span></td><td>{row.links}</td><td>{row.visitors}</td><td>{row.registrations}</td><td>{money(row.costMinor)}</td><td>{canManage && <button className="admin-link" onClick={() => onStatus("campaigns", row.id, row.status === "active" ? "paused" : "active")}>{row.status === "active" ? (zh ? "暂停" : "Pause") : (zh ? "启用" : "Activate")}</button>}</td></tr>)}</tbody></table></div></section>}
+
+    {tab === "channels" && <section className="admin-v2-panel admin-table-panel"><header><div><small>CHANNEL COMPARISON</small><h2>{zh ? "渠道分析" : "Channel analysis"}</h2></div>{canManage && <button className="admin-primary" onClick={() => setForm({ kind: "channel" })}><Plus size={15} />{zh ? "新增渠道" : "New channel"}</button>}</header>{form.kind === "channel" && <div className="promotion-form admin-form-grid"><label>{zh ? "渠道名称" : "Name"}<input placeholder={zh ? "例如：牛客" : "e.g. Nowcoder"} value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></label><label>{zh ? "平台标识" : "Platform code"}<input placeholder="nowcoder" value={form.platform || ""} onChange={(e) => set("platform", e.target.value)} /></label><button className="admin-primary" disabled={!form.name || !form.platform} onClick={() => submit("channels", form)}>{zh ? "保存渠道" : "Save channel"}</button></div>}<div className="admin-v2-table-wrap"><table><thead><tr><th>{zh ? "渠道" : "Channel"}</th><th>{zh ? "访客" : "Visitors"}</th><th>{zh ? "注册" : "Registrations"}</th><th>{zh ? "激活" : "Activated"}</th><th>{zh ? "订单" : "Orders"}</th><th>{zh ? "收入" : "Revenue"}</th><th>{zh ? "访问→注册" : "Visit→register"}</th><th /></tr></thead><tbody>{data?.channels?.map((row) => <tr key={row.id}><td><strong>{row.name}</strong><small>{row.platform}</small></td><td>{row.visitors}</td><td>{row.registrations}</td><td>{row.users}</td><td>{row.orders}</td><td>{money(row.revenueMinor)}</td><td>{rate(row.registrations, row.visitors)}</td><td>{canManage && <button className="admin-link" onClick={() => onStatus("channels", row.id, row.status === "active" ? "inactive" : "active")}>{row.status === "active" ? (zh ? "停用" : "Disable") : (zh ? "启用" : "Enable")}</button>}</td></tr>)}</tbody></table></div></section>}
+
+    {tab === "funnel" && <section className="admin-v2-panel promotion-funnel"><header><div><small>CONVERSION FUNNEL</small><h2>{zh ? "全链路转化漏斗" : "Full conversion funnel"}</h2></div><Target size={22} /></header><div>{funnel.map(([label, value, Icon], index) => <article key={label} style={{ width: `${100 - index * 8}%` }}><span><Icon size={20} /></span><strong>{label}</strong><b>{number(value, locale)}</b><em>{index ? rate(value, funnel[index - 1][1]) : "100%"}</em></article>)}</div></section>}
+
+    {tab === "cost" && <section className="admin-v2-panel promotion-cost"><header><div><small>MANUAL COST ENTRY</small><h2>{zh ? "录入推广成本" : "Record promotion cost"}</h2></div><Receipt size={22} /></header><div className="promotion-form admin-form-grid"><label>{zh ? "营销活动" : "Campaign"}<select value={form.campaignId || ""} onChange={(e) => set("campaignId", e.target.value)}><option value="">—</option>{data?.campaigns?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>{zh ? "渠道（可选）" : "Channel (optional)"}<select value={form.channelId || ""} onChange={(e) => set("channelId", e.target.value)}><option value="">—</option>{data?.channels?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>{zh ? "金额（元）" : "Amount (CNY)"}<input type="number" min="0" step="0.01" value={form.amount || ""} onChange={(e) => set("amount", e.target.value)} /></label><label>{zh ? "发生日期" : "Date"}<input type="date" value={form.occurredOn || new Date().toISOString().slice(0, 10)} onChange={(e) => set("occurredOn", e.target.value)} /></label><label className="wide">{zh ? "备注" : "Note"}<input value={form.note || ""} onChange={(e) => set("note", e.target.value)} /></label><button className="admin-primary" disabled={!canManage || !form.amount || (!form.campaignId && !form.channelId)} onClick={() => submit("costs", { ...form, occurredOn: form.occurredOn || new Date().toISOString().slice(0, 10) })}>{zh ? "保存成本" : "Save cost"}</button></div></section>}
+    {qr && <div className="promotion-qr-backdrop" onClick={() => setQr(null)}><article onClick={(event) => event.stopPropagation()}><button onClick={() => setQr(null)}><X size={18} /></button><img src={qr.image} alt="QR code" /><h3>{qr.name}</h3><p>{data.shortLinkBase}{qr.code}</p><button className="admin-primary" onClick={() => copyLink(qr.code)}><CopyIcon size={16} />{zh ? "复制链接" : "Copy link"}</button></article></div>}
+  </div>;
+}
+
 function OperationsView({ data, locale, onRetry }) {
   const t = copy[locale];
   const [tab, setTab] = useState("jobs");
@@ -1301,6 +1368,7 @@ export function AdminApp() {
     creditLedger: `/api/admin/v1/credits/ledger?page=${page}&pageSize=25`,
     finance: "/api/admin/v1/finance",
     analytics: "/api/admin/v1/analytics/tools?days=30",
+    promotion: "/api/admin/v1/promotion/overview?days=30",
     supportCenter: `/api/admin/v1/support${supportStatus ? `?status=${encodeURIComponent(supportStatus)}` : ""}`,
     intelligence: `/api/admin/v1/market-intelligence${intelligenceDate ? `?date=${encodeURIComponent(intelligenceDate)}` : ""}`,
     models: "/api/admin/v1/platform-models",
@@ -1537,6 +1605,16 @@ export function AdminApp() {
       await loadView(); showToast(); return true;
     } catch (error) { setMessage(error.code || t.loadFailed); return false; }
   };
+  const createPromotionRecord = async (kind, draft) => {
+    try {
+      await api(`/api/admin/v1/promotion/${kind}`, json("POST", draft));
+      await loadView(); showToast(locale === "en" ? "Promotion record saved" : "推广配置已保存"); return true;
+    } catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
+  const updatePromotionRecordStatus = async (kind, id, status) => {
+    try { await api(`/api/admin/v1/promotion/${kind}/${id}/status`, json("PATCH", { status })); await loadView(); showToast(); return true; }
+    catch (error) { setMessage(error.code || t.loadFailed); return false; }
+  };
 
   if (session === undefined) return <div className="admin-loading"><SpinnerGap className="spin" size={28} />{t.loading}</div>;
   if (!session) return <Login locale={locale} onAuthenticated={loadSession} message={message} setMessage={setMessage} />;
@@ -1545,7 +1623,7 @@ export function AdminApp() {
   const nav = [
     ["command", Gauge, "dashboard.read"], ["users", Users, "users.read"],
     ["creditLedger", Coins, "credits.read"], ["finance", Bank, "finance.read"],
-    ["analytics", ChartLineUp, "analytics.read"], ["infrastructure", HardDrives, "infrastructure.read"],
+    ["analytics", ChartLineUp, "analytics.read"], ["promotion", Megaphone, "promotion.read"], ["infrastructure", HardDrives, "infrastructure.read"],
     ["supportCenter", ChatCircleDots, "support.read"],
     ["intelligence", Binoculars, "intelligence.read"],
     ["models", Gear, "models.read"],
@@ -1560,6 +1638,7 @@ export function AdminApp() {
     creditLedger: <CreditLedgerView data={data.creditLedger} locale={locale} onPage={setPage} />,
     finance: <FinanceView data={data.finance} locale={locale} />,
     analytics: <ToolAnalyticsView data={data.analytics} locale={locale} />,
+    promotion: <PromotionCenterView data={data.promotion} locale={locale} canManage={allowed(session, "promotion.manage")} onCreate={createPromotionRecord} onStatus={updatePromotionRecordStatus} />,
     supportCenter: <SupportCenterView data={data.supportCenter} detail={selectedSupport} locale={locale} status={supportStatus} onStatus={(next) => { setSupportStatus(next); setSelectedSupport(null); }} onSelect={openSupportConversation} onReply={replySupportConversation} onResolve={resolveSupportTicket} busy={busy} />,
     intelligence: <MarketIntelligenceView data={data.intelligence} locale={locale} onRun={runIntelligence} onSelectDate={setIntelligenceDate} onAsk={askIntelligence} running={intelligenceRunning} chatRunning={intelligenceChatRunning} />,
     models: <PlatformModelsView data={data.models} locale={locale} canManage={allowed(session, "models.manage")} canManageStorage={allowed(session, "storage.manage")} onTest={testPlatformModel} onSave={savePlatformModel} onMusicTest={testMusicProvider} onMusicSave={saveMusicProvider} onSingingTest={testSingingProvider} onSingingSave={saveSingingProvider} onImageTest={testImageProvider} onImageSave={saveImageProvider} onImageEditTest={testImageEditProvider} onImageEditSave={saveImageEditProvider} onWorkspaceTest={testModelStudioWorkspace} onWorkspaceSave={saveModelStudioWorkspace} onStorageTest={testObjectStorage} onStorageSave={saveObjectStorage} onStockMarketTest={testStockMarketProvider} onStockMarketSave={saveStockMarketProvider} />,

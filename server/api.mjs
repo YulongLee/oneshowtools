@@ -55,6 +55,7 @@ import {
   submitSingingCover,
 } from "./singing-cover.mjs";
 import { createAdminHandler } from "./admin.mjs";
+import { bindPromotionUser, recordPromotionEvent } from "./promotion-center.mjs";
 import {
   recordMarketplaceBehavior,
   recordMarketplaceSearch,
@@ -657,10 +658,12 @@ async function register(request) {
   if (!user.email_verified && user.status === "active")
     await issueAccountToken(request, user, "verify");
   securityEvent(request, "auth.register", "accepted", user.id);
+  bindPromotionUser(request, user.id);
   return json({ ok: true, verificationRequired: true }, 202);
 }
 
 function createLoginResponse(userId, request, status = 200) {
+  bindPromotionUser(request, userId);
   const token = createSessionToken();
   const timestamp = Date.now();
   const client = requestClient(request);
@@ -2703,6 +2706,7 @@ export async function handleApi(request) {
         platform,
         expiresAt: result.expiresAt,
       });
+      recordPromotionEvent(user.id, "download", "stock_pet_release", `${platform || "unknown"}:${result.version || result.expiresAt}`, { platform });
       return json(result, 200, {
         "cache-control": "private, no-store, max-age=0",
         pragma: "no-cache",
