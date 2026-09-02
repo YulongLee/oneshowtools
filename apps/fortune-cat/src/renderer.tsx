@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  CaretDown,
   CheckCircle,
   Clock,
   Coins,
@@ -23,6 +24,7 @@ const defaults = {
   privacy: false,
   alwaysOnTop: true,
   launchAtLogin: false,
+  showMoney: true,
 };
 function earnings(config: typeof defaults, now = new Date()) {
   const start = new Date(now);
@@ -111,6 +113,14 @@ function Pet() {
   const reactionMessage = affection
     ? reactions[(affection - 1) % reactions.length]
     : normalMessage;
+  const toggleMoney = async () => {
+    setConfig(
+      await window.fortuneCat.saveConfig({
+        ...config,
+        showMoney: !config.showMoney,
+      }),
+    );
+  };
   return (
     <main
       className="pet-shell"
@@ -151,17 +161,35 @@ function Pet() {
           </span>
         )}
       </button>
-      <section className="pet-money">
-        <small>今日已赚</small>
-        <strong>{hidden ? "¥ ••••••" : `¥ ${value.today.toFixed(2)}`}</strong>
-        <span>
-          {hidden ? "隐私模式" : `每秒 +¥ ${value.perSecond.toFixed(4)}`}
-        </span>
-        <div>
-          <i style={{ width: `${Math.min(100, value.progress * 100)}%` }} />
-        </div>
-        <em>{Math.round(value.progress * 100)}%</em>
-      </section>
+      {config.showMoney ? (
+        <section className="pet-money">
+          <button
+            className="money-collapse"
+            onClick={toggleMoney}
+            aria-label="收起收入信息"
+          >
+            <CaretDown />
+          </button>
+          <small>今日已赚</small>
+          <strong>{hidden ? "¥ ••••••" : `¥ ${value.today.toFixed(2)}`}</strong>
+          <span>
+            {hidden ? "隐私模式" : `每秒 +¥ ${value.perSecond.toFixed(4)}`}
+          </span>
+          <div>
+            <i style={{ width: `${Math.min(100, value.progress * 100)}%` }} />
+          </div>
+          <em>{Math.round(value.progress * 100)}%</em>
+        </section>
+      ) : (
+        <button
+          className="money-expand"
+          onClick={toggleMoney}
+          aria-label="展开收入信息"
+        >
+          <Coins weight="fill" />
+          <span>收入</span>
+        </button>
+      )}
     </main>
   );
 }
@@ -210,7 +238,7 @@ function Control() {
         </div>
         <div className="test-badge">
           <i />
-          测试版 0.1.1
+          测试版 0.1.2
         </div>
       </header>
       {!session.authenticated ? (
@@ -349,6 +377,20 @@ function Control() {
                 </div>
               </header>
               <div className="toggle-list">
+                <label>
+                  <span>
+                    <Coins />
+                    <b>显示收入卡片</b>
+                    <small>关闭后桌面只保留一个金币按钮</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={config.showMoney}
+                    onChange={(e) =>
+                      setConfig({ ...config, showMoney: e.target.checked })
+                    }
+                  />
+                </label>
                 <label>
                   <span>
                     {config.privacy ? <EyeSlash /> : <Eye />}

@@ -28,6 +28,7 @@ const defaultConfig = {
   privacy: false,
   alwaysOnTop: true,
   launchAtLogin: false,
+  showMoney: true,
 };
 let petWindow: BrowserWindow | null = null;
 let controlWindow: BrowserWindow | null = null;
@@ -75,6 +76,7 @@ function saveConfig(value: any) {
     privacy: Boolean(value.privacy),
     alwaysOnTop: value.alwaysOnTop !== false,
     launchAtLogin: Boolean(value.launchAtLogin),
+    showMoney: value.showMoney !== false,
   };
   encryptedWrite(configPath(), next);
   petWindow?.setAlwaysOnTop(next.alwaysOnTop);

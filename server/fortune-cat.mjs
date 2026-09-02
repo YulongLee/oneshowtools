@@ -33,7 +33,7 @@ export function fortuneCatPublicProduct() {
       windows: releaseStorageReady || Boolean(process.env.FORTUNE_CAT_WINDOWS_DOWNLOAD_URL),
       macos: releaseStorageReady || Boolean(process.env.FORTUNE_CAT_MACOS_DOWNLOAD_URL),
     },
-    version: process.env.FORTUNE_CAT_VERSION || "0.1.1-test",
+    version: process.env.FORTUNE_CAT_VERSION || "0.1.2-test",
   };
 }
 

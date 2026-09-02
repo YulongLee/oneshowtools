@@ -46,6 +46,9 @@ test("fortune cat desktop source keeps salary local and exposes working controls
   assert.match(renderer, /保存并应用/);
   assert.match(renderer, /摸摸招财滚滚/);
   assert.match(renderer, /fortune-burst/);
+  assert.match(renderer, /money-collapse/);
+  assert.match(renderer, /money-expand/);
+  assert.match(renderer, /showMoney/);
   assert.match(renderer, /document\.body\.classList\.add/);
   assert.ok(asset.size > 100_000);
 });

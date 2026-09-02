@@ -14,7 +14,9 @@ body.pet-mode #root {
   background: rgba(255, 255, 255, 0.78);
   opacity: 0;
   transform: translateY(-4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .pet-shell:hover .pet-settings,
@@ -31,7 +33,9 @@ body.pet-mode #root {
   pointer-events: none;
 }
 
-.pet-bubble::after { border-top-color: rgba(255, 255, 255, 0.82); }
+.pet-bubble::after {
+  border-top-color: rgba(255, 255, 255, 0.82);
+}
 
 .pet-character {
   position: absolute;
@@ -67,8 +71,12 @@ body.pet-mode #root {
   pointer-events: none;
 }
 
-.pet-character.reaction-1 { animation: pet-happy-odd 0.62s cubic-bezier(0.2, 0.75, 0.25, 1); }
-.pet-character.reaction-0:not(:first-child) { animation: pet-happy-even 0.62s cubic-bezier(0.2, 0.75, 0.25, 1); }
+.pet-character.reaction-1 {
+  animation: pet-happy-odd 0.62s cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+.pet-character.reaction-0:not(:first-child) {
+  animation: pet-happy-even 0.62s cubic-bezier(0.2, 0.75, 0.25, 1);
+}
 
 .fortune-burst {
   position: absolute;
@@ -112,33 +120,120 @@ body.pet-mode #root {
 }
 
 .pet-money {
+  position: absolute;
   z-index: 6;
   border-color: rgba(255, 255, 255, 0.7);
   background: rgba(255, 255, 255, 0.79);
   backdrop-filter: blur(12px);
 }
 
+.money-collapse {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(183, 111, 4, 0.09);
+  color: #9e650e;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.money-collapse:hover {
+  background: rgba(183, 111, 4, 0.17);
+}
+.money-collapse svg {
+  width: 14px;
+  height: 14px;
+}
+
+.money-expand {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 64px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  border-radius: 999px;
+  background: rgba(255, 247, 224, 0.84);
+  color: #a76607;
+  box-shadow: 0 9px 24px rgba(91, 55, 9, 0.16);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transform: translateX(-50%);
+  -webkit-app-region: no-drag;
+}
+
+.money-expand:hover {
+  background: rgba(255, 240, 195, 0.94);
+}
+.money-expand svg {
+  width: 17px;
+  height: 17px;
+}
+.money-expand span {
+  font-size: 11px;
+  font-weight: 800;
+}
+
 @keyframes pet-happy-odd {
-  0%, 100% { transform: translateY(0) rotate(0); }
-  30% { transform: translateY(-13px) rotate(-4deg); }
-  55% { transform: translateY(-4px) rotate(5deg); }
-  75% { transform: translateY(-8px) rotate(-2deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  30% {
+    transform: translateY(-13px) rotate(-4deg);
+  }
+  55% {
+    transform: translateY(-4px) rotate(5deg);
+  }
+  75% {
+    transform: translateY(-8px) rotate(-2deg);
+  }
 }
 
 @keyframes pet-happy-even {
-  0%, 100% { transform: translateY(0) rotate(0); }
-  30% { transform: translateY(-13px) rotate(4deg); }
-  55% { transform: translateY(-4px) rotate(-5deg); }
-  75% { transform: translateY(-8px) rotate(2deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  30% {
+    transform: translateY(-13px) rotate(4deg);
+  }
+  55% {
+    transform: translateY(-4px) rotate(-5deg);
+  }
+  75% {
+    transform: translateY(-8px) rotate(2deg);
+  }
 }
 
 @keyframes fortune-pop {
-  0% { opacity: 0; transform: translate(0, 0) scale(0.3); }
-  25% { opacity: 1; }
-  100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1.15); }
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.3);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), var(--y)) scale(1.15);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pet-character,
-  .fortune-burst i { animation-duration: 0.01ms !important; }
+  .fortune-burst i {
+    animation-duration: 0.01ms !important;
+  }
 }
