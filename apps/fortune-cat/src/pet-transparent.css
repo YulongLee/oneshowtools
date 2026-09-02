@@ -159,9 +159,10 @@ body.pet-mode #root {
   bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  min-width: 64px;
-  padding: 9px 12px;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.74);
   border-radius: 999px;
   background: rgba(255, 247, 224, 0.84);
@@ -177,12 +178,8 @@ body.pet-mode #root {
   background: rgba(255, 240, 195, 0.94);
 }
 .money-expand svg {
-  width: 17px;
-  height: 17px;
-}
-.money-expand span {
-  font-size: 11px;
-  font-weight: 800;
+  width: 19px;
+  height: 19px;
 }
 
 @keyframes pet-happy-odd {

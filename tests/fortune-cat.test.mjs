@@ -32,9 +32,10 @@ test("fortune cat release objects use private product-specific paths", () => {
 });
 
 test("fortune cat desktop source keeps salary local and exposes working controls", async () => {
-  const [main, renderer, asset] = await Promise.all([
+  const [main, renderer, packageFile, asset] = await Promise.all([
     readFile(new URL("../apps/fortune-cat/src/main.ts", import.meta.url), "utf8"),
     readFile(new URL("../apps/fortune-cat/src/renderer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../apps/fortune-cat/package.json", import.meta.url), "utf8"),
     stat(new URL("../apps/fortune-cat/public/zhaocai-gungun-desktop.png", import.meta.url)),
   ]);
   assert.match(main, /salary-config\.bin/);
@@ -49,6 +50,9 @@ test("fortune cat desktop source keeps salary local and exposes working controls
   assert.match(renderer, /money-collapse/);
   assert.match(renderer, /money-expand/);
   assert.match(renderer, /showMoney/);
+  assert.match(packageFile, /Developer ID Application|Yulong li/);
+  assert.match(packageFile, /package:mac:notarized/);
+  assert.match(packageFile, /hardenedRuntime/);
   assert.match(renderer, /document\.body\.classList\.add/);
   assert.ok(asset.size > 100_000);
 });

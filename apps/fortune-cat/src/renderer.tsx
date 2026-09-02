@@ -184,10 +184,10 @@ function Pet() {
         <button
           className="money-expand"
           onClick={toggleMoney}
-          aria-label="展开收入信息"
+          aria-label="展开今日已赚信息"
+          title="展开今日已赚"
         >
           <Coins weight="fill" />
-          <span>收入</span>
         </button>
       )}
     </main>
@@ -238,7 +238,7 @@ function Control() {
         </div>
         <div className="test-badge">
           <i />
-          测试版 0.1.2
+          测试版 0.1.3
         </div>
       </header>
       {!session.authenticated ? (
@@ -377,20 +377,6 @@ function Control() {
                 </div>
               </header>
               <div className="toggle-list">
-                <label>
-                  <span>
-                    <Coins />
-                    <b>显示收入卡片</b>
-                    <small>关闭后桌面只保留一个金币按钮</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={config.showMoney}
-                    onChange={(e) =>
-                      setConfig({ ...config, showMoney: e.target.checked })
-                    }
-                  />
-                </label>
                 <label>
                   <span>
                     {config.privacy ? <EyeSlash /> : <Eye />}

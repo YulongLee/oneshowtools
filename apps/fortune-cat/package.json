@@ -1,6 +1,6 @@
 {
   "name": "oneshowtools-fortune-cat",
-  "version": "0.1.2-test",
+  "version": "0.1.3-test",
   "description": "OneShowTools 招财滚滚实时收入桌面宠物",
   "author": "OneShow AI Lab",
   "private": true,
@@ -12,19 +12,65 @@
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:renderer",
     "check": "tsc --noEmit",
-    "package:mac:test": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --universal --publish never",
-    "package:windows:test": "npm run build && electron-builder --win nsis portable --x64 --publish never"
+    "package:mac": "npm run build && electron-builder --mac dmg zip --universal --publish never",
+    "package:mac:test": "npm run package:mac:notarized",
+    "package:mac:notarized": "APPLE_KEYCHAIN_PROFILE=oneshowtools-notary npm run package:mac && npm run notarize:mac:dmg && npm run verify:mac",
+    "package:windows:test": "npm run build && electron-builder --win nsis portable --x64 --publish never",
+    "notarize:mac:dmg": "bash scripts/notarize-mac-dmg.sh",
+    "verify:mac": "bash scripts/verify-mac-release.sh"
   },
-  "dependencies": { "@phosphor-icons/react": "^2.1.10", "react": "19.2.0", "react-dom": "19.2.0" },
-  "devDependencies": { "@types/node": "^24.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "@vitejs/plugin-react": "^5.0.4", "concurrently": "^9.2.1", "cross-env": "^10.0.0", "electron": "^38.0.0", "electron-builder": "^26.0.12", "esbuild": "^0.25.12", "typescript": "^5.9.2", "vite": "^6.4.3", "wait-on": "^9.0.1" },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.2",
+    "vite": "^6.4.3",
+    "wait-on": "^9.0.1"
+  },
   "build": {
     "appId": "com.oneshowtools.fortunecat",
     "productName": "招财滚滚",
     "icon": "public/zhaocai-gungun-desktop.png",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
-    "mac": { "category": "public.app-category.productivity", "target": ["dmg", "zip"], "hardenedRuntime": false },
-    "win": { "target": ["nsis", "portable"] },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": "Yulong li (8Y5FAR3TF3)",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
