@@ -54,6 +54,7 @@ const commercialToolIconBySlug = {
   "ai-fridge-recipe": "/fridge-recipes/fridge-recipe-icon-v1.webp",
   "stock-pet": "/stock-pet/niu-lai-le-mascot.png",
   "fortune-cat": "/fortune-cat/zhaocai-gungun-v1.webp",
+  "word-immersion": "/word-immersion/wordin-icon-v2.png",
 };
 const resolveToolIconUrl = (tool, fallbackUrl = "") => tool?.iconUrl || commercialToolIconBySlug[tool?.slug] || fallbackUrl;
 function ProductToolIcon({ tool, size = 22, weight = "duotone", compact = false, className = "" }) {
