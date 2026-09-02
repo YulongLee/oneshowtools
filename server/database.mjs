@@ -367,6 +367,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0033_intelligent_tool_search.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0034_tool_manuals.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0035_promotion_center.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0036_word_immersion.sql"), "utf8"));
   const taskColumns = new Set(db.prepare("PRAGMA table_info(tasks)").all().map((item) => item.name));
   if (!taskColumns.has("deleted_at")) db.exec("ALTER TABLE tasks ADD COLUMN deleted_at INTEGER");
   db.exec("CREATE INDEX IF NOT EXISTS tasks_user_visible_created_idx ON tasks(user_id, deleted_at, created_at DESC)");
@@ -518,6 +519,7 @@ export function initializeDatabase() {
     ["tool_fortune_cat", "fortune-cat", "招财滚滚", "Fortune Cat", "输入工资与工作时间，让招财猫在桌面实时告诉你今天和本月已经赚了多少钱。", "A lucky-cat desktop companion that turns salary and work hours into live earnings progress.", "productivity", "Coins", 1000, "desktop-product"],
     ["tool_hang_la_tier", "hang-la-tier-list-generator", "夯拉排行榜生成器", "Hang-La Tier List Maker", "上传图片、自定义夯拉等级并拖拽排序，一键导出适合分享的排行榜长图。", "Upload images, customize ranking tiers, drag to rank, and export a share-ready tier list.", "image", "ChartBar", 0, "builtin-tier-list"],
     ["tool_mbti_test", "mbti-personality-test", "MBTI 性格偏好自测", "Personality Preference Self-Test", "通过 64 道原创平衡情境题了解四维偏好，支持模糊维度与答题质量提示，报告可回看。", "Explore four preference dimensions with an original balanced questionnaire, ambiguity handling, response-quality checks, and saved reports.", "developer", "Brain", 0, "builtin-assessment"],
+    ["tool_word_immersion", "word-immersion", "词浸 · AI 沉浸式英语阅读", "WordIn · AI Immersive Reading", "上传你真正想读的内容，让目标英语词汇自然融入上下文，在阅读中逐渐掌握。", "Bring target English vocabulary naturally into content you genuinely want to read and learn through context.", "education", "BookOpenText", 20, "openai"],
     ["tool_interview_assistant", "interview-assistant", "面试稳 AI 助手", "Interview Ace AI Assistant", "结合简历、目标岗位和知识资料，提供实时语音识别、截图解题、技术题回答思路与面试复盘。", "Use your resume, target role, and knowledge materials for live transcription, screenshot questions, technical-answer guidance, and interview review.", "career", "UserFocus", 0, "external-link"],
     ["tool_speech", "speech-to-text", "语音转文字", "Speech to Text", "使用浏览器语音识别将实时语音转换为文本。", "Use browser speech recognition to turn live speech into text.", "audio", "Microphone", 5, "browser"],
     ["tool_writer", "ai-writer", "AI 写作", "AI Writer", "覆盖内容创作、优化、SEO、营销、社媒、办公与创意写作的专业工作台。", "A professional workspace for content, SEO, marketing, social, business, and creative writing.", "writing", "NotePencil", 8, "openai"],
@@ -642,6 +644,27 @@ export function initializeDatabase() {
           (SELECT 1 FROM tool_versions WHERE tool_id = 'tool_fortune_cat')`).run(randomUUID(), timestamp);
       db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
         .run(fortuneCatTestingKey, JSON.stringify({ slug: "fortune-cat", lifecycle: "testing", adminOnly: true }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  const wordImmersionTestingKey = "tool_word_immersion_testing_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(wordImmersionTestingKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE tools SET active = 0, updated_at = ? WHERE slug = 'word-immersion'").run(timestamp);
+      db.prepare(`INSERT INTO tool_versions
+        (id, tool_id, version, lifecycle_state, visibility, name_zh, name_en, description_zh,
+          description_en, category, icon, credit_cost, contract_version, runtime_kind, created_at)
+        SELECT ?, id, 1, 'testing', 'private', name_zh, name_en, description_zh,
+          description_en, category, icon, credit_cost, 'v1', runtime_kind, ?
+        FROM tools WHERE slug = 'word-immersion' AND NOT EXISTS
+          (SELECT 1 FROM tool_versions WHERE tool_id = 'tool_word_immersion')`).run(randomUUID(), timestamp);
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+        .run(wordImmersionTestingKey, JSON.stringify({ slug: "word-immersion", lifecycle: "testing", adminOnly: true }), timestamp);
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");

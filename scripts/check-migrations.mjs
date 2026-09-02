@@ -22,6 +22,7 @@ const favoritesLibraryMigration = await readFile(new URL("../db/migrations/0029_
 const workspaceMigration = await readFile(new URL("../db/migrations/0030_workspace_projects_and_preferences.sql", import.meta.url), "utf8");
 const intelligentSearchMigration = await readFile(new URL("../db/migrations/0033_intelligent_tool_search.sql", import.meta.url), "utf8");
 const toolManualsMigration = await readFile(new URL("../db/migrations/0034_tool_manuals.sql", import.meta.url), "utf8");
+const wordImmersionMigration = await readFile(new URL("../db/migrations/0036_word_immersion.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -128,6 +129,14 @@ if (!intelligentSearchMigration.includes("CREATE TABLE IF NOT EXISTS tool_search
 }
 if (!toolManualsMigration.includes("CREATE TABLE IF NOT EXISTS tool_manuals ")) {
   throw new Error("Tool manuals migration is missing tool_manuals");
+}
+for (const table of [
+  "vocabulary_books", "vocabulary_words", "immersion_documents", "immersion_chapters",
+  "immersion_generation_tasks", "user_vocabulary_progress", "word_exposures", "immersion_reading_progress",
+]) {
+  if (!wordImmersionMigration.includes(`CREATE TABLE IF NOT EXISTS ${table} `)) {
+    throw new Error(`Word immersion migration is missing table: ${table}`);
+  }
 }
 
 for (const table of [

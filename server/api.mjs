@@ -76,6 +76,19 @@ import { createAncestorTask } from "./ancestor-jobs.mjs";
 import { publicTaskInput } from "./task-presentation.mjs";
 import { listPublicToolManuals, publicToolManual } from "./tool-manuals.mjs";
 import {
+  createCustomVocabularyBook,
+  createImmersionDocument,
+  createImmersionGeneration,
+  deleteImmersionDocument,
+  getImmersionDocument,
+  immersionCatalog,
+  listImmersionDocuments,
+  recordVocabularyAction,
+  seedVocabularyBooks,
+  updateReadingProgress,
+  userVocabulary,
+} from "./word-immersion.mjs";
+import {
   askCustomerSupport,
   getUserSupportConversation,
   listUserSupportConversations,
@@ -96,6 +109,7 @@ import {
   validateModelConnection,
   invokePlatformModel,
 } from "./model-gateway.mjs";
+
 import {
   addStockAlert,
   addStockWatch,
@@ -126,6 +140,8 @@ import {
   unlockFortuneCat,
   verifyFortuneCatDevice,
 } from "./fortune-cat.mjs";
+
+seedVocabularyBooks();
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -2577,6 +2593,50 @@ export async function handleApi(request) {
     return unpublishedToolResponse();
   if (path.startsWith("/api/products/fortune-cat") && !toolIsAccessible("fortune-cat", request))
     return unpublishedToolResponse();
+  if (path.startsWith("/api/word-immersion") && !toolIsAccessible("word-immersion", request))
+    return unpublishedToolResponse();
+
+  if (path === "/api/word-immersion/catalog" && request.method === "GET")
+    return json(immersionCatalog(user.id));
+  if (path === "/api/word-immersion/documents" && request.method === "GET")
+    return json({ documents: listImmersionDocuments(user.id) });
+  if (path === "/api/word-immersion/documents" && request.method === "POST") {
+    try { return json({ document: await createImmersionDocument(request, user) }, 201); }
+    catch (error) { return fail(error.code || "IMMERSION_DOCUMENT_CREATE_FAILED", error.status || 500); }
+  }
+  if (path === "/api/word-immersion/vocabulary" && request.method === "GET")
+    return json(userVocabulary(user.id));
+  if (path === "/api/word-immersion/vocabulary/action" && request.method === "POST") {
+    try { return json({ word: recordVocabularyAction(user.id, await body(request)) }); }
+    catch (error) { return fail(error.code || "IMMERSION_WORD_ACTION_FAILED", error.status || 500); }
+  }
+  if (path === "/api/word-immersion/vocabulary-books" && request.method === "POST") {
+    try { return json({ book: createCustomVocabularyBook(user.id, await body(request)) }, 201); }
+    catch (error) { return fail(error.code || "IMMERSION_VOCABULARY_CREATE_FAILED", error.status || 500); }
+  }
+  const immersionGenerateMatch = path.match(/^\/api\/word-immersion\/documents\/([^/]+)\/generate$/);
+  if (immersionGenerateMatch && request.method === "POST") {
+    try {
+      const task = createImmersionGeneration(user, immersionGenerateMatch[1], await body(request));
+      enqueueTask(task.id);
+      runNextJob().catch(() => {});
+      return json({ task }, 202);
+    } catch (error) { return fail(error.code || "IMMERSION_GENERATION_FAILED", error.status || 500); }
+  }
+  const immersionProgressMatch = path.match(/^\/api\/word-immersion\/documents\/([^/]+)\/progress$/);
+  if (immersionProgressMatch && request.method === "PATCH") {
+    try { return json({ progress: updateReadingProgress(user.id, immersionProgressMatch[1], await body(request)) }); }
+    catch (error) { return fail(error.code || "IMMERSION_PROGRESS_FAILED", error.status || 500); }
+  }
+  const immersionDocumentMatch = path.match(/^\/api\/word-immersion\/documents\/([^/]+)$/);
+  if (immersionDocumentMatch && request.method === "GET") {
+    try { return json({ document: getImmersionDocument(user.id, immersionDocumentMatch[1], url.searchParams.get("source") === "1") }); }
+    catch (error) { return fail(error.code || "IMMERSION_DOCUMENT_NOT_FOUND", error.status || 500); }
+  }
+  if (immersionDocumentMatch && request.method === "DELETE") {
+    try { return json(await deleteImmersionDocument(user, immersionDocumentMatch[1])); }
+    catch (error) { return fail(error.code || "IMMERSION_DOCUMENT_DELETE_FAILED", error.status || 500); }
+  }
 
   if (path === "/api/products/fortune-cat/license" && request.method === "GET")
     return json(fortuneCatLicense(user.id));

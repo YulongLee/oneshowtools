@@ -12,6 +12,7 @@ import {
   Fire, Funnel, CaretDown, ArrowDown, ArrowUp, Receipt, CalendarBlank, Eye, XCircle, HardDrives, ArrowsOutLineHorizontal,
   Bell, Star, HandWaving, Brain, ForkKnife, EnvelopeSimple, WechatLogo,
   AppleLogo, WindowsLogo, Desktop, Keyboard, Crop, DeviceMobile,
+  BookOpenText,
 } from "@phosphor-icons/react";
 import { SupportWidget } from "./SupportWidget.jsx";
 import { LEGAL_VERSION } from "./LegalPage.jsx";
@@ -27,12 +28,14 @@ const TierListGenerator = lazy(() => import("./TierListGenerator.jsx").then((mod
 const MbtiPersonalityTest = lazy(() => import("./MbtiPersonalityTest.jsx").then((module) => ({ default: module.MbtiPersonalityTest })));
 const StockPetProduct = lazy(() => import("./StockPetProduct.jsx").then((module) => ({ default: module.StockPetProduct })));
 const FortuneCatProduct = lazy(() => import("./FortuneCatProduct.jsx").then((module) => ({ default: module.FortuneCatProduct })));
+const WordImmersion = lazy(() => import("./WordImmersion.jsx").then((module) => ({ default: module.WordImmersion })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
   MagnifyingGlass, Binoculars, ShareNetwork, FileText, Article, PaperPlaneRight,
   Database, TrendUp, ChartBar, ArrowsClockwise, ShieldCheck, TextAa, GridFour, UserCircle,
   Code, Megaphone, MusicNotes, Briefcase, ArrowsOutLineHorizontal, Brain, ForkKnife, UserFocus,
+  BookOpenText,
 };
 const commercialToolIconBySlug = {
   "interview-assistant": "/tool-icons-v2/optimized/interview-assistant.png",
@@ -187,6 +190,7 @@ const marketplaceCategories = [
   { id: "startup", icon: Lightbulb, accepts: ["startup"] },
   { id: "productivity", icon: Briefcase, accepts: ["document", "productivity"] },
   { id: "career", icon: UserFocus, accepts: ["career"] },
+  { id: "education", icon: BookOpenText, accepts: ["education"] },
   { id: "social", icon: ShareNetwork, accepts: ["social"] },
   { id: "data", icon: ChartBar, accepts: ["data"] },
   { id: "searchCategory", icon: Binoculars, accepts: ["search"] },
@@ -204,7 +208,7 @@ const dictionary = {
     login: "登录", signup: "注册", logout: "退出登录", language: "EN", overview: "平台概览", recentTasks: "最近任务", openMarketplace: "打开工具市场",
     creditsBalance: "可用积分", taskCount: "任务总数", fileCount: "文件数量", completed: "已完成", noTasks: "还没有任务", noTasksHint: "从工具市场选择一个工具，创建你的第一个任务。",
     marketplace: "工具市场", marketplaceSub: "按场景发现工具，用一个账户完成从创作到交付的工作。", all: "全部工具", image: "图片工具", document: "文档工具", audio: "音频工具", music: "音乐工具", writing: "写作工具",
-    seo: "SEO 工具", marketing: "营销工具", developer: "开发工具", startup: "创业工具", productivity: "办公工具", career: "求职工具", social: "社媒工具", data: "数据工具", searchCategory: "AI 搜索", video: "视频工具", agent: "AI Agent",
+    seo: "SEO 工具", marketing: "营销工具", developer: "开发工具", startup: "创业工具", productivity: "办公工具", career: "求职工具", education: "学习工具", social: "社媒工具", data: "数据工具", searchCategory: "AI 搜索", video: "视频工具", agent: "AI Agent",
     categoryDirectory: "工具分类", availableTools: "个可用工具", marketplaceResults: "工具目录", toolsFound: "个结果", comingSoon: "该分类的工具正在接入", comingSoonHint: "你可以先查看其他分类，或搜索已经上线的能力。",
     ready: "可运行", config: "待配置", creditsUnit: "积分 / 次", run: "打开工具", runTitle: "创建 AI 任务", inputLabel: "任务内容", inputPlaceholder: "输入需要处理的文本或任务要求…",
     attach: "关联文件", createTask: "创建任务", taskCreated: "任务已创建，可在任务中心查看状态。", runtime: "AI Runtime", runtimeSub: "管理平台托管模型、个人模型连接与工具运行方式。",
@@ -241,7 +245,7 @@ const dictionary = {
     login: "Sign in", signup: "Sign up", logout: "Sign out", language: "中文", overview: "Platform overview", recentTasks: "Recent tasks", openMarketplace: "Open marketplace",
     creditsBalance: "Available credits", taskCount: "Total tasks", fileCount: "Files", completed: "Completed", noTasks: "No tasks yet", noTasksHint: "Choose a tool in the marketplace to create your first task.",
     marketplace: "Tool Marketplace", marketplaceSub: "Discover tools by workflow and get work done with one account.", all: "All tools", image: "Image", document: "Documents", audio: "Audio", music: "Music", writing: "Writing",
-    seo: "SEO", marketing: "Marketing", developer: "Developer", startup: "Startup", productivity: "Productivity", career: "Career", social: "Social", data: "Data", searchCategory: "AI Search", video: "Video", agent: "AI Agent",
+    seo: "SEO", marketing: "Marketing", developer: "Developer", startup: "Startup", productivity: "Productivity", career: "Career", education: "Learning", social: "Social", data: "Data", searchCategory: "AI Search", video: "Video", agent: "AI Agent",
     categoryDirectory: "Categories", availableTools: "tools available", marketplaceResults: "Tool directory", toolsFound: "results", comingSoon: "Tools in this category are on the way", comingSoonHint: "Browse another category or search the capabilities already available.",
     ready: "Ready", config: "Setup required", creditsUnit: "credits / run", run: "Open tool", runTitle: "Create AI task", inputLabel: "Task content", inputPlaceholder: "Enter the text or instructions to process…",
     attach: "Attach files", createTask: "Create task", taskCreated: "Task created. Track it in Task Center.", runtime: "AI Runtime", runtimeSub: "Manage the hosted model, personal connections, and tool routing.",
@@ -853,6 +857,7 @@ function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, au
   if (tool.slug === "food-nutrition-analyzer") return <FoodNutritionAnalyzer tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "ai-fridge-recipe") return <FridgeRecipePlanner tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
+  if (tool.slug === "word-immersion") return <WordImmersion tool={tool} onBack={onBack} onCompleted={onCompleted} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} runtime={runtime} lyricsHistoryTasks={allTasks.filter((item) => item.toolId === "tool_lyrics_generator")} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;

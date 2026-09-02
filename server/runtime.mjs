@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { gatewayFlags, invokeModel } from "./model-gateway.mjs";
 import { executeMusicTask } from "./music-studio.mjs";
 import { cleanupAncestorTaskInput, executeAncestorTask } from "./ancestor-jobs.mjs";
+import { executeImmersionTask, failImmersionTask } from "./word-immersion.mjs";
 
 const prompts = {
   "copy-polish": {
@@ -85,6 +86,7 @@ export function failTaskExecution(taskId, errorCode = "TASK_EXECUTION_FAILED") {
   db.prepare(`
     UPDATE tasks SET status = 'failed', error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
   `).run(errorCode, Date.now(), Date.now(), taskId);
+  if (task.tool_id === "tool_word_immersion") failImmersionTask(taskId, errorCode);
   refundTask(task);
   if (task.tool_id === "tool_sliding_ancestor") cleanupAncestorTaskInput(taskId).catch(() => {});
 }
@@ -97,7 +99,9 @@ export async function executeTask(taskId) {
   db.prepare("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ?").run(Date.now(), taskId);
   let result;
   try {
-    result = tool.slug === "sliding-ancestor-generator"
+    result = tool.slug === "word-immersion"
+      ? await executeImmersionTask(task, input)
+      : tool.slug === "sliding-ancestor-generator"
       ? await executeAncestorTask(task, input)
       : tool.runtime_kind === "builtin-music"
       ? await executeMusicTask(task, input)
@@ -113,6 +117,9 @@ export async function executeTask(taskId) {
     UPDATE tasks SET status = ?, output_json = COALESCE(?, output_json), error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
   `).run(result.status, result.output ? JSON.stringify(result.output) : null, result.errorCode || null, Date.now(), completedAt, taskId);
 
-  if (result.status !== "completed") refundTask(task);
+  if (result.status !== "completed") {
+    if (tool.slug === "word-immersion") failImmersionTask(task.id, result.errorCode || "IMMERSION_GENERATION_FAILED");
+    refundTask(task);
+  }
   return result;
 }
