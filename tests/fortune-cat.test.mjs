@@ -39,9 +39,13 @@ test("fortune cat desktop source keeps salary local and exposes working controls
   ]);
   assert.match(main, /salary-config\.bin/);
   assert.match(main, /safeStorage/);
+  assert.match(main, /backgroundColor:\s*"#00000000"/);
   assert.doesNotMatch(main, /api\([^\n]*monthlySalary/);
   assert.doesNotMatch(main, /body:\s*\{[^}]*monthlySalary/s);
   assert.match(renderer, /今日已赚/);
   assert.match(renderer, /保存并应用/);
+  assert.match(renderer, /摸摸招财滚滚/);
+  assert.match(renderer, /fortune-burst/);
+  assert.match(renderer, /document\.body\.classList\.add/);
   assert.ok(asset.size > 100_000);
 });

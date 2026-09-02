@@ -1,0 +1,144 @@
+/* Pet mode is a true transparent desktop layer; control mode keeps its surface. */
+html.pet-mode,
+body.pet-mode,
+body.pet-mode #root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent !important;
+}
+
+.pet-settings {
+  z-index: 8;
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.78);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.pet-shell:hover .pet-settings,
+.pet-settings:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.pet-bubble {
+  z-index: 6;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.pet-bubble::after { border-top-color: rgba(255, 255, 255, 0.82); }
+
+.pet-character {
+  position: absolute;
+  z-index: 3;
+  top: 47px;
+  left: 18px;
+  width: 264px;
+  height: 254px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transform-origin: 50% 82%;
+  filter: drop-shadow(0 18px 18px rgba(96, 52, 0, 0.18));
+  outline: none;
+}
+
+.pet-character:hover {
+  filter: drop-shadow(0 20px 20px rgba(181, 104, 0, 0.24));
+  transform: translateY(-2px);
+}
+
+.pet-character:focus-visible {
+  border-radius: 45%;
+  outline: 3px solid rgba(246, 164, 35, 0.65);
+}
+
+.pet-character > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.pet-character.reaction-1 { animation: pet-happy-odd 0.62s cubic-bezier(0.2, 0.75, 0.25, 1); }
+.pet-character.reaction-0:not(:first-child) { animation: pet-happy-even 0.62s cubic-bezier(0.2, 0.75, 0.25, 1); }
+
+.fortune-burst {
+  position: absolute;
+  inset: 18px 15px auto;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.fortune-burst i {
+  position: absolute;
+  left: 50%;
+  top: 85px;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #ffba25;
+  color: #fff;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  box-shadow: 0 5px 12px rgba(164, 88, 0, 0.24);
+  animation: fortune-pop 0.85s ease-out forwards;
+  --x: 5px;
+  --y: -96px;
+}
+
+.fortune-burst i:nth-child(2) {
+  background: #ff7f77;
+  animation-delay: 0.05s;
+  --x: -66px;
+  --y: -78px;
+}
+
+.fortune-burst i:nth-child(3) {
+  background: #f18b15;
+  animation-delay: 0.1s;
+  --x: 58px;
+  --y: -64px;
+}
+
+.pet-money {
+  z-index: 6;
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.79);
+  backdrop-filter: blur(12px);
+}
+
+@keyframes pet-happy-odd {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  30% { transform: translateY(-13px) rotate(-4deg); }
+  55% { transform: translateY(-4px) rotate(5deg); }
+  75% { transform: translateY(-8px) rotate(-2deg); }
+}
+
+@keyframes pet-happy-even {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  30% { transform: translateY(-13px) rotate(4deg); }
+  55% { transform: translateY(-4px) rotate(-5deg); }
+  75% { transform: translateY(-8px) rotate(2deg); }
+}
+
+@keyframes fortune-pop {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.3); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-character,
+  .fortune-burst i { animation-duration: 0.01ms !important; }
+}

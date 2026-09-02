@@ -78,7 +78,7 @@ export function FortuneCatProduct({ authenticated, account, onBack, onAuth, onCo
     <button className="fortune-cat-back" onClick={onBack}><ArrowLeft size={17} />返回工具市场</button>
     <header className="fortune-cat-heading">
       <div className="fortune-cat-brand"><img src="/fortune-cat/zhaocai-gungun-v1.webp" alt="招财滚滚招财猫" /><span><small>ONESHOWTOOLS DESKTOP COMPANION</small><h1>招财滚滚</h1><p>看得见的每一秒，都在为你积累今天的收获。</p></span></div>
-      <div className="fortune-cat-test"><i />管理员测试版 <b>{product?.version || "0.1.0-test"}</b></div>
+      <div className="fortune-cat-test"><i />管理员测试版 <b>{product?.version || "0.1.1-test"}</b></div>
     </header>
 
     <div className="fortune-cat-layout">
