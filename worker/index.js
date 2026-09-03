@@ -12,6 +12,19 @@ const securityHeaders = {
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 
+const freshShellHeaders = {
+  "cache-control": "no-cache, no-store, must-revalidate",
+  pragma: "no-cache",
+  expires: "0",
+};
+
+function withFreshAppShell(response) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(securityHeaders)) headers.set(key, value);
+  for (const [key, value] of Object.entries(freshShellHeaders)) headers.set(key, value);
+  return new Response(response.body, { status: response.status, headers });
+}
+
 const isKnownApiPath = (pathname) =>
   pathname === "/api/health" ||
   pathname === "/api/offers" ||
@@ -144,16 +157,19 @@ export default {
     const assetResponse = await env.ASSETS.fetch(request);
     const acceptsHtml = request.headers.get("accept")?.includes("text/html");
 
-    if (assetResponse.status !== 404 || !acceptsHtml || !["GET", "HEAD"].includes(request.method)) {
+    if (assetResponse.status !== 404) {
+      if (acceptsHtml && assetResponse.headers.get("content-type")?.includes("text/html")) {
+        return withFreshAppShell(assetResponse);
+      }
       return assetResponse;
     }
+
+    if (!acceptsHtml || !["GET", "HEAD"].includes(request.method)) return assetResponse;
 
     const indexUrl = new URL(request.url);
     indexUrl.pathname = "/index.html";
     indexUrl.search = "";
     const fallback = await env.ASSETS.fetch(new Request(indexUrl, request));
-    const headers = new Headers(fallback.headers);
-    for (const [key, value] of Object.entries(securityHeaders)) headers.set(key, value);
-    return new Response(fallback.body, { status: fallback.status, headers });
+    return withFreshAppShell(fallback);
   },
 };

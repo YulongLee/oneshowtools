@@ -31,6 +31,7 @@ test("falls back to index.html for an unknown app route", async () => {
           calls.push(url.pathname + url.search);
           return new Response(url.pathname === "/index.html" ? "app" : "missing", {
             status: url.pathname === "/index.html" ? 200 : 404,
+            headers: url.pathname === "/index.html" ? { "content-type": "text/html" } : undefined,
           });
         },
       },
@@ -38,7 +39,25 @@ test("falls back to index.html for an unknown app route", async () => {
   );
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-cache, no-store, must-revalidate");
   assert.deepEqual(calls, ["/flow/step-two?source=share", "/index.html"]);
+});
+
+test("never leaves the directly served app shell on a stale deployment", async () => {
+  const response = await worker.fetch(new Request("https://example.test/", {
+    headers: { accept: "text/html" },
+  }), {
+    ASSETS: {
+      fetch: async () => new Response("app", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
+      }),
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-cache, no-store, must-revalidate");
+  assert.equal(response.headers.get("pragma"), "no-cache");
 });
 
 test("does not turn missing API or write requests into the app shell", async () => {
