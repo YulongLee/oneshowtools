@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import worker from "../worker/index.js";
 
@@ -58,6 +58,13 @@ test("never leaves the directly served app shell on a stale deployment", async (
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-cache, no-store, must-revalidate");
   assert.equal(response.headers.get("pragma"), "no-cache");
+});
+
+test("static app shell disables stale browser and edge caching", async () => {
+  const headersFile = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
+  assert.match(headersFile, /^\/\s*\n\s+Cache-Control: no-cache, no-store, must-revalidate/m);
+  assert.match(headersFile, /^\/index\.html\s*\n\s+Cache-Control: no-cache, no-store, must-revalidate/m);
+  assert.match(headersFile, /^\/assets\/\*\s*\n\s+Cache-Control: public, max-age=31536000, immutable/m);
 });
 
 test("does not turn missing API or write requests into the app shell", async () => {
