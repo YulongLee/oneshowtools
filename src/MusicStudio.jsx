@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, CheckCircle, Coins, DownloadSimple, Headphones, LockKey, MusicNotes,
   Play, Sparkle, SpinnerGap, Trash, Warning, FileText, ImageSquare, Microphone,
-  Stop, UploadSimple, Waveform, NotePencil, ShieldCheck,
+  Stop, UploadSimple, Waveform, NotePencil, ShieldCheck, ArrowSquareOut, Globe,
 } from "@phosphor-icons/react";
 import { LyricsGenerator } from "./LyricsGenerator.jsx";
 
@@ -22,7 +22,8 @@ const initialDraft = {
 const copy = {
   "zh-CN": {
     kicker: "ONESH​OW MUSIC STUDIO", title: "从灵感到发行级音乐，一站式完成", sub: "AI 作词、歌曲创作、风格重制、授权翻唱与纯音乐生成，作品自动进入你的私有音乐库。",
-    studioTab: "音乐创作", lyricsTab: "AI 作词", privateAssets: "作品私有存储", rightsGuard: "版权确认流程", productionReady: "商业创作工作流",
+    studioTab: "音乐创作", lyricsTab: "AI 作词", otherToolsTab: "更多音乐工具", otherToolsTabSub: "发现专业音乐创作平台", privateAssets: "作品私有存储", rightsGuard: "版权确认流程", productionReady: "商业创作工作流",
+    otherToolsKicker: "MUSIC TOOL DIRECTORY", otherToolsTitle: "探索更多音乐创作工具", otherToolsSub: "根据创作目标选择合适的平台，链接将跳转至第三方官方网站。", visitOfficial: "访问官网", externalService: "第三方服务", externalNotice: "以下产品由对应平台独立提供。使用前请确认其服务条款、积分价格与商业授权范围。",
     inspiration: "灵感歌曲", lyrics: "自定义歌词", cover: "歌曲风格重制", singingCover: "歌曲翻唱", comingSoon: "后续开放", instrumental: "纯音乐", titleLabel: "歌曲名称", titleHint: "例如：夏天的最后一班地铁",
     idea: "音乐灵感", ideaHint: "描述歌曲故事、使用场景、画面或希望表达的情绪…", lyricsLabel: "歌词", lyricsHint: "支持 [Verse]、[Chorus]、[Bridge] 等歌曲结构标签。",
     genre: "音乐风格", mood: "情绪", language: "语言", vocal: "演唱方式", instruments: "乐器偏好", instrumentsHint: "例如：钢琴、木吉他、弦乐",
@@ -36,7 +37,8 @@ const copy = {
   },
   en: {
     kicker: "ONESH​OW MUSIC STUDIO", title: "From first idea to release-ready music", sub: "Write lyrics, create songs, remake styles, produce authorized covers, and generate instrumentals in one private workspace.",
-    studioTab: "Music creation", lyricsTab: "AI lyric lab", privateAssets: "Private asset storage", rightsGuard: "Rights confirmation", productionReady: "Commercial workflow",
+    studioTab: "Music creation", lyricsTab: "AI lyric lab", otherToolsTab: "More music tools", otherToolsTabSub: "Discover specialist music platforms", privateAssets: "Private asset storage", rightsGuard: "Rights confirmation", productionReady: "Commercial workflow",
+    otherToolsKicker: "MUSIC TOOL DIRECTORY", otherToolsTitle: "Explore more music creation tools", otherToolsSub: "Choose a specialist platform for your goal. Links open the official third-party website.", visitOfficial: "Visit official site", externalService: "Third-party service", externalNotice: "These products are independently operated. Review their terms, pricing, and commercial-use rights before creating.",
     inspiration: "Idea to song", lyrics: "Custom lyrics", cover: "Style remake", singingCover: "Song cover", comingSoon: "Coming soon", instrumental: "Instrumental", titleLabel: "Track title", titleHint: "e.g. The last train of summer",
     idea: "Creative direction", ideaHint: "Describe the story, use case, scene, or emotion…", lyricsLabel: "Lyrics", lyricsHint: "Supports sections such as [Verse], [Chorus], and [Bridge].",
     genre: "Genre", mood: "Mood", language: "Language", vocal: "Vocal", instruments: "Instruments", instrumentsHint: "e.g. piano, acoustic guitar, strings",
@@ -49,6 +51,24 @@ const copy = {
     singingTitle: "Song cover", singingHint: "Choose an authorized personal voice and upload a target song. The song structure is retained while the singing voice is replaced.", singingNotReady: "The song-cover provider is not configured. No task or credit charge will occur.", targetSong: "Upload target song", targetSongHint: "Choose an MP3/WAV file, up to 50MB", chooseVoice: "Singing voice", noVoice: "No ready voice yet", voiceLibrary: "Created voices", voiceName: "Voice name", voiceFiles: "Voice samples", voiceFilesHint: "Upload 1–25 MP3/WAV/M4A files containing more than one minute of effective vocals.", enrollVoice: "Create personal voice", enrollingVoice: "Submitting voice training", voiceTraining: "Training", voiceReady: "Ready", voiceFailed: "Failed", voiceConsent: "I confirm this is my voice or I have explicit permission from the voice owner, and will only generate lawful covers.", singingRights: "I confirm I have rights to the target song and selected voice and will not impersonate others or infringe personality, copyright, or neighboring rights.", singingRequired: "Select a ready voice, upload a target song, and confirm all required rights.", singingSubmitted: "The cover task was submitted and will be saved to your library when complete.", deleteVoice: "Delete", addVoice: "Add personal voice", cancelVoice: "Close voice creator", voiceStep: "Choose an authorized voice", voiceStepHint: "Use your own voice or one you have explicit permission to use", songStep: "Upload the target song", songStepHint: "Keep the song structure and accompaniment, replace the singing voice", voiceCount: "authorized voices", fileSelected: "Selected",
   },
 };
+
+const externalMusicTools = [
+  {
+    id: "suno", name: "Suno", url: "https://suno.com/", tone: "suno", icon: MusicNotes,
+    zh: { tagline: "一句描述，生成完整歌曲", description: "适合快速完成包含人声、歌词和编曲的完整歌曲创作。" },
+    en: { tagline: "Turn an idea into a complete song", description: "Create complete tracks with vocals, lyrics, and arrangements from a short prompt." },
+  },
+  {
+    id: "udio", name: "Udio", url: "https://www.udio.com/", tone: "udio", icon: Waveform,
+    zh: { tagline: "面向音乐人的 AI 创作空间", description: "适合探索歌曲结构、演唱表现和不同音乐风格。" },
+    en: { tagline: "An AI creation space for musicians", description: "Explore song structures, vocal performances, and a wide range of musical styles." },
+  },
+  {
+    id: "stable-audio", name: "Stable Audio", url: "https://stableaudio.com/", tone: "stable", icon: Headphones,
+    zh: { tagline: "音乐、配乐与声音设计", description: "适合制作纯音乐、背景配乐、音效，以及对已有音频进行延展。" },
+    en: { tagline: "Music, scores, and sound design", description: "Create instrumentals, background scores, sound effects, and audio variations." },
+  },
+];
 
 const statusClass = (status) => ["queued", "running", "completed", "failed"].includes(status) ? status : "queued";
 
@@ -228,7 +248,7 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
       <div className="music-hero-visual" aria-hidden="true"><i /><i /><i /><i /><i /><span><MusicNotes size={29} weight="fill" /></span></div>
       <aside><Coins size={18} /><span>{locale === "en" ? "Balance" : "可用积分"}</span><strong>{authenticated ? (balance?.toLocaleString() ?? "—") : "—"}</strong></aside>
     </header>
-    <nav className="music-workspace-tabs"><button className={workspaceView === "compose" ? "active" : ""} onClick={() => setWorkspaceView("compose")}><Waveform size={19} weight="duotone" /><span><strong>{t.studioTab}</strong><small>{locale === "en" ? "Create and manage tracks" : "生成音乐与管理作品"}</small></span></button><button className={workspaceView === "lyrics" ? "active" : ""} onClick={() => setWorkspaceView("lyrics")}><NotePencil size={19} weight="duotone" /><span><strong>{t.lyricsTab}</strong><small>{locale === "en" ? "Write, continue, and rewrite" : "原创、续写与改写歌词"}</small></span></button></nav>
+    <nav className="music-workspace-tabs"><button className={workspaceView === "compose" ? "active" : ""} onClick={() => setWorkspaceView("compose")}><Waveform size={19} weight="duotone" /><span><strong>{t.studioTab}</strong><small>{locale === "en" ? "Create and manage tracks" : "生成音乐与管理作品"}</small></span></button><button className={workspaceView === "lyrics" ? "active" : ""} onClick={() => setWorkspaceView("lyrics")}><NotePencil size={19} weight="duotone" /><span><strong>{t.lyricsTab}</strong><small>{locale === "en" ? "Write, continue, and rewrite" : "原创、续写与改写歌词"}</small></span></button><button className={workspaceView === "tools" ? "active" : ""} onClick={() => setWorkspaceView("tools")}><Globe size={19} weight="duotone" /><span><strong>{t.otherToolsTab}</strong><small>{t.otherToolsTabSub}</small></span></button></nav>
     {!status?.ready && !status?.singingCover?.ready && <section className="music-provider-notice"><LockKey size={22} /><div><strong>{t.notReady}</strong><p>{t.notReadyBody}</p></div></section>}
     {workspaceView === "compose" ? <main className="music-studio-layout">
       <form className="music-composer" onSubmit={submit}>
@@ -280,6 +300,18 @@ export function MusicStudio({ locale = "zh-CN", authenticated, account, focusTas
           </div>
         </article>)}</div> : <div className="music-library-empty"><MusicNotes size={34} weight="duotone" /><strong>{t.empty}</strong><p>{t.emptyBody}</p></div>}
       </section>
-    </main> : status?.lyrics ? <LyricsGenerator embedded tool={{ id: status.lyrics.toolId, slug: status.lyrics.slug, creditCost: status.lyrics.creditCost }} historyTasks={lyricsHistoryTasks} locale={locale} authenticated={authenticated} runtime={runtime} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} onUseLyrics={useGeneratedLyrics} /> : <section className="music-provider-notice"><LockKey size={22} /><div><strong>{locale === "en" ? "Lyric model unavailable" : "歌词模型暂不可用"}</strong></div></section>}
+    </main> : workspaceView === "lyrics" ? status?.lyrics ? <LyricsGenerator embedded tool={{ id: status.lyrics.toolId, slug: status.lyrics.slug, creditCost: status.lyrics.creditCost }} historyTasks={lyricsHistoryTasks} locale={locale} authenticated={authenticated} runtime={runtime} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} onUseLyrics={useGeneratedLyrics} /> : <section className="music-provider-notice"><LockKey size={22} /><div><strong>{locale === "en" ? "Lyric model unavailable" : "歌词模型暂不可用"}</strong></div></section> : <section className="music-external-tools" aria-labelledby="music-external-tools-title">
+      <header><div><p className="eyebrow">{t.otherToolsKicker}</p><h2 id="music-external-tools-title">{t.otherToolsTitle}</h2><p>{t.otherToolsSub}</p></div><span><Globe size={23} weight="duotone" /></span></header>
+      <div className="music-external-grid">{externalMusicTools.map((tool) => {
+        const Icon = tool.icon;
+        const content = locale === "en" ? tool.en : tool.zh;
+        return <article className={`music-external-card ${tool.tone}`} key={tool.id}>
+          <div className="music-external-brand"><span><Icon size={27} weight="duotone" /></span><small>{t.externalService}</small></div>
+          <div><h3>{tool.name}</h3><strong>{content.tagline}</strong><p>{content.description}</p></div>
+          <a href={tool.url} target="_blank" rel="noopener noreferrer nofollow" aria-label={`${t.visitOfficial}: ${tool.name}`}>{t.visitOfficial}<ArrowSquareOut size={17} weight="bold" /></a>
+        </article>;
+      })}</div>
+      <footer><ShieldCheck size={17} weight="duotone" /><span>{t.externalNotice}</span></footer>
+    </section>}
   </div>;
 }
