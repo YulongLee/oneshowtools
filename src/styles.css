@@ -1362,7 +1362,7 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .landing-footer > div > strong { margin-bottom: 4px; color: #23334a; font-size: 10px; }
 .landing-footer a, .landing-footer button { justify-self: start; padding: 0; border: 0; color: #718096; background: transparent; text-decoration: none; font-size: 9px; }
 .landing-footer a:hover, .landing-footer button:hover { color: var(--blue); }
-.landing-footer-record { position: absolute; left: 15px; right: 15px; bottom: 24px; display: flex; align-items: center; gap: 14px; color: #9aa5b4; font-size: 8px; }
+.landing-footer > .landing-footer-record { position: absolute; left: 15px; right: 15px; bottom: 24px; display: flex; align-items: center; gap: 14px; color: #9aa5b4; font-size: 8px; }
 .landing-footer .landing-footer-record a { color: #8794a8; font-size: inherit; }
 .landing-footer .landing-footer-record a:hover { color: var(--blue); text-decoration: underline; }
 .landing-footer .landing-footer-record .public-security-record { display: inline-flex; align-items: center; gap: 4px; }
@@ -1688,7 +1688,7 @@ button.orbit-card:disabled:hover { border-color: rgba(193,204,241,.78); box-shad
   .landing-cta-v2 a { width: 100%; justify-content: center; }
   .landing-footer { width: calc(100% - 20px); padding-inline: 4px; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 27px; }
   .landing-footer .footer-brand { grid-column: 1 / -1; }
-  .landing-footer-record { left: 4px; right: 4px; flex-wrap: wrap; gap: 6px 12px; }
+  .landing-footer > .landing-footer-record { left: 4px; right: 4px; flex-wrap: wrap; gap: 6px 12px; }
 }
 
 /* Sliding Ancestor Generator */
