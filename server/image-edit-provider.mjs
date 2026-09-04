@@ -4,11 +4,12 @@ import { db } from "./database.mjs";
 import { decryptCredential, encryptCredential } from "./model-gateway.mjs";
 import { modelStudioWorkspaceCredentials } from "./model-studio-workspace.mjs";
 
-const purposes = new Set(["image_editing", "image_upscaling"]);
+const purposes = new Set(["image_editing", "image_upscaling", "image_text_ocr"]);
 const recentValidations = new Map();
 const validationTtlMs = 10 * 60 * 1000;
 const owner = (purpose) => `platform:${purpose}`;
 const clean = (value, max = 2000) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
+const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
 const providerError = (code, status = 400, retryable = false) => Object.assign(new Error(code), { code, status, retryable });
 const keyHint = (value) => `••••${clean(value, 2048).slice(-4)}`;
 
@@ -37,6 +38,7 @@ function safeBaseUrl(value) {
 const defaults = {
   image_editing: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", creditCost: 30 },
   image_upscaling: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", creditCost: 20 },
+  image_text_ocr: { adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-vl-ocr-latest", creditCost: 1 },
 };
 
 function validationKey(purpose, config, apiKey) {
@@ -81,14 +83,14 @@ function credentials(purpose) {
   if (config.credential_source === "workspace") {
     const workspace = modelStudioWorkspaceCredentials();
     if (!workspace) return null;
-    return { ...publicConfig(credentialPurpose, config), requestedPurpose: purpose, adapter: "dashscope", baseUrl: workspace.baseUrl, apiKey: workspace.apiKey };
+    return { ...publicConfig(credentialPurpose, config), requestedPurpose: purpose, adapter: "dashscope", baseUrl: workspace.baseUrl, apiKey: workspace.apiKey, workspaceId: workspace.workspaceId, endpointMode: workspace.endpointMode };
   }
   return { ...publicConfig(credentialPurpose, config), requestedPurpose: purpose, apiKey: decryptCredential(credentialRow(config, credentialPurpose)) };
 }
 
 function normalize(purpose, data, existing = row(purpose)) {
   const credentialSource = data.credentialSource === "workspace" ? "workspace" : (data.credentialSource === "direct" ? "direct" : (existing?.credential_source || "direct"));
-  const adapter = credentialSource === "workspace" ? "dashscope" : (["dashscope", "openai"].includes(data.adapter) ? data.adapter : (existing?.adapter || defaults[purpose].adapter));
+  const adapter = purpose === "image_text_ocr" ? "dashscope" : credentialSource === "workspace" ? "dashscope" : (["dashscope", "openai"].includes(data.adapter) ? data.adapter : (existing?.adapter || defaults[purpose].adapter));
   const fallback = defaults[purpose];
   const workspace = credentialSource === "workspace" ? modelStudioWorkspaceCredentials() : null;
   if (credentialSource === "workspace" && !workspace) throw providerError("MODEL_STUDIO_WORKSPACE_NOT_CONFIGURED", 422);
@@ -99,7 +101,11 @@ function normalize(purpose, data, existing = row(purpose)) {
   const creditCost = Math.max(1, Math.min(10000, Number(data.creditCost || existing?.credit_cost || fallback.creditCost)));
   if (!modelId || !/^[\w./:-]+$/.test(modelId)) throw providerError("IMAGE_MODEL_INVALID", 422);
   if (credentialSource === "direct" && !apiKey && (!existing || existing.credential_source === "workspace")) throw providerError("IMAGE_API_KEY_REQUIRED", 422);
-  return { purpose, adapter, baseUrl, modelId, apiKey, status, creditCost, credentialSource, workspace };
+  return {
+    purpose, adapter, baseUrl, modelId, apiKey, status, creditCost, credentialSource, workspace,
+    workspaceId: workspace?.workspaceId || "",
+    endpointMode: workspace?.endpointMode || "public",
+  };
 }
 
 function resolvedApiKey(purpose, input, existing) {
@@ -161,6 +167,7 @@ async function invoke(config, apiKey, inputs, prompt, fetchImpl = fetch, negativ
   if (config.adapter === "dashscope") {
     const preciseMultiImageEdit = normalized.length > 1;
     headers["content-type"] = "application/json";
+    if (config.endpointMode === "public" && config.workspaceId) headers["X-DashScope-WorkSpace"] = config.workspaceId;
     body = JSON.stringify({
       model: config.modelId,
       input: { messages: [{ role: "user", content: [
@@ -200,13 +207,81 @@ async function invoke(config, apiKey, inputs, prompt, fetchImpl = fetch, negativ
   return { buffer: png, mimeType: "image/png", extension: "png", latencyMs: Date.now() - startedAt };
 }
 
+function ocrText(payload) {
+  const content = payload?.output?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((item) => item?.text || "").join("\n");
+  return clean(payload?.choices?.[0]?.message?.content || payload?.output?.text || "", 100_000);
+}
+
+function parseOcrDetections(raw, width, height) {
+  const fenced = String(raw || "").match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] || String(raw || "");
+  const jsonText = fenced.slice(fenced.indexOf("["), fenced.lastIndexOf("]") + 1);
+  let items;
+  try { items = JSON.parse(jsonText); } catch { return []; }
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, 300).map((item) => {
+    const box = Array.isArray(item?.bbox) ? item.bbox : [item?.bbox?.x, item?.bbox?.y, Number(item?.bbox?.x) + Number(item?.bbox?.width), Number(item?.bbox?.y) + Number(item?.bbox?.height)];
+    let [x0, y0, x1, y1] = box.map(Number);
+    if (![x0, y0, x1, y1].every(Number.isFinite)) return null;
+    if (Math.max(x0, y0, x1, y1) <= 1) { x0 *= width; x1 *= width; y0 *= height; y1 *= height; }
+    const x = clamp(x0, 0, width - 1); const y = clamp(y0, 0, height - 1);
+    const boxWidth = clamp(x1 - x0, 0, width - x); const boxHeight = clamp(y1 - y0, 0, height - y);
+    const text = clean(item?.text, 500);
+    if (!text || boxWidth < 4 || boxHeight < 4) return null;
+    return {
+      text, confidence: clamp(item?.confidence ?? .9, 0, 1),
+      bbox: { x, y, width: boxWidth, height: boxHeight }, rotation: clamp(item?.rotation, -180, 180),
+      style: {
+        fontFamily: ["serif", "sans"].includes(item?.style?.fontFamily) ? item.style.fontFamily : "auto",
+        fontSize: clamp(item?.style?.fontSize || boxHeight * .78, 8, 300),
+        color: /^#[0-9a-f]{6}$/i.test(item?.style?.color) ? item.style.color : "#17264d",
+        bold: Boolean(item?.style?.bold), align: ["left", "center", "right"].includes(item?.style?.align) ? item.style.align : "center",
+      },
+    };
+  }).filter(Boolean);
+}
+
+async function invokeOcr(config, apiKey, input, fetchImpl = fetch) {
+  const originalMetadata = await sharp(input.buffer).metadata();
+  const normalized = await normalizedInput(input.buffer, input.mimeType);
+  const metadata = await sharp(normalized.buffer).metadata();
+  const startedAt = Date.now();
+  const response = await fetchImpl(`${config.baseUrl}/services/aigc/multimodal-generation/generation`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", ...(config.endpointMode === "public" && config.workspaceId ? { "X-DashScope-WorkSpace": config.workspaceId } : {}) },
+    body: JSON.stringify({
+      model: config.modelId,
+      input: { messages: [{ role: "user", content: [
+        { image: `data:${normalized.mimeType};base64,${normalized.buffer.toString("base64")}` },
+        { text: `识别图片中所有可见文字。图片宽 ${metadata.width} 像素、高 ${metadata.height} 像素。只输出 JSON 数组，每项格式为 {"text":"文字","bbox":[左,上,右,下],"confidence":0.95,"rotation":0,"style":{"fontFamily":"sans或serif","fontSize":32,"color":"#RRGGBB","bold":false,"align":"left或center或right"}}。坐标必须使用当前图片的像素坐标，不要输出解释。` },
+      ] }] },
+      parameters: { max_tokens: 8192 },
+    }),
+    signal: AbortSignal.timeout(90_000),
+  }).catch((cause) => { throw providerError(cause?.name === "TimeoutError" ? "IMAGE_TEXT_OCR_TIMEOUT" : "IMAGE_PROVIDER_UNREACHABLE", 502, true); });
+  const payload = await response.json().catch(() => ({}));
+  const failure = providerFailure(payload, response.status);
+  if (failure) throw failure;
+  const detections = parseOcrDetections(ocrText(payload), metadata.width, metadata.height);
+  if (!detections.length) throw providerError("IMAGE_TEXT_OCR_EMPTY", 422);
+  const scaleX = Number(originalMetadata.width || metadata.width) / metadata.width;
+  const scaleY = Number(originalMetadata.height || metadata.height) / metadata.height;
+  return { detections: detections.map((item) => ({ ...item, bbox: {
+    x: item.bbox.x * scaleX, y: item.bbox.y * scaleY,
+    width: item.bbox.width * scaleX, height: item.bbox.height * scaleY,
+  }, style: { ...item.style, fontSize: item.style.fontSize * scaleY } })), latencyMs: Date.now() - startedAt };
+}
+
 export async function testImageEditProviderConfiguration(purpose, data, fetchImpl = fetch) {
   assertPurpose(purpose);
   const existing = row(purpose);
   const config = normalize(purpose, data, existing);
   const apiKey = resolvedApiKey(purpose, config, existing);
-  const sample = await sharp({ create: { width: 512, height: 512, channels: 3, background: "#edf4ff" } }).png().toBuffer();
-  const output = await invoke(config, apiKey, { buffer: sample, mimeType: "image/png" }, "Keep the composition. Improve clarity and use a clean professional white background.", fetchImpl);
+  const sample = await sharp({ create: { width: 512, height: 512, channels: 3, background: "#edf4ff" } }).composite([{ input: Buffer.from('<svg width="512" height="512"><text x="80" y="270" font-size="72">TEST 123</text></svg>') }]).png().toBuffer();
+  const output = purpose === "image_text_ocr"
+    ? await invokeOcr(config, apiKey, { buffer: sample, mimeType: "image/png" }, fetchImpl)
+    : await invoke(config, apiKey, { buffer: sample, mimeType: "image/png" }, "Keep the composition. Improve clarity and use a clean professional white background.", fetchImpl);
   const result = { status: "healthy", latencyMs: output.latencyMs, testedAt: Date.now() };
   rememberValidation(purpose, config, apiKey, result);
   return result;
@@ -238,7 +313,7 @@ export async function saveImageEditProviderConfiguration(purpose, data, actorUse
     db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(input.status === "active" ? "ready" : "configuration_required");
     const upscale = row("image_upscaling");
     if (!upscale) db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(input.status === "active" ? "ready" : "configuration_required");
-  } else {
+  } else if (purpose === "image_upscaling") {
     db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(input.status === "active" ? "ready" : "configuration_required");
   }
   return publicConfig(purpose);
@@ -248,4 +323,10 @@ export async function editPlatformImage({ purpose = "image_editing", buffer, mim
   const config = credentials(assertPurpose(purpose));
   if (!config) throw providerError(purpose === "image_upscaling" ? "IMAGE_UPSCALING_NOT_CONFIGURED" : "IMAGE_EDITING_NOT_CONFIGURED", 503);
   return invoke(config, config.apiKey, images?.length ? images : { buffer, mimeType }, prompt, fetchImpl, negativePrompt);
+}
+
+export async function recognizePlatformImageText({ buffer, mimeType = "image/png", fetchImpl = fetch }) {
+  const config = credentials("image_text_ocr");
+  if (!config) throw providerError("IMAGE_TEXT_OCR_NOT_CONFIGURED", 503);
+  return (await invokeOcr(config, config.apiKey, { buffer, mimeType }, fetchImpl)).detections;
 }

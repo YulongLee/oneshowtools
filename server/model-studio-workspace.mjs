@@ -60,7 +60,7 @@ function fingerprint(config, apiKey) {
 async function probe(config, apiKey, fetchImpl = fetch) {
   const startedAt = Date.now();
   const response = await fetchImpl(`${config.baseUrl}/services/aigc/multimodal-generation/generation`, {
-    method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", ...(config.endpointMode === "public" && config.workspaceId ? { "X-DashScope-WorkSpace": config.workspaceId } : {}) },
     body: JSON.stringify({ model: "__oneshowtools_auth_probe__", input: { messages: [{ role: "user", content: [{ text: "connection probe" }] }] } }),
     signal: AbortSignal.timeout(20_000),
   }).catch((error) => { throw workspaceError(error?.name === "TimeoutError" ? "MODEL_STUDIO_TIMEOUT" : "MODEL_STUDIO_UNREACHABLE", 502, true); });
@@ -109,6 +109,11 @@ export async function saveModelStudioWorkspaceConfiguration(data, actorUserId = 
     VALUES ('default',?,?,?,?,?,?,?,?,?,?,?,'healthy',?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET name=excluded.name,region=excluded.region,workspace_id=excluded.workspace_id,endpoint_mode=excluded.endpoint_mode,base_url=excluded.base_url,key_ciphertext=excluded.key_ciphertext,key_iv=excluded.key_iv,key_tag=excluded.key_tag,key_hint=excluded.key_hint,credential_version=excluded.credential_version,status=excluded.status,last_test_status=excluded.last_test_status,last_test_latency_ms=excluded.last_test_latency_ms,last_tested_at=excluded.last_tested_at,updated_by=excluded.updated_by,updated_at=excluded.updated_at
   `).run(input.name,input.region,input.workspaceId||null,input.endpointMode,input.baseUrl,encrypted.ciphertext,encrypted.iv,encrypted.tag,`••••${apiKey.slice(-4)}`,version,input.status,result.latencyMs,result.testedAt,actorUserId,existing?.created_at||timestamp,timestamp);
+  db.prepare(`INSERT OR IGNORE INTO image_provider_configs (
+    purpose,adapter,base_url,model_id,key_ciphertext,key_iv,key_tag,key_hint,credential_version,status,credit_cost,
+    last_test_status,last_test_latency_ms,last_tested_at,updated_by,created_at,updated_at,credential_source
+  ) VALUES ('image_text_ocr','dashscope',?,'qwen-vl-ocr-latest',?,?,?,?,1,'active',1,'inherited',NULL,NULL,?, ?,?,'workspace')`)
+    .run(input.baseUrl, encrypted.ciphertext, encrypted.iv, encrypted.tag, `••••${apiKey.slice(-4)}`, actorUserId, timestamp, timestamp);
   const runtimeStatus = input.status === "active" ? "ready" : "configuration_required";
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit' AND EXISTS (SELECT 1 FROM image_provider_configs WHERE purpose='image_editing' AND credential_source='workspace' AND status='active')").run(runtimeStatus);
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale' AND EXISTS (SELECT 1 FROM image_provider_configs WHERE purpose IN ('image_upscaling','image_editing') AND credential_source='workspace' AND status='active')").run(runtimeStatus);

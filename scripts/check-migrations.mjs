@@ -24,6 +24,7 @@ const intelligentSearchMigration = await readFile(new URL("../db/migrations/0033
 const toolManualsMigration = await readFile(new URL("../db/migrations/0034_tool_manuals.sql", import.meta.url), "utf8");
 const wordImmersionMigration = await readFile(new URL("../db/migrations/0036_word_immersion.sql", import.meta.url), "utf8");
 const pptTextEditorMigration = await readFile(new URL("../db/migrations/0038_ppt_text_editor.sql", import.meta.url), "utf8");
+const imageTextOcrProviderMigration = await readFile(new URL("../db/migrations/0039_image_text_ocr_provider.sql", import.meta.url), "utf8");
 const requiredTables = [
   "users", "sessions", "accounts", "verifications", "profiles", "plans", "offers",
   "provider_mappings", "subscriptions", "webhook_receipts", "ledger_entries",
@@ -91,6 +92,7 @@ if (!musicReferenceMigration.includes("CREATE TABLE IF NOT EXISTS music_referenc
 for (const purpose of ["image_editing", "image_upscaling"]) {
   if (!aiImageMigration.includes(`'${purpose}'`)) throw new Error(`AI image migration is missing purpose: ${purpose}`);
 }
+if (!imageTextOcrProviderMigration.includes("image_text_ocr")) throw new Error("Image text OCR provider migration is missing image_text_ocr");
 if (!modelStudioWorkspaceMigration.includes("CREATE TABLE IF NOT EXISTS model_studio_workspace_configs ")) {
   throw new Error("Model Studio workspace migration is missing model_studio_workspace_configs");
 }

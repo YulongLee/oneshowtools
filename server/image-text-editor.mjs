@@ -8,7 +8,7 @@ import engData from "@tesseract.js-data/eng";
 import chiSimData from "@tesseract.js-data/chi_sim";
 import { audit, dataDirectory, db } from "./database.mjs";
 import { assertUserFileCapacity } from "./file-quota.mjs";
-import { editPlatformImage } from "./image-edit-provider.mjs";
+import { editPlatformImage, recognizePlatformImageText } from "./image-edit-provider.mjs";
 import { invokePlatformModel } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
 
@@ -95,9 +95,24 @@ export class TesseractOCRProvider extends OCRProvider {
   }
 }
 
+export class ModelOCRProvider extends OCRProvider {
+  async detect(buffer) { return recognizePlatformImageText({ buffer, mimeType: "image/png" }); }
+}
+
+export class HybridOCRProvider extends OCRProvider {
+  constructor(primary = new ModelOCRProvider(), fallback = new TesseractOCRProvider()) { super(); this.primary = primary; this.fallback = fallback; }
+  async detect(buffer) {
+    try {
+      const result = await this.primary.detect(buffer);
+      if (result?.length) return result;
+    } catch { /* Keep uploads available while the managed OCR model is disabled or temporarily unavailable. */ }
+    return this.fallback.detect(buffer);
+  }
+}
+
 export class TextStyleAnalyzer {
   analyze(detection) {
-    return { fontFamily: "auto", fontSize: Math.max(12, Math.round(detection.bbox.height * .78)), color: "#17264d", bold: true, italic: false, underline: false, align: "center", letterSpacing: 0 };
+    return { fontFamily: "auto", fontSize: Math.max(12, Math.round(detection.bbox.height * .78)), color: "#17264d", bold: true, italic: false, underline: false, align: "center", letterSpacing: 0, ...(detection.style || {}) };
   }
 }
 
@@ -122,7 +137,7 @@ export class StorageProvider {
   async read(input) { return readStoredFile(input); }
 }
 
-const ocrProvider = new TesseractOCRProvider();
+const ocrProvider = new HybridOCRProvider();
 const styleAnalyzer = new TextStyleAnalyzer();
 const inpaintingProvider = new ImageInpaintingProvider();
 const translationProvider = new TranslationProvider();

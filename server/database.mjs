@@ -414,6 +414,14 @@ export function initializeDatabase() {
   `);
   const imageProviderColumns = new Set(db.prepare("PRAGMA table_info(image_provider_configs)").all().map((item) => item.name));
   if (!imageProviderColumns.has("credential_source")) db.exec("ALTER TABLE image_provider_configs ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'direct' CHECK(credential_source IN ('direct','workspace'))");
+  const imageProviderWithOcrSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'image_provider_configs'").get()?.sql || "";
+  if (!imageProviderWithOcrSchema.includes("image_text_ocr")) db.exec(readFileSync(resolve(projectRoot, "db/migrations/0039_image_text_ocr_provider.sql"), "utf8"));
+  db.exec(`INSERT OR IGNORE INTO image_provider_configs (
+    purpose,adapter,base_url,model_id,key_ciphertext,key_iv,key_tag,key_hint,credential_version,status,credit_cost,
+    last_test_status,last_test_latency_ms,last_tested_at,updated_by,created_at,updated_at,credential_source
+  ) SELECT 'image_text_ocr','dashscope',base_url,'qwen-vl-ocr-latest',key_ciphertext,key_iv,key_tag,key_hint,1,'active',1,
+    'inherited',NULL,NULL,updated_by,created_at,updated_at,'workspace'
+    FROM model_studio_workspace_configs WHERE id='default' AND status='active'`);
   db.exec("UPDATE seo_agent_connectors SET status = 'disabled' WHERE status <> 'disabled'");
   db.exec("UPDATE seo_agent_projects SET automation_mode = 'approval' WHERE automation_mode NOT IN ('recommend', 'approval')");
 

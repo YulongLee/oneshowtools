@@ -1697,6 +1697,7 @@ export function createAdminHandler(dependencies) {
         image: imageProviderConfiguration(),
         imageEditing: imageEditProviderConfiguration("image_editing"),
         imageUpscaling: imageEditProviderConfiguration("image_upscaling"),
+        imageTextOcr: imageEditProviderConfiguration("image_text_ocr"),
         modelStudioWorkspace: modelStudioWorkspaceConfiguration(),
         storage: objectStorageConfiguration(),
         stockMarket: stockMarketProviderConfiguration(),
@@ -1814,7 +1815,7 @@ export function createAdminHandler(dependencies) {
         return json({ configuration });
       } catch (error) { return fail(error?.code || "IMAGE_PROVIDER_UPDATE_FAILED", error?.status || 502); }
     }
-    const imageEditMatch = path.match(/^\/api\/admin\/v1\/image-edit-provider\/(image_editing|image_upscaling)(?:\/(test))?$/);
+    const imageEditMatch = path.match(/^\/api\/admin\/v1\/image-edit-provider\/(image_editing|image_upscaling|image_text_ocr)(?:\/(test))?$/);
     if (imageEditMatch && request.method === "POST" && imageEditMatch[2] === "test") {
       const denied = requirePermission(context, "models.manage"); if (denied) return denied;
       try {

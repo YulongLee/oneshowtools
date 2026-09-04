@@ -20,6 +20,7 @@ const probeFetch = async (url, options) => {
   probeCalls += 1;
   assert.equal(String(url), "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation");
   assert.equal(options.headers.authorization, "Bearer sk-ws-workspace-secret");
+  assert.equal(options.headers["X-DashScope-WorkSpace"], "ws-enno3y3wsyqun34w");
   return new Response(JSON.stringify({ code: "InvalidParameter", message: "Model not exist." }), { status: 400, headers: { "content-type": "application/json" } });
 };
 
@@ -35,6 +36,10 @@ test("Model Studio workspace is tested without generation, encrypted, and saved 
   assert.doesNotMatch(JSON.stringify(saved), /workspace-secret/);
   const stored = db.prepare("SELECT * FROM model_studio_workspace_configs WHERE id='default'").get();
   assert.notEqual(stored.key_ciphertext, "sk-ws-workspace-secret");
+  const inheritedOcr = db.prepare("SELECT model_id,credential_source,status FROM image_provider_configs WHERE purpose='image_text_ocr'").get();
+  assert.equal(inheritedOcr.model_id, "qwen-vl-ocr-latest");
+  assert.equal(inheritedOcr.credential_source, "workspace");
+  assert.equal(inheritedOcr.status, "active");
 });
 
 test("image editing can inherit the encrypted default workspace connection", async () => {
@@ -42,6 +47,7 @@ test("image editing can inherit the encrypted default workspace connection", asy
   const providerFetch = async (url, options) => {
     if (String(url) === "https://provider.example/result.png") return new Response(resultPng, { status: 200 });
     assert.equal(options.headers.authorization, "Bearer sk-ws-workspace-secret");
+    assert.equal(options.headers["X-DashScope-WorkSpace"], "ws-enno3y3wsyqun34w");
     return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ image: "https://provider.example/result.png" }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const saved = await imageModule.saveImageEditProviderConfiguration("image_editing", {
@@ -52,6 +58,30 @@ test("image editing can inherit the encrypted default workspace connection", asy
   const stored = db.prepare("SELECT credential_source,key_ciphertext FROM image_provider_configs WHERE purpose='image_editing'").get();
   assert.equal(stored.credential_source, "workspace");
   assert.doesNotMatch(stored.key_ciphertext, /workspace-secret/);
+});
+
+test("image text OCR can inherit the workspace key and return positioned text", async () => {
+  let calls = 0;
+  const providerFetch = async (url, options) => {
+    calls += 1;
+    assert.equal(String(url), "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation");
+    assert.equal(options.headers.authorization, "Bearer sk-ws-workspace-secret");
+    assert.equal(options.headers["X-DashScope-WorkSpace"], "ws-enno3y3wsyqun34w");
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, "qwen-vl-ocr-latest");
+    return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ text: '```json\n[{"text":"TEST 123","bbox":[80,190,390,280],"confidence":0.98,"rotation":0,"style":{"fontFamily":"sans","fontSize":72,"color":"#111827","bold":true,"align":"left"}}]\n```' }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const saved = await imageModule.saveImageEditProviderConfiguration("image_text_ocr", {
+    credentialSource: "workspace", modelId: "qwen-vl-ocr-latest", creditCost: 1, status: "active",
+  }, "admin-test", providerFetch);
+  assert.equal(saved.credentialSource, "workspace");
+  assert.equal(saved.modelId, "qwen-vl-ocr-latest");
+  const sample = await sharp({ create: { width: 512, height: 512, channels: 3, background: "#fff" } }).png().toBuffer();
+  const detections = await imageModule.recognizePlatformImageText({ buffer: sample, fetchImpl: providerFetch });
+  assert.equal(calls, 2);
+  assert.equal(detections[0].text, "TEST 123");
+  assert.deepEqual(detections[0].bbox, { x: 80, y: 190, width: 310, height: 90 });
+  assert.equal(detections[0].style.color, "#111827");
 });
 
 test("a provider model permission denial is not misreported as an invalid API key", async () => {
