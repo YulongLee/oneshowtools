@@ -1365,6 +1365,8 @@ textarea { padding: 12px; resize: vertical; line-height: 1.5; }
 .landing-footer-record { position: absolute; left: 15px; right: 15px; bottom: 24px; display: flex; align-items: center; gap: 14px; color: #9aa5b4; font-size: 8px; }
 .landing-footer .landing-footer-record a { color: #8794a8; font-size: inherit; }
 .landing-footer .landing-footer-record a:hover { color: var(--blue); text-decoration: underline; }
+.landing-footer .landing-footer-record .public-security-record { display: inline-flex; align-items: center; gap: 4px; }
+.landing-footer .landing-footer-record .public-security-record img { width: 12px; height: auto; flex: 0 0 auto; }
 .landing-resources { margin-top: 32px; padding: 34px; border: 1px solid #e2e8f3; border-radius: 24px; background: linear-gradient(135deg,#fff 0%,#f7f8ff 100%); }
 .landing-resources > header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
 .landing-resources > header > div { display: flex; align-items: center; gap: 10px; }
