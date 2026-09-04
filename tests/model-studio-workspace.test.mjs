@@ -69,7 +69,8 @@ test("image text OCR can inherit the workspace key and return positioned text", 
     assert.equal(options.headers["X-DashScope-WorkSpace"], "ws-enno3y3wsyqun34w");
     const body = JSON.parse(options.body);
     assert.equal(body.model, "qwen-vl-ocr-latest");
-    return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ text: '```json\n[{"text":"TEST 123","bbox":[80,190,390,280],"confidence":0.98,"rotation":0,"style":{"fontFamily":"sans","fontSize":72,"color":"#111827","bold":true,"align":"left"}}]\n```' }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
+    assert.equal(body.parameters.ocr_options.task, "advanced_recognition");
+    return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ ocr_result: { words_info: [{ text: "TEST 123", rotate_rect: [235, 235, 310, 90, 0] }] } }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const saved = await imageModule.saveImageEditProviderConfiguration("image_text_ocr", {
     credentialSource: "workspace", modelId: "qwen-vl-ocr-latest", creditCost: 1, status: "active",
@@ -81,7 +82,7 @@ test("image text OCR can inherit the workspace key and return positioned text", 
   assert.equal(calls, 2);
   assert.equal(detections[0].text, "TEST 123");
   assert.deepEqual(detections[0].bbox, { x: 80, y: 190, width: 310, height: 90 });
-  assert.equal(detections[0].style.color, "#111827");
+  assert.equal(detections[0].style.color, "#17264d");
 });
 
 test("a provider model permission denial is not misreported as an invalid API key", async () => {

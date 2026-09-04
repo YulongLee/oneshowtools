@@ -242,6 +242,24 @@ function parseOcrDetections(raw, width, height) {
   }).filter(Boolean);
 }
 
+function parseBuiltinOcrDetections(payload, width, height) {
+  const words = payload?.output?.choices?.[0]?.message?.content?.find?.((item) => item?.ocr_result)?.ocr_result?.words_info;
+  if (!Array.isArray(words)) return [];
+  return words.slice(0, 300).map((item) => {
+    const [centerX, centerY, boxWidth, boxHeight, angle = 0] = Array.isArray(item?.rotate_rect) ? item.rotate_rect.map(Number) : [];
+    const text = clean(item?.text, 500);
+    if (!text || ![centerX, centerY, boxWidth, boxHeight, angle].every(Number.isFinite) || boxWidth < 4 || boxHeight < 4) return null;
+    const x = clamp(centerX - boxWidth / 2, 0, width - 1);
+    const y = clamp(centerY - boxHeight / 2, 0, height - 1);
+    return {
+      text, confidence: .95,
+      bbox: { x, y, width: clamp(boxWidth, 0, width - x), height: clamp(boxHeight, 0, height - y) },
+      rotation: clamp(angle, -90, 90),
+      style: { fontFamily: "auto", fontSize: clamp(boxHeight * .78, 8, 300), color: "#17264d", bold: false, align: "center" },
+    };
+  }).filter(Boolean);
+}
+
 async function invokeOcr(config, apiKey, input, fetchImpl = fetch) {
   const originalMetadata = await sharp(input.buffer).metadata();
   const normalized = await normalizedInput(input.buffer, input.mimeType);
@@ -253,17 +271,17 @@ async function invokeOcr(config, apiKey, input, fetchImpl = fetch) {
     body: JSON.stringify({
       model: config.modelId,
       input: { messages: [{ role: "user", content: [
-        { image: `data:${normalized.mimeType};base64,${normalized.buffer.toString("base64")}` },
-        { text: `识别图片中所有可见文字。图片宽 ${metadata.width} 像素、高 ${metadata.height} 像素。只输出 JSON 数组，每项格式为 {"text":"文字","bbox":[左,上,右,下],"confidence":0.95,"rotation":0,"style":{"fontFamily":"sans或serif","fontSize":32,"color":"#RRGGBB","bold":false,"align":"left或center或right"}}。坐标必须使用当前图片的像素坐标，不要输出解释。` },
+        { image: `data:${normalized.mimeType};base64,${normalized.buffer.toString("base64")}`, min_pixels: 3072, max_pixels: 8388608, enable_rotate: false },
       ] }] },
-      parameters: { max_tokens: 8192 },
+      parameters: { ocr_options: { task: "advanced_recognition" }, max_tokens: 8192 },
     }),
     signal: AbortSignal.timeout(90_000),
   }).catch((cause) => { throw providerError(cause?.name === "TimeoutError" ? "IMAGE_TEXT_OCR_TIMEOUT" : "IMAGE_PROVIDER_UNREACHABLE", 502, true); });
   const payload = await response.json().catch(() => ({}));
   const failure = providerFailure(payload, response.status);
   if (failure) throw failure;
-  const detections = parseOcrDetections(ocrText(payload), metadata.width, metadata.height);
+  const builtinDetections = parseBuiltinOcrDetections(payload, metadata.width, metadata.height);
+  const detections = builtinDetections.length ? builtinDetections : parseOcrDetections(ocrText(payload), metadata.width, metadata.height);
   if (!detections.length) throw providerError("IMAGE_TEXT_OCR_EMPTY", 422);
   const scaleX = Number(originalMetadata.width || metadata.width) / metadata.width;
   const scaleY = Number(originalMetadata.height || metadata.height) / metadata.height;
