@@ -127,13 +127,30 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const [preserveStyle, setPreserveStyle] = useState(true);
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
+  const [inlineEditingId, setInlineEditingId] = useState("");
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const fileInput = useRef(null);
+  const inlineEditor = useRef(null);
+  const stageRef = useRef(null);
   const asset = project?.assets?.find((item) => item.id === assetId) || project?.assets?.[0] || null;
   const selected = asset?.detections?.find((item) => item.id === selectedId) || asset?.detections?.[0] || null;
   const imageUrl = asset ? (compare ? asset.originalUrl : asset.imageUrl) : "";
   const progressText = { preparing: "准备处理", erasing: "擦除原文字", repairing: "智能修复背景", rendering: "渲染新文字", completed: "处理完成" };
 
   useEffect(() => { if (asset && !selectedId) setSelectedId(asset.detections?.[0]?.id || ""); }, [asset, selectedId]);
+  useEffect(() => {
+    if (!inlineEditingId || !inlineEditor.current) return;
+    inlineEditor.current.focus();
+    inlineEditor.current.setSelectionRange(inlineEditor.current.value.length, inlineEditor.current.value.length);
+  }, [inlineEditingId]);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === "undefined") return undefined;
+    const update = () => setStageSize({ width: stage.clientWidth, height: stage.clientHeight });
+    const observer = new ResizeObserver(update);
+    observer.observe(stage); update();
+    return () => observer.disconnect();
+  }, [asset?.id]);
   useEffect(() => {
     const previous = document.title;
     document.title = "字迹 · AI 图片文字编辑 | OneShowTools";
@@ -162,7 +179,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
         const form = new FormData(); form.append("file", file); if (next?.id) form.append("projectId", next.id);
         const data = await api("/api/image-text/assets", { method: "POST", body: form }); next = data.project;
       }
-      setProject(next); setAssetId(next.assets.at(-1)?.id || ""); setSelectedId("");
+      setProject(next); setAssetId(next.assets.at(-1)?.id || ""); setSelectedId(""); setInlineEditingId(""); setZoom(1);
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
   }
@@ -171,6 +188,15 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     if (!selected) return;
     if (remember) { setHistory((items) => [...items.slice(-29), { assetId: asset.id, detectionId: selected.id, value: selected }]); setFuture([]); }
     setProject((current) => ({ ...current, assets: current.assets.map((item) => item.id !== asset.id ? item : ({ ...item, detections: item.detections.map((detection) => detection.id === selected.id ? { ...detection, ...patch, style: { ...detection.style, ...(patch.style || {}) } } : detection) })) }));
+  }
+
+  function beginInlineEdit(item) {
+    if (inlineEditingId !== item.id) {
+      setHistory((items) => [...items.slice(-29), { assetId: asset.id, detectionId: item.id, value: item }]);
+      setFuture([]);
+    }
+    setSelectedId(item.id);
+    setInlineEditingId(item.id);
   }
 
   function restore(entry, targetSetter, sourceSetter) {
@@ -209,7 +235,11 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
 
   const progress = Number(task?.output?.progress || (task?.status === "running" ? 20 : 0));
   const processing = ["queued", "running"].includes(task?.status);
-  const displayScale = useMemo(() => zoom, [zoom]);
+  const displayScale = useMemo(() => {
+    if (!asset || !stageSize.width || !stageSize.height) return zoom;
+    const fit = Math.min(1, Math.max(.08, (stageSize.width - 30) / asset.width), Math.max(.08, (stageSize.height - 30) / asset.height));
+    return fit * zoom;
+  }, [asset, stageSize, zoom]);
 
   return <main className="ite-page">
     <input ref={fileInput} hidden multiple type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => upload(Array.from(event.target.files || []))} />
@@ -218,17 +248,33 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     <nav className="ite-mode-tabs"><button className={mode === "image" ? "active" : ""} onClick={() => setMode("image")}>图片改字</button><button className={mode === "ppt" ? "active" : ""} onClick={() => setMode("ppt")}>PPT 改字 <i>NEW</i></button></nav>
     {mode === "image" ? <section className="ite-workbench">
       <aside className="ite-assets"><UploadCard busy={busy && !task} onFiles={upload} />
-        <div className="ite-asset-list">{project?.assets?.map((item, index) => <button key={item.id} className={(asset?.id === item.id ? "active " : "") + item.status} onClick={() => { setAssetId(item.id); setSelectedId(""); }}><span>{String(index + 1).padStart(2, "0")}</span><img src={`/api/files/${item.originalFileId}/thumbnail`} alt={item.name} /><small>{item.detections.length} 处文字</small></button>)}</div>
+        <div className="ite-asset-list">{project?.assets?.map((item, index) => <button key={item.id} className={(asset?.id === item.id ? "active " : "") + item.status} onClick={() => { setAssetId(item.id); setSelectedId(""); setInlineEditingId(""); setZoom(1); }}><span>{String(index + 1).padStart(2, "0")}</span><img src={`/api/files/${item.originalFileId}/thumbnail`} alt={item.name} /><small>{item.detections.length} 处文字</small></button>)}</div>
         {project && <button className="ite-add-image" onClick={() => fileInput.current?.click()}><Plus size={16} />添加图片</button>}
       </aside>
       <section className="ite-canvas-panel">
         <div className="ite-toolbar"><button onClick={() => setZoom(Math.max(.5, zoom - .1))}><MagnifyingGlassMinus /></button><button onClick={() => setZoom(Math.min(1.8, zoom + .1))}><MagnifyingGlassPlus /></button><strong>{Math.round(zoom * 100)}%</strong><button className="wide" onPointerDown={() => setCompare(true)} onPointerUp={() => setCompare(false)} onPointerLeave={() => setCompare(false)}><Eye />按住对比</button></div>
-        {!asset ? <EmptyCanvas onUpload={() => authenticated ? fileInput.current?.click() : onAuth?.()} /> : <div className="ite-stage"><div className="ite-image-wrap" style={{ width: `${asset.width * displayScale}px`, height: `${asset.height * displayScale}px` }}><img src={imageUrl} alt={asset.name} />{!compare && asset.detections.map((item) => <button key={item.id} aria-label={`编辑文字：${item.originalText}`} className={`ite-text-box ${selected?.id === item.id ? "selected" : ""}`} onClick={() => setSelectedId(item.id)} style={{ left: `${item.bbox.x * displayScale}px`, top: `${item.bbox.y * displayScale}px`, width: `${item.bbox.width * displayScale}px`, height: `${item.bbox.height * displayScale}px` }} />)}</div></div>}
+        {!asset ? <EmptyCanvas onUpload={() => authenticated ? fileInput.current?.click() : onAuth?.()} /> : <div className="ite-stage" ref={stageRef}><div className="ite-image-wrap" style={{ width: `${asset.width * displayScale}px`, height: `${asset.height * displayScale}px` }}><img src={imageUrl} alt={asset.name} />{!compare && asset.detections.map((item) => {
+          const isSelected = selected?.id === item.id;
+          const textStyle = {
+            left: `${item.bbox.x * displayScale}px`, top: `${item.bbox.y * displayScale}px`, width: `${item.bbox.width * displayScale}px`, height: `${item.bbox.height * displayScale}px`,
+            color: item.style?.color || "#17264d", fontSize: `${Math.max(8, Number(item.style?.fontSize || 16) * displayScale)}px`,
+            fontFamily: item.style?.fontFamily === "serif" ? '"Songti SC","STSong",serif' : 'Inter,"PingFang SC","Microsoft YaHei",sans-serif',
+            fontWeight: item.style?.bold ? 800 : 500, textAlign: item.style?.align || "center", transform: `rotate(${Number(item.rotation || 0)}deg)`,
+          };
+          return isSelected ? <textarea ref={inlineEditor} key={item.id} data-testid="inline-image-text-editor" aria-label={`直接修改图片文字：${item.originalText}`}
+            className={`ite-inline-text ${inlineEditingId === item.id ? "editing" : ""}`} value={item.currentText} maxLength={100} spellCheck="false"
+            onFocus={() => beginInlineEdit(item)} onChange={(event) => updateLocal({ currentText: event.target.value }, false)}
+            onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); apply(); } if (event.key === "Escape") event.currentTarget.blur(); }} style={textStyle} />
+            : <button key={item.id} aria-label={`选择图片文字：${item.originalText}`} className="ite-text-box" onClick={() => beginInlineEdit(item)} style={textStyle}>
+              {item.currentText !== item.originalText && <span>{item.currentText}</span>}
+            </button>;
+        })}<div className="ite-direct-edit-hint"><TextT weight="bold" />点击文字框，直接在图片上输入</div></div></div>}
         <footer><button disabled={!history.length} onClick={() => restore(history.at(-1), setFuture, setHistory)}><ArrowCounterClockwise />撤销</button><button disabled={!future.length} onClick={() => restore(future.at(-1), setHistory, setFuture)}><ArrowClockwise />重做</button><button disabled={!asset} onClick={() => setSelectedId(asset?.detections?.[0]?.id || "")}><ArrowsClockwise />重新选择文字</button></footer>
         {processing && <div className="ite-progress"><span><SpinnerGap className="ite-spin" /></span><div><strong>{progressText[task.output?.phase] || "正在处理图片"}</strong><p>后台处理中，你可以留在当前页面等待。</p><i><b style={{ width: `${Math.max(6, progress)}%` }} /></i></div><em>{progress}%</em></div>}
       </section>
       <aside className="ite-editor"><header><div><small>TEXT EDITOR</small><h2>文字编辑</h2></div><button disabled={!asset || busy || processing} onClick={redetect}>{busy ? <SpinnerGap className="ite-spin" /> : <ArrowsClockwise />}重新识别</button></header>
-        {!selected ? <div className="ite-no-selection"><TextT size={28} /><strong>{asset?.detections?.length === 0 ? "没有识别到文字" : "请选择一段文字"}</strong><p>{asset?.detections?.length === 0 ? "可以换一张更清晰、文字对比度更高的图片。" : "点击画布中的虚线框开始修改。"}</p></div> : <>
+        {!selected ? <div className="ite-no-selection"><TextT size={28} /><strong>{asset?.detections?.length === 0 ? "没有识别到文字" : "请选择一段文字"}</strong><p>{asset?.detections?.length === 0 ? "可以换一张更清晰、文字对比度更高的图片。" : "点击画布中的虚线框，即可原位输入修改。"}</p></div> : <>
+          <div className="ite-direct-edit-status"><span><TextT weight="bold" />画布内直接编辑</span><small>点击图片文字即可输入，⌘/Ctrl + Enter 应用</small></div>
           <label><span>识别到的文字</span><div className="ite-original-text">{selected.originalText}</div></label>
           <label><span>修改为</span><textarea value={selected.currentText} maxLength={100} onChange={(event) => updateLocal({ currentText: event.target.value })} /><small>{selected.currentText.length}/100</small></label>
           <div className="ite-ai-actions"><button onClick={() => rewrite("polish")} disabled={busy}><MagicWand />AI 优化文案</button><button onClick={() => rewrite("translate")} disabled={busy}><Translate />中英互译</button></div>

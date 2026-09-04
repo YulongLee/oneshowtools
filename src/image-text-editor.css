@@ -3,3 +3,14 @@
 @media(max-width:1180px){.ite-hero{grid-template-columns:auto 1fr auto}.ite-hero aside{display:none}.ite-workbench{grid-template-columns:155px minmax(0,1fr) 290px}.ite-image-wrap{transform-origin:center}}
 @media(max-width:900px){.ite-page{padding:0 8px 40px}.ite-hero{grid-template-columns:auto 1fr;padding:16px}.ite-hero>em{display:none}.ite-workbench{grid-template-columns:1fr}.ite-assets{display:grid;grid-template-columns:150px 1fr}.ite-asset-list{grid-template-columns:repeat(3,100px);display:flex}.ite-asset-list button{width:100px;flex:0 0 100px}.ite-add-image{display:none}.ite-canvas-panel{min-height:560px}.ite-editor{min-height:560px}.ite-editor>footer{position:sticky;bottom:8px}.ite-tip{padding:0 12px;text-align:center}}
 @media(max-width:560px){.ite-logo{width:48px;height:48px;border-radius:13px}.ite-hero h1{font-size:20px}.ite-hero p{font-size:10px}.ite-workbench{margin-top:10px}.ite-assets{grid-template-columns:1fr}.ite-asset-list{grid-template-columns:repeat(3,1fr)}.ite-upload-card{min-height:90px}.ite-toolbar{white-space:nowrap}.ite-canvas-panel{padding-inline:6px}.ite-editor>footer{grid-template-columns:1fr}.ite-mode-tabs{padding:0}}
+
+/* Direct-on-canvas text editing */
+.ite-text-box{cursor:text}
+.ite-text-box span{width:100%;height:100%;padding:1px 3px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#ffffffe8;line-height:1.05;white-space:pre-wrap}
+.ite-inline-text{position:absolute;z-index:2;margin:0;padding:1px 3px;border:1.5px solid #2f66ff;border-radius:2px;outline:none;overflow:hidden;resize:none;line-height:1.05;background:#ffffffe6;box-shadow:0 0 0 2px #fff,0 0 0 3px #3972ff,0 8px 22px #1c47a02b;backdrop-filter:blur(6px);cursor:text}
+.ite-inline-text.editing{background:#fffffff2;box-shadow:0 0 0 2px #fff,0 0 0 4px #3972ff,0 10px 28px #1c47a038}
+.ite-direct-edit-hint{position:absolute;left:50%;bottom:12px;z-index:3;min-height:30px;padding:0 11px;border:1px solid #dbe3f3;border-radius:99px;display:flex;align-items:center;gap:6px;color:#596884;background:#fffffff0;box-shadow:0 8px 24px #24396918;transform:translateX(-50%);font-size:9px;white-space:nowrap;pointer-events:none}
+.ite-direct-edit-hint svg{color:#5f4ff0}
+.ite-direct-edit-status{margin-top:14px;padding:10px;border:1px solid #dcdff7;border-radius:10px;display:grid;gap:3px;background:#f5f3ff}
+.ite-direct-edit-status span{display:flex;align-items:center;gap:6px;color:#5342df;font-size:10px;font-weight:800}
+.ite-direct-edit-status small{color:#7e89a0;font-size:8px}

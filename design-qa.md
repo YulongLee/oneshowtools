@@ -53,6 +53,36 @@ The implementation preserves the selected hierarchy: one dominant product card, 
 
 final result: passed
 
+## 字迹 V3 图片内直接编辑验收
+
+- 视觉真相：`/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-495de020-6a0a-4864-a5f7-fba4766dec3a.png`（1536 × 1024）。
+- 实现证据：`artifacts/image-text-editor-direct-edit-1536.png`（1536 × 1324 全页截图，CSS 视口 1536 × 1024，DPR 1）。
+- 同屏比较：`artifacts/image-text-editor-direct-edit-comparison.png`。
+- 状态：管理员已登录；上传 900 × 420 测试图片；OCR 识别 3 个文字区域；首个区域在画布内原位改为“AI 直接改字”。
+
+### 全局与局部比较
+
+- 全局结构继续匹配参考稿的素材栏、中央图片画布和右侧文字属性栏，且保留 OneShowTools 统一工作台外壳。
+- 核心区域现在直接以可输入文字框覆盖识别位置，右侧输入框、字体、字号、颜色、粗细和对齐状态与画布同步。
+- 图片默认按可用画布自动缩放；100% 表示完整适配，避免大图只显示局部。工具栏仍可继续放大与缩小。
+- 聚焦区域已检查文字框边界、光标输入、选中态、背景遮罩和原图位置关系；未发现影响使用的 P0/P1/P2 差异。
+
+### 五项保真检查
+
+- 字体与排版：画布文字使用平台中文字体栈并沿用识别字号、字重和对齐；输入时无异常换行。
+- 间距与布局：三栏比例、画布留白、操作条与底部按钮在 1536 × 1024 视口完整可见。
+- 颜色与令牌：蓝紫选择框、浅色编辑遮罩和右侧表单沿用现有产品色。
+- 图片质量：原图等比例完整展示，无拉伸、裁切或模糊放大。
+- 文案与内容：明确提示“点击文字框，直接在图片上输入”，并提供 ⌘/Ctrl + Enter 应用快捷方式。
+
+### 交互验证
+
+- 点击识别框会立即获得输入焦点，可直接键入并同步更新右侧“修改为”字段。
+- 撤销在首次原位编辑后可用；按住对比、重新识别、样式控制、应用生成和下载入口保持可用。
+- 生产构建与 3 项图片/PPT 专项测试通过；浏览器控制台无错误或警告。
+
+final result: passed
+
 ## Shared commercial tool workspace QA
 
 - Scope: every tool rendered by the shared workspace, including image, PDF, audio, video, data, writing, developer, SEO utility, and marketing utilities.
