@@ -23,7 +23,13 @@ const reportBenefits = [
   [Lightbulb, "个性化成长建议", "把偏好转化为行动提示"],
 ];
 const scale = [1, 2, 3, 4, 5];
-const scaleLabels = ["更像左侧", "比较像左侧", "两者接近", "比较像右侧", "更像右侧"];
+const scaleLabels = ["非常像 A", "比较像 A", "两者都像", "比较像 B", "非常像 B"];
+const qualityWarningText = {
+  NEUTRAL_RESPONSE_PATTERN: "中间项选择较多",
+  STRAIGHT_LINE_PATTERN: "连续使用相同选项",
+  VERY_FAST_COMPLETION: "完成速度明显偏快",
+  INCONSISTENT_DIMENSIONS: "部分维度回答前后不够一致",
+};
 
 export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "zh", authenticated, onBack, onAuth, onCompleted }) {
   const t = ui[locale] || ui.zh;
@@ -47,7 +53,14 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
   useEffect(() => () => window.clearTimeout(autoAdvanceTimer.current), []);
   useEffect(() => { if (task?.output?.type) { setReport(task.output); setStage("result"); } }, [task?.id]);
 
-  const begin = () => { if (!authenticated) return onAuth?.(); startedAt.current = Date.now(); setStage("quiz"); setError(""); };
+  const begin = () => {
+    if (!authenticated) return onAuth?.();
+    const firstUnanswered = mbtiQuestions.findIndex((item) => !answers[item.id]);
+    setIndex(firstUnanswered < 0 ? 0 : firstUnanswered);
+    startedAt.current = Date.now();
+    setStage("quiz");
+    setError("");
+  };
   const choose = (value) => {
     const nextAnswers = { ...answers, [current.id]: value };
     setAnswers(nextAnswers);
@@ -57,7 +70,7 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
       if (index < mbtiQuestions.length - 1) {
         setIndex((currentIndex) => currentIndex + 1);
       } else submit(nextAnswers);
-    }, 320);
+    }, 260);
   };
   const submit = async (answerSet = answers) => {
     const answerCount = Object.keys(answerSet).filter((id) => mbtiQuestions.some((item) => item.id === id)).length;
@@ -73,7 +86,7 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
     finally { setBusy(false); }
   };
   const restart = () => { setAnswers({}); setIndex(0); setReport(null); setStage("intro"); localStorage.removeItem(storageKey); };
-  const copySummary = async () => report && navigator.clipboard?.writeText(`${report.type} ${report.typeName}\n${report.summary}\n${report.strengths.join("；")}`);
+  const copySummary = async () => report && navigator.clipboard?.writeText(`${report.type} ${report.typeName}\n${report.summary}\n结果稳定度：${report.stability ?? "--"}%\n${report.strengths.join("；")}`);
   const exportPdf = async () => {
     if (!report || !pdfDocumentRef.current || exporting) return;
     setExporting(true); setError("");
@@ -123,16 +136,17 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
 
     {stage === "quiz" && <section className="mbti-quiz">
       <header><div><small>{locale === "en" ? "QUESTION" : "问题"} {index + 1} / {mbtiQuestions.length}</small><strong>{progress}%</strong></div><span><i style={{ width: `${progress}%` }} /></span></header>
-      <div className="mbti-question-card"><span className="mbti-neutral-label">{locale === "en" ? "Choose by instinct" : "按第一反应选择"}</span><h2>{locale === "en" ? "Which statement is usually closer to you?" : "哪一种描述通常更接近你？"}</h2><div className="mbti-statements"><article><small>A</small><strong>{current.left}</strong></article><article><small>B</small><strong>{current.right}</strong></article></div><div className="mbti-scale">{scale.map((value, valueIndex) => <button key={value} className={answers[current.id] === value ? "selected" : ""} type="button" onClick={() => choose(value)} aria-label={scaleLabels[valueIndex]}><span>{value}</span><small>{valueIndex === 0 || valueIndex === 4 ? scaleLabels[valueIndex] : valueIndex === 2 ? scaleLabels[valueIndex] : ""}</small></button>)}</div><p className="mbti-auto-next"><CheckCircle size={15} />{index === mbtiQuestions.length - 1 ? (locale === "en" ? "Your report will be generated after selection" : "选择后将自动生成报告") : (locale === "en" ? "Moves to the next question automatically" : "选择后自动进入下一题")}</p>{error && <p className="mbti-error"><Warning size={17} />{error}</p>}<footer><button type="button" disabled={!index} onClick={() => { window.clearTimeout(autoAdvanceTimer.current); setIndex((value) => Math.max(0, value - 1)); }}><ArrowLeft size={17} />{t.previous}</button><span>{locale === "en" ? "You can revise earlier answers at any time" : "可随时返回修改之前的答案"}</span></footer></div>
+      <div className="mbti-question-card" aria-live="polite"><div className="mbti-question-content" key={current.id}><span className="mbti-neutral-label">{locale === "en" ? "Think about your usual behavior" : "请按多数时候的真实行为选择"}</span><h2>{locale === "en" ? "Which statement is usually closer to you?" : "哪一种描述通常更接近你？"}</h2><div className="mbti-statements"><button type="button" onClick={() => choose(1)} className={answers[current.id] === 1 ? "selected" : ""}><small>A</small><strong>{current.left}</strong></button><button type="button" onClick={() => choose(5)} className={answers[current.id] === 5 ? "selected" : ""}><small>B</small><strong>{current.right}</strong></button></div><div className="mbti-scale">{scale.map((value, valueIndex) => <button key={value} className={answers[current.id] === value ? "selected" : ""} type="button" onClick={() => choose(value)} aria-label={scaleLabels[valueIndex]}><span>{value}</span><small>{scaleLabels[valueIndex]}</small></button>)}</div><p className="mbti-auto-next"><CheckCircle size={15} />{index === mbtiQuestions.length - 1 ? (locale === "en" ? "Your report will be generated after selection" : "选择后将自动生成报告") : (locale === "en" ? "Moves to the next question automatically" : "选择后自动进入下一题")}</p></div>{error && <p className="mbti-error"><Warning size={17} />{error}</p>}<footer><button type="button" disabled={!index} onClick={() => { window.clearTimeout(autoAdvanceTimer.current); setIndex((value) => Math.max(0, value - 1)); }}><ArrowLeft size={17} />{t.previous}</button><span>{locale === "en" ? "You can revise earlier answers at any time" : "可随时返回修改之前的答案"}</span></footer></div>
     </section>}
 
     {stage === "generating" && <section className="mbti-generating"><SpinnerGap className="spin" size={45} /><h2>{locale === "en" ? "Scoring your four preferences" : "正在计算你的四维偏好"}</h2><p>{locale === "en" ? "Building a practical, non-diagnostic report…" : "正在生成一份可回看的非诊断性报告…"}</p></section>}
 
     {stage === "result" && report && <section className="mbti-report">
-      <header><div><small>{t.result}</small><h2>{report.type}<em>{report.typeName}</em></h2><p>{report.summary}</p></div><img src="/mbti/mbti-icon-v1.webp" alt="" /></header>
-      <div className="mbti-dimensions"><h3>{t.dimensions}</h3>{report.dimensions.map((item) => <article key={item.axis}><div><b>{item.leftCode} {item.leftPercent}%</b><span>{item.axis}</span><b>{item.rightPercent}% {item.rightCode}</b></div><span><i style={{ width: `${item.leftPercent}%` }} /></span><small>{item.closeness === "balanced" ? (locale === "en" ? "Nearly balanced" : "两侧较为均衡") : (locale === "en" ? `Leans ${item.selected}` : `当前更偏向 ${item.selected}`)}</small></article>)}</div>
+      <header><div><small>{t.result}</small><h2>{report.type}<em>{report.typeName}</em></h2><p>{report.summary}</p>{Number.isFinite(report.stability) && <div className="mbti-stability"><ShieldCheck size={17} weight="duotone" /><span>{locale === "en" ? "Result stability" : "结果稳定度"}</span><b>{report.stability}%</b><small>{report.stability >= 65 ? (locale === "en" ? "Stable signal" : "偏好较稳定") : report.stability >= 40 ? (locale === "en" ? "Some close dimensions" : "部分维度接近") : (locale === "en" ? "Review against daily behavior" : "建议结合日常行为复核")}</small></div>}</div><img src="/mbti/mbti-icon-v1.webp" alt="" /></header>
+      {!!report.ambiguousAxes?.length && <div className="mbti-boundary-note"><Lightbulb size={21} weight="duotone" /><div><strong>{locale === "en" ? "A close preference is not a wrong result" : "这不是“测错”，而是你的部分偏好非常接近"}</strong><p>{report.resolvedType && !report.resolvedType.includes("X") ? (locale === "en" ? `The nearest pattern is ${report.resolvedType}, but ${report.ambiguousAxes.join(", ")} is not stable enough to classify.` : `按本次答案，最接近 ${report.resolvedType}，但 ${report.ambiguousAxes.join("、")} 维度不足以稳定定型。`) : (locale === "en" ? "This response set cannot support a stable four-letter pattern. Consider retaking later in a relaxed setting." : "本次答案不足以给出稳定的四字母类型，建议隔一段时间在更放松的状态下复测。")}</p>{report.alternativeTypes?.length > 1 && <span>{locale === "en" ? "Possible patterns" : "可能组合"}：{report.alternativeTypes.slice(0, 6).join(" / ")}{report.alternativeTypes.length > 6 ? " …" : ""}</span>}</div></div>}
+      <div className="mbti-dimensions"><h3>{t.dimensions}</h3>{report.dimensions.map((item) => <article key={item.axis}><div><b>{item.leftCode} {item.leftPercent}%</b><span>{item.axis}</span><b>{item.rightPercent}% {item.rightCode}</b></div><span><i style={{ width: `${item.leftPercent}%` }} /></span><small>{item.closeness === "balanced" ? (locale === "en" ? "Too close to call" : "接近边界，暂不强行定型") : item.closeness === "moderate" ? (locale === "en" ? `Slightly leans ${item.selected}` : `轻微偏向 ${item.selected} · 稳定度 ${item.confidence ?? "--"}%`) : (locale === "en" ? `Clearly leans ${item.selected}` : `较明确偏向 ${item.selected} · 稳定度 ${item.confidence ?? "--"}%`)}</small></article>)}</div>
       <div className="mbti-report-grid"><article><h3><Sparkle size={20} />{t.strengths}</h3><ul>{report.strengths.map((item) => <li key={item}><Check size={16} />{item}</li>)}</ul></article><article><h3><Lightbulb size={20} />{t.growth}</h3><ul>{report.growth.map((item) => <li key={item}><ArrowRight size={16} />{item}</li>)}</ul></article></div>
-      {report.quality && <div className={"mbti-quality " + report.quality.status}><ShieldCheck size={20} weight="duotone" /><div><strong>{locale === "en" ? "Response quality" : "答题质量"}：{report.quality.status === "good" ? (locale === "en" ? "Good" : "良好") : report.quality.status === "review" ? (locale === "en" ? "Review suggested" : "建议复核") : (locale === "en" ? "Low confidence" : "可信度较低")}</strong><p>{report.quality.warnings?.length ? (locale === "en" ? "The response pattern was unusually fast or repetitive. Retake when you have enough uninterrupted time." : "检测到答题速度过快、中立项过多或连续选择相同选项。建议在不受打扰时重新测试。") : (locale === "en" ? "No obvious rushed or repetitive response pattern was detected." : "未发现明显的过快作答或机械重复选择。")}</p></div></div>}
+      {report.quality && <div className={"mbti-quality " + report.quality.status}><ShieldCheck size={20} weight="duotone" /><div><strong>{locale === "en" ? "Response quality" : "答题质量"}：{report.quality.status === "good" ? (locale === "en" ? "Good" : "良好") : report.quality.status === "review" ? (locale === "en" ? "Review suggested" : "建议复核") : (locale === "en" ? "Low confidence" : "可信度较低")}</strong><p>{report.quality.warnings?.length ? (locale === "en" ? "Some response patterns reduce confidence. Consider a calm retake." : `发现：${report.quality.warnings.map((warning) => qualityWarningText[warning] || warning).join("、")}。建议在不受打扰时复测。`) : (locale === "en" ? "No obvious rushed or repetitive response pattern was detected." : "未发现明显的过快作答、机械重复或维度内矛盾。")}</p></div></div>}
       <div className="mbti-style-grid">{[[Briefcase, t.work, report.workStyle], [UsersThree, t.collaboration, report.collaboration], [Brain, t.learning, report.learning]].map(([Icon, title, body]) => <article key={title}><Icon size={24} /><div><h3>{title}</h3><p>{body}</p></div></article>)}</div>
       <p className="mbti-disclaimer"><ShieldCheck size={17} />{report.disclaimer}</p><footer><button type="button" onClick={restart}>{t.retake}</button><button type="button" onClick={copySummary}><Copy size={17} />{t.copy}</button><button className="primary" type="button" onClick={exportPdf} disabled={exporting}>{exporting ? <SpinnerGap className="spin" size={17} /> : <DownloadSimple size={17} />}{exporting ? t.exporting : t.print}</button></footer>
     </section>}
@@ -141,9 +155,9 @@ export function MbtiPersonalityTest({ tool, task, historyTasks = [], locale = "z
     {report && <div className="mbti-pdf-export-root" ref={pdfDocumentRef} aria-hidden="true">
       <section className="mbti-pdf-page">
         <header className="mbti-pdf-brand"><div><img src="/mbti/mbti-icon-v1.webp" alt="" /><span><strong>OneShowTools</strong><small>{locale === "en" ? "PERSONALITY PREFERENCE REPORT" : "性格偏好自测报告"}</small></span></div><em>{new Date(report.assessedAt || Date.now()).toLocaleDateString(locale === "en" ? "en-US" : "zh-CN")}</em></header>
-        <div className="mbti-pdf-result"><small>{t.result}</small><h1>{report.type}<span>{report.typeName}</span></h1><p>{report.summary}</p></div>
+        <div className="mbti-pdf-result"><small>{t.result}</small><h1>{report.type}<span>{report.typeName}</span></h1><p>{report.summary}</p>{Number.isFinite(report.stability) && <div className="mbti-pdf-stability"><ShieldCheck size={14} /><b>{locale === "en" ? "Result stability" : "结果稳定度"} {report.stability}%</b><span>{report.stability >= 65 ? (locale === "en" ? "Stable preference signal" : "偏好信号较稳定") : (locale === "en" ? "Review close dimensions" : "请重点复核接近维度")}</span></div>}</div>
         <div className="mbti-pdf-section-title"><span>01</span><div><strong>{t.dimensions}</strong><small>{locale === "en" ? "Preference strength across four dimensions" : "四个维度的偏好强度与清晰度"}</small></div></div>
-        <div className="mbti-pdf-dimensions">{report.dimensions.map((item) => <article key={item.axis}><header><b>{item.leftCode} {item.leftPercent}%</b><span>{item.axis}</span><b>{item.rightPercent}% {item.rightCode}</b></header><div><i style={{ width: `${item.leftPercent}%` }} /></div><small>{item.closeness === "balanced" ? (locale === "en" ? "Nearly balanced" : "两侧较为均衡") : (locale === "en" ? `Leans ${item.selected}` : `当前更偏向 ${item.selected}`)}</small></article>)}</div>
+        <div className="mbti-pdf-dimensions">{report.dimensions.map((item) => <article key={item.axis}><header><b>{item.leftCode} {item.leftPercent}%</b><span>{item.axis}</span><b>{item.rightPercent}% {item.rightCode}</b></header><div><i style={{ width: `${item.leftPercent}%` }} /></div><small>{item.closeness === "balanced" ? (locale === "en" ? "Too close to call" : "接近边界，暂不强行定型") : (locale === "en" ? `Leans ${item.selected} · stability ${item.confidence ?? "--"}%` : `偏向 ${item.selected} · 稳定度 ${item.confidence ?? "--"}%`)}</small></article>)}</div>
         {report.quality && <div className={`mbti-pdf-quality ${report.quality.status}`}><ShieldCheck size={20} /><div><strong>{locale === "en" ? "Response quality" : "答题质量"} · {report.quality.status === "good" ? (locale === "en" ? "Good" : "良好") : (locale === "en" ? "Review suggested" : "建议复核")}</strong><p>{report.quality.warnings?.length ? (locale === "en" ? "Your response pattern may have been rushed or repetitive. Consider a retake when uninterrupted." : "检测到过快、中立项较多或重复选择，建议在不受打扰时复测。") : (locale === "en" ? "No obvious rushed or repetitive pattern was detected." : "未发现明显的过快作答或机械重复选择。")}</p></div></div>}
         <footer><span>OneShowTools · {locale === "en" ? "Private self-exploration report" : "私密自我探索报告"}</span><b>1 / 2</b></footer>
       </section>

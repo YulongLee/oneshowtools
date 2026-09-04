@@ -10,6 +10,7 @@ test("MBTI self-test has a balanced original 64-question bank", () => {
     assert.equal(questions.length, 16);
     assert.equal(questions.filter((item) => item.reversed).length, 8);
   }
+  assert.deepEqual(mbtiQuestions.slice(0, 8).map((item) => item.axis), ["EI", "SN", "TF", "JP", "EI", "SN", "TF", "JP"]);
 });
 
 test("MBTI scoring returns a deterministic four-letter report", () => {
@@ -39,7 +40,7 @@ test("MBTI neutral and patterned submissions are not forced into ESTJ", () => {
   assert.ok(report.strengths.every((item) => !/目标拆解|直接沟通/.test(item)));
 });
 
-test("near-midpoint answers still return a usable best-fit type with low clarity", () => {
+test("near-midpoint answers are reported as boundary preferences, not a definitive type", () => {
   const desired = { EI: "I", SN: "N", TF: "F", JP: "P" };
   const answers = Object.fromEntries(mbtiQuestions.map((item) => [item.id, 3]));
   for (const axis of Object.keys(desired)) {
@@ -47,9 +48,20 @@ test("near-midpoint answers still return a usable best-fit type with low clarity
     answers[item.id] = item.leftCode === desired[axis] ? 1 : 5;
   }
   const scored = scoreMbtiAnswers(answers, { durationSeconds: 480 });
-  assert.equal(scored.type, "INFP");
-  assert.equal(scored.ambiguousAxes.length, 0);
-  assert.ok(scored.dimensions.every((item) => item.closeness === "moderate"));
+  assert.equal(scored.type, "XXXX");
+  assert.equal(scored.resolvedType, "INFP");
+  assert.equal(scored.ambiguousAxes.length, 4);
+  assert.equal(scored.alternativeTypes.length, 16);
+  assert.ok(scored.dimensions.every((item) => item.closeness === "balanced"));
+  assert.ok(scored.stability < 30);
+});
+
+test("always choosing the same visual side does not create a personality type", () => {
+  const answers = Object.fromEntries(mbtiQuestions.map((item) => [item.id, 1]));
+  const scored = scoreMbtiAnswers(answers, { durationSeconds: 480 });
+  assert.equal(scored.type, "XXXX");
+  assert.equal(scored.ambiguousAxes.length, 4);
+  assert.ok(scored.quality.warnings.includes("STRAIGHT_LINE_PATTERN"));
 });
 
 test("MBTI scoring rejects incomplete submissions", () => {

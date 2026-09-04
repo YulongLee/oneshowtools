@@ -35,3 +35,29 @@
 .mbti-hero{grid-template-columns:92px minmax(320px,1fr) minmax(220px,300px) 150px}
 @container mbti-page (max-width:1080px){.mbti-hero{grid-template-columns:82px minmax(300px,1fr) 260px}.mbti-hero aside{display:none}.mbti-intro-grid{grid-template-columns:240px 1fr}.mbti-sample{grid-column:1/-1}.mbti-history>div{grid-template-columns:repeat(2,1fr)}}
 @container mbti-page (max-width:760px){.mbti-page{padding:0 0 48px}.mbti-hero{grid-template-columns:64px 1fr;padding:20px;min-height:0}.mbti-hero-art{display:none}.mbti-intro-grid{grid-template-columns:1fr}.mbti-history>div{grid-template-columns:1fr}}
+
+/* Assessment v3: stable question changes, clearer choices and honest confidence. */
+.mbti-question-card{padding:34px 28px 20px}
+.mbti-question-content{min-height:374px;animation:mbti-question-enter .16s ease-out}
+.mbti-statements{margin:28px 0}
+.mbti-statements button{appearance:none;width:100%;min-height:118px;border:1px solid #dfe5f1;background:#fafbff;border-radius:16px;padding:24px;display:flex;align-items:center;gap:14px;text-align:left;color:#14213d;cursor:pointer;box-sizing:border-box;transition:border-color .16s ease,background .16s ease,box-shadow .16s ease,transform .16s ease}
+.mbti-statements button:hover{border-color:#a8b3f8;background:#f7f7ff;transform:translateY(-1px)}
+.mbti-statements button.selected{border-color:#6657ea;background:#f4f2ff;box-shadow:0 0 0 3px rgba(102,87,234,.09)}
+.mbti-statements button:focus-visible{outline:3px solid rgba(91,82,234,.2);outline-offset:3px}
+.mbti-scale{gap:18px}
+.mbti-scale button{width:82px}
+.mbti-scale span{margin:0 auto}
+.mbti-scale small{max-width:none;white-space:nowrap}
+.mbti-question-card footer{margin-top:18px}
+.mbti-stability{width:max-content;max-width:100%;display:flex;align-items:center;gap:7px;margin-top:16px;padding:8px 11px;border:1px solid rgba(100,88,228,.18);border-radius:999px;background:rgba(255,255,255,.7);color:#5d6680;font-size:12px}
+.mbti-stability svg{color:#5c57df}.mbti-stability b{font-size:14px;color:#4f46e5}.mbti-stability small{padding-left:8px;border-left:1px solid #dfe2ef;color:#7b869d}
+.mbti-boundary-note{display:flex;align-items:flex-start;gap:12px;margin-top:18px;padding:17px 19px;border:1px solid #ddd9fb;border-radius:15px;background:#f8f7ff;color:#514a91}
+.mbti-boundary-note>svg{flex:0 0 auto;margin-top:1px}.mbti-boundary-note p{margin:5px 0;color:#68728a;line-height:1.6}.mbti-boundary-note span{font-size:12px;color:#7770b6}
+.mbti-pdf-stability{width:max-content;display:flex;align-items:center;gap:6px;margin-top:10px;padding:6px 9px;border:1px solid #dadcf2;border-radius:999px;background:rgba(255,255,255,.72);color:#5f6980;font-size:9px}.mbti-pdf-stability svg{color:#5b57df}.mbti-pdf-stability b{color:#514be0}.mbti-pdf-stability span{padding-left:6px;border-left:1px solid #dddfee}
+@keyframes mbti-question-enter{from{opacity:.35;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+
+@media(max-width:760px){
+  .mbti-question-content{min-height:540px}
+  .mbti-scale{gap:2px}.mbti-scale button{width:20%}.mbti-scale small,.mbti-scale button:first-child small,.mbti-scale button:last-child small{font-size:9px;white-space:normal;line-height:1.25}
+  .mbti-stability{width:auto;flex-wrap:wrap}.mbti-boundary-note{text-align:left}
+}

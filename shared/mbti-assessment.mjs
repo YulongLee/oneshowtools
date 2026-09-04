@@ -1,4 +1,4 @@
-export const MBTI_ASSESSMENT_VERSION = "ost-mbti-v2";
+export const MBTI_ASSESSMENT_VERSION = "ost-mbti-v3";
 
 const axisItems = {
   EI: [
@@ -46,7 +46,11 @@ const axisItems = {
 const axisCodes = { EI: ["E", "I"], SN: ["S", "N"], TF: ["T", "F"], JP: ["J", "P"] };
 // Alternate the visible side of each preference. This removes the left-side
 // response bias present in v1 while keeping the question wording original.
-export const mbtiQuestions = Object.entries(axisItems).flatMap(([axis, items]) => items.map(([first, second], index) => {
+const axisOrder = Object.keys(axisItems);
+// Interleave the four dimensions so users do not answer 16 visibly similar
+// questions in a row. Item ids stay stable so existing drafts still work.
+export const mbtiQuestions = Array.from({ length: 16 }, (_, index) => axisOrder.map((axis) => {
+  const [first, second] = axisItems[axis][index];
   const [firstCode, secondCode] = axisCodes[axis];
   const reversed = index % 2 === 1;
   return {
@@ -58,7 +62,7 @@ export const mbtiQuestions = Object.entries(axisItems).flatMap(([axis, items]) =
     rightCode: reversed ? firstCode : secondCode,
     reversed,
   };
-}));
+})).flat();
 
 const typeNames = { INTJ: "系统策划型", INTP: "逻辑探索型", ENTJ: "目标统筹型", ENTP: "创新辩证型", INFJ: "洞察引导型", INFP: "价值理想型", ENFJ: "共情组织型", ENFP: "灵感连接型", ISTJ: "稳健执行型", ISFJ: "细致守护型", ESTJ: "结构管理型", ESFJ: "关系协调型", ISTP: "实践分析型", ISFP: "审美体验型", ESTP: "行动应变型", ESFP: "活力体验型" };
 
@@ -69,7 +73,7 @@ const letterNotes = {
   J: ["偏好计划、边界与完成感", "善于建立稳定推进节奏"], P: ["偏好探索、弹性与开放选择", "善于根据变化快速调整"],
 };
 
-function responseQuality(answers, durationSeconds) {
+function responseQuality(answers, durationSeconds, dimensions) {
   const values = mbtiQuestions.map((item) => Number(answers[item.id]));
   const neutralRatio = values.filter((value) => value === 3).length / values.length;
   const counts = values.reduce((result, value) => ({ ...result, [value]: (result[value] || 0) + 1 }), {});
@@ -84,6 +88,7 @@ function responseQuality(answers, durationSeconds) {
   if (neutralRatio >= 0.55) warnings.push("NEUTRAL_RESPONSE_PATTERN");
   if (dominantRatio >= 0.72 || longestRun >= 18) warnings.push("STRAIGHT_LINE_PATTERN");
   if (Number.isFinite(Number(durationSeconds)) && Number(durationSeconds) > 0 && Number(durationSeconds) < 150) warnings.push("VERY_FAST_COMPLETION");
+  if (dimensions.filter((item) => item.consistency < 58 && item.nonNeutralCount >= 8).length >= 2) warnings.push("INCONSISTENT_DIMENSIONS");
   return {
     status: warnings.length >= 2 ? "low" : warnings.length ? "review" : "good",
     warnings,
@@ -100,27 +105,39 @@ export function scoreMbtiAnswers(answers = {}, options = {}) {
   const dimensions = Object.entries(axisCodes).map(([axis, [leftCode, rightCode]]) => {
     const items = mbtiQuestions.filter((item) => item.axis === axis);
     // Map 1..5 to -2..2 and orient every item toward the canonical left code.
-    const evidence = items.reduce((sum, item) => {
+    const itemEvidence = items.map((item) => {
       const visualEvidence = 3 - Number(answers[item.id]);
-      return sum + (item.leftCode === leftCode ? visualEvidence : -visualEvidence);
-    }, 0);
+      return item.leftCode === leftCode ? visualEvidence : -visualEvidence;
+    });
+    const evidence = itemEvidence.reduce((sum, value) => sum + value, 0);
     const maximum = items.length * 2;
     const normalized = evidence / maximum;
     const leftPercent = Math.round(50 + normalized * 50);
     const rightPercent = 100 - leftPercent;
     const clarity = Math.abs(normalized);
-    // Only an exact tie is unresolved. Near-midpoint preferences still receive
-    // a usable best-fit letter while `clarity` and `closeness` communicate that
-    // the result is weak and should be validated against real-world behavior.
-    const selected = evidence === 0 ? "X" : evidence > 0 ? leftCode : rightCode;
+    const nonNeutralEvidence = itemEvidence.filter((value) => value !== 0);
+    const dominantDirection = Math.sign(evidence);
+    const supportingAnswers = dominantDirection === 0 ? 0 : nonNeutralEvidence.filter((value) => Math.sign(value) === dominantDirection).length;
+    const supportRatio = nonNeutralEvidence.length ? supportingAnswers / nonNeutralEvidence.length : 0.5;
+    const consistency = Math.round(supportRatio * 100);
+    const consistencySignal = Math.max(0, (supportRatio - 0.5) * 2);
+    const confidence = Math.round((clarity * 0.6 + consistencySignal * 0.4) * 100);
+    // A one-answer difference must not be presented as a definitive type. Four
+    // evidence points equal 12.5% of the available signal for a dimension.
+    const selected = Math.abs(evidence) < 4 ? "X" : evidence > 0 ? leftCode : rightCode;
+    const bestFitLetter = evidence === 0 ? null : evidence > 0 ? leftCode : rightCode;
     return {
       axis, leftCode, rightCode, leftPercent, rightPercent, selected,
+      bestFitLetter,
       clarity: Math.round(clarity * 100),
-      closeness: selected === "X" ? "balanced" : clarity < 0.28 ? "moderate" : "clear",
+      consistency,
+      confidence,
+      nonNeutralCount: nonNeutralEvidence.length,
+      closeness: selected === "X" ? "balanced" : confidence < 55 ? "moderate" : "clear",
     };
   });
   const type = dimensions.map((item) => item.selected).join("");
-  const resolvedLetters = dimensions.map((item) => item.selected === "X" ? (item.leftPercent >= item.rightPercent ? item.leftCode : item.rightCode) : item.selected);
+  const resolvedLetters = dimensions.map((item) => item.bestFitLetter || "X");
   const resolvedType = resolvedLetters.join("");
   const balancedNotes = {
     EI: "能在独立思考和外部交流之间切换，会根据情境选择恢复精力的方式。",
@@ -150,17 +167,36 @@ export function scoreMbtiAnswers(answers = {}, options = {}) {
     }[letter];
   };
   const growth = dimensions.map((dimension) => adviceFor(dimension.axis, dimension.selected));
-  const quality = responseQuality(answers, options.durationSeconds);
+  const quality = responseQuality(answers, options.durationSeconds, dimensions);
   const ambiguousAxes = dimensions.filter((item) => item.selected === "X").map((item) => item.axis);
-  return { type, resolvedType, typeName: ambiguousAxes.length ? "偏好尚未定型" : typeNames[type], dimensions, strengths, growth, quality, ambiguousAxes };
+  const alternativeTypes = dimensions.reduce((types, dimension) => {
+    const letters = dimension.selected === "X" ? [dimension.leftCode, dimension.rightCode] : [dimension.selected];
+    return types.flatMap((prefix) => letters.map((letter) => prefix + letter));
+  }, [""]);
+  const qualityPenalty = quality.status === "low" ? 18 : quality.status === "review" ? 8 : 0;
+  const stability = Math.max(0, Math.round(dimensions.reduce((sum, item) => sum + item.confidence, 0) / dimensions.length) - qualityPenalty);
+  const bestFitName = typeNames[resolvedType] || null;
+  return {
+    type,
+    resolvedType,
+    typeName: ambiguousAxes.length ? (bestFitName ? `边界型 · 最接近${bestFitName}` : "偏好尚未定型") : typeNames[type],
+    bestFitName,
+    dimensions,
+    strengths,
+    growth,
+    quality,
+    stability,
+    ambiguousAxes,
+    alternativeTypes,
+  };
 }
 
 export function buildMbtiReport(answers, locale = "zh", options = {}) {
   const scored = scoreMbtiAnswers(answers, options);
   const uncertain = scored.ambiguousAxes.length > 0;
   const intro = locale === "en"
-    ? uncertain ? `Your result is ${scored.type}. “X” marks a balanced dimension that this response set cannot distinguish reliably.` : `Your answers currently lean toward ${scored.type}, a pattern we call “${scored.typeName}”. Treat it as a conversation starter, not a fixed label.`
-    : uncertain ? `你的结果为 ${scored.type}，“X”表示该维度在本次回答中较为均衡，当前证据不足以强行归类。` : `你的回答目前更接近 ${scored.type}「${scored.typeName}」。它描述的是此刻更常用的偏好，不是固定标签。`;
+    ? uncertain ? `Your preference pattern is ${scored.type}. “X” marks a dimension too close to call${scored.resolvedType.includes("X") ? "." : `; the nearest four-letter pattern is ${scored.resolvedType}.`}` : `Your answers currently lean toward ${scored.type}, a pattern we call “${scored.typeName}”. Treat it as a conversation starter, not a fixed label.`
+    : uncertain ? `你的偏好组合为 ${scored.type}，“X”表示该维度非常接近，当前证据不足以强行归类${scored.resolvedType.includes("X") ? "。" : `；最接近的四字母类型是 ${scored.resolvedType}。`}` : `你的回答目前更接近 ${scored.type}「${scored.typeName}」。它描述的是此刻更常用的偏好，不是固定标签。`;
   const preference = (axis) => scored.dimensions.find((item) => item.axis === axis)?.selected;
   return {
     version: MBTI_ASSESSMENT_VERSION, questionCount: mbtiQuestions.length, ...scored, summary: intro,
