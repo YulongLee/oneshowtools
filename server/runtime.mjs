@@ -4,6 +4,7 @@ import { gatewayFlags, invokeModel } from "./model-gateway.mjs";
 import { executeMusicTask } from "./music-studio.mjs";
 import { cleanupAncestorTaskInput, executeAncestorTask } from "./ancestor-jobs.mjs";
 import { executeImmersionTask, failImmersionTask } from "./word-immersion.mjs";
+import { executeImageTextEditTask, failImageTextTask } from "./image-text-editor.mjs";
 
 const prompts = {
   "copy-polish": {
@@ -87,6 +88,7 @@ export function failTaskExecution(taskId, errorCode = "TASK_EXECUTION_FAILED") {
     UPDATE tasks SET status = 'failed', error_code = ?, updated_at = ?, completed_at = ? WHERE id = ?
   `).run(errorCode, Date.now(), Date.now(), taskId);
   if (task.tool_id === "tool_word_immersion") failImmersionTask(taskId, errorCode);
+  if (task.tool_id === "tool_image_text_editor") failImageTextTask(taskId);
   refundTask(task);
   if (task.tool_id === "tool_sliding_ancestor") cleanupAncestorTaskInput(taskId).catch(() => {});
 }
@@ -101,6 +103,8 @@ export async function executeTask(taskId) {
   try {
     result = tool.slug === "word-immersion"
       ? await executeImmersionTask(task, input)
+      : tool.slug === "image-text-editor"
+      ? await executeImageTextEditTask(task, input)
       : tool.slug === "sliding-ancestor-generator"
       ? await executeAncestorTask(task, input)
       : tool.runtime_kind === "builtin-music"
@@ -119,6 +123,7 @@ export async function executeTask(taskId) {
 
   if (result.status !== "completed") {
     if (tool.slug === "word-immersion") failImmersionTask(task.id, result.errorCode || "IMMERSION_GENERATION_FAILED");
+    if (tool.slug === "image-text-editor") failImageTextTask(task.id);
     refundTask(task);
   }
   return result;

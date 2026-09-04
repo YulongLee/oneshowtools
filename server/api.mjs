@@ -73,6 +73,7 @@ import {
 } from "./domestic-payments.mjs";
 import { effectiveMembership } from "./membership.mjs";
 import { createAncestorTask } from "./ancestor-jobs.mjs";
+import { createImageTextEditTask, createPptTextExportTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, rewriteImageText, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } from "./image-text-editor.mjs";
 import { publicTaskInput } from "./task-presentation.mjs";
 import { listPublicToolManuals, publicToolManual } from "./tool-manuals.mjs";
 import {
@@ -2595,6 +2596,62 @@ export async function handleApi(request) {
     return unpublishedToolResponse();
   if (path.startsWith("/api/word-immersion") && !toolIsAccessible("word-immersion", request))
     return unpublishedToolResponse();
+  if (path.startsWith("/api/image-text") && !toolIsAccessible("image-text-editor", request))
+    return unpublishedToolResponse();
+
+  if (path === "/api/image-text/assets" && request.method === "POST") {
+    try { return json({ project: await uploadImageTextAsset(request, user) }, 201); }
+    catch (error) { return fail(error.code || "IMAGE_TEXT_UPLOAD_FAILED", error.status || 500); }
+  }
+  if (path === "/api/image-text/ppt/projects" && request.method === "POST") {
+    try { return json({ project: await uploadPptTextProject(request, user) }, 201); }
+    catch (error) { return fail(error.code || "PPT_UPLOAD_FAILED", error.status || 500); }
+  }
+  const pptTextProjectMatch = path.match(/^\/api\/image-text\/ppt\/projects\/([^/]+)$/);
+  if (pptTextProjectMatch && request.method === "GET") {
+    try { return json({ project: getPptTextProject(user.id, pptTextProjectMatch[1]) }); }
+    catch (error) { return fail(error.code || "PPT_PROJECT_LOAD_FAILED", error.status || 500); }
+  }
+  const pptTextItemMatch = path.match(/^\/api\/image-text\/ppt\/texts\/([^/]+)$/);
+  if (pptTextItemMatch && request.method === "PATCH") {
+    try { return json({ item: updatePptTextItem(user.id, pptTextItemMatch[1], await body(request)) }); }
+    catch (error) { return fail(error.code || "PPT_TEXT_UPDATE_FAILED", error.status || 500); }
+  }
+  if (path === "/api/image-text/ppt/export" && request.method === "POST") {
+    try {
+      const tool = db.prepare(`${toolSelect()} WHERE slug='image-text-editor'`).get();
+      const task = createPptTextExportTask(user, tool, await body(request));
+      runNextJob().catch(() => {});
+      return json({ task }, 202);
+    } catch (error) { return fail(error.code || "PPT_EXPORT_FAILED", error.status || 500); }
+  }
+  const imageTextProjectMatch = path.match(/^\/api\/image-text\/projects\/([^/]+)$/);
+  if (imageTextProjectMatch && request.method === "GET") {
+    try { return json({ project: getImageTextProject(user.id, imageTextProjectMatch[1]) }); }
+    catch (error) { return fail(error.code || "IMAGE_TEXT_PROJECT_LOAD_FAILED", error.status || 500); }
+  }
+  const imageTextDetectionMatch = path.match(/^\/api\/image-text\/texts\/([^/]+)$/);
+  if (imageTextDetectionMatch && request.method === "PATCH") {
+    try { return json({ detection: updateImageTextDetection(user.id, imageTextDetectionMatch[1], await body(request)) }); }
+    catch (error) { return fail(error.code || "IMAGE_TEXT_UPDATE_FAILED", error.status || 500); }
+  }
+  const imageTextRedetectMatch = path.match(/^\/api\/image-text\/assets\/([^/]+)\/detect$/);
+  if (imageTextRedetectMatch && request.method === "POST") {
+    try { return json({ asset: await redetectImageTextAsset(user.id, imageTextRedetectMatch[1]) }); }
+    catch (error) { return fail(error.code || "IMAGE_TEXT_OCR_FAILED", error.status || 500); }
+  }
+  if (path === "/api/image-text/rewrite" && request.method === "POST") {
+    try { return json(await rewriteImageText(user.id, await body(request))); }
+    catch (error) { return fail(error.code || "IMAGE_TEXT_ASSISTANT_FAILED", error.status || 500); }
+  }
+  if (path === "/api/image-text/apply" && request.method === "POST") {
+    try {
+      const tool = db.prepare(`${toolSelect()} WHERE slug='image-text-editor'`).get();
+      const task = createImageTextEditTask(user, tool, await body(request));
+      runNextJob().catch(() => {});
+      return json({ task }, 202);
+    } catch (error) { return fail(error.code || "IMAGE_TEXT_APPLY_FAILED", error.status || 500); }
+  }
 
   if (path === "/api/word-immersion/catalog" && request.method === "GET")
     return json(immersionCatalog(user.id));

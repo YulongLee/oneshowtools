@@ -80,7 +80,7 @@ final result: passed
 - Interaction result: Sliding Ancestor style selection and advanced editor expansion passed; Food Nutrition meal-context selection persisted as `dinner`.
 - Runtime result: neither page produced browser console errors or warnings.
 - Automated result: production build passed; full automated suite passed 197/197.
-- Visual review: reference and both implementations were inspected in one combined comparison; no actionable P0, P1, or P2 findings remain.
+- Visual review: reference and both implementations were inspected in one combined comparison; no actionable P0, P1 or P2 findings remain.
 
 final result: passed
 
@@ -97,7 +97,7 @@ final result: passed
 - Interaction result: serving count changed from 2 to 3, and submitting without a photo displayed the expected validation message.
 - Runtime result: no browser console errors or warnings were present.
 - Automated result: production build passed.
-- Visual review: reference and implementation were inspected together; no actionable P0, P1, or P2 visual findings remain.
+- Visual review: reference and implementation were inspected together; no actionable P0, P1 or P2 visual findings remain.
 
 final result: passed
 # 2026-08-31 智能工具搜索验收
@@ -133,7 +133,7 @@ final result: passed
 - Pass 1 — P1: the page repeated two oversized image cards with unrelated artwork, weak hierarchy, tiny supporting copy, and duplicated security messaging. The left navigation also gave an unfinished client equal weight to core product areas.
 - Fix: removed the left `下载客户端` navigation item while retaining the global header entry and the AI Runtime tab; replaced the duplicate artwork cards with one product-led hero, compact platform selectors, a release plan, truthful launch states, and four outcome-oriented capability cards.
 - Pass 2 — P2: the primary hero action implied a notification subscription that was not persisted. It was renamed to `查看发布状态`, while the click continues to show the real development status.
-- Pass 3: the rendered implementation and source were inspected together. No actionable P0, P1, or P2 findings remain.
+- Pass 3: the rendered implementation and source were inspected together. No actionable P0, P1 or P2 findings remain.
 
 ### Required fidelity surfaces
 
@@ -163,3 +163,61 @@ final result: passed
 - Visual comparison: blocked because the in-app browser rejected refreshing the local admin URL during this run.
 
 final result: blocked
+
+# Design QA — 字迹 · AI 图片文字编辑
+
+## Source and evidence
+
+- Source reference: `/var/folders/2c/sdg0hxmx3b5_x84y09b7hk1w0000gn/T/codex-clipboard-495de020-6a0a-4864-a5f7-fba4766dec3a.png`
+- Source dimensions: 1536 × 1024
+- Implementation viewport: 1536 × 1024
+- Empty-state capture: `artifacts/image-text-editor-empty.png`
+- Working-state capture: `artifacts/image-text-editor-filled.png`
+- Side-by-side comparison: `artifacts/image-text-editor-filled-comparison.png`
+- Tested state: authenticated administrator; 1200 × 675 PNG uploaded; OCR returned three selectable text regions; one region was edited, rendered and archived; deterministic local background repair was used for the visual run.
+
+## Visual comparison
+
+- The implementation preserves the source hierarchy: compact product hero, image/PPT mode tabs, asset rail, central canvas and right-side text editor.
+- Color, border, radius, typography and control density follow the existing OneShowTools design system while retaining the blue-violet visual direction of the reference.
+- The shared authenticated navigation shell is intentionally retained, so the working canvas is denser than the standalone reference but stays within the platform's established content width.
+- Empty, uploaded and generated states fit the viewport without horizontal overflow or clipped primary actions.
+- OCR selection boxes, selected text and editor state remain visually synchronized.
+
+## Interaction and quality checks
+
+- Upload, automatic OCR, selection, text/style editing, AI copy actions, re-recognition, comparison, undo/redo, generation and download have wired controls.
+- Generated output is persisted to the existing task center and file center.
+- The tool is administrator-only, marked `testing`, and uses the existing configurable 30-credit task charge.
+- Database migration check, production build and the complete 227-test suite pass.
+- Browser console inspection returned no warnings or errors.
+
+## Final result
+
+passed
+
+## 字迹 V2 主视觉与 PPT 改字验收
+
+- 参考图：用户提供的 1536 × 1024「图改字 · AI 图片文字编辑器」设计稿。
+- 图片模式证据：`artifacts/image-text-editor-image-v2.png`。
+- 图片模式同屏对照：`artifacts/image-text-editor-image-v2-comparison.png`。
+- PPT 模式证据：`artifacts/image-text-editor-ppt-v2-top.png`。
+- PPT 测试文件：`artifacts/image-text-editor-ppt-sample.pptx`。
+- 视口状态：浏览器 CSS 视口设为 1536 × 1024；实现保留 OneShowTools 已登录工作台外壳，因此实际工具内容宽度小于独立参考页。
+
+### 视觉结果
+
+- 原先单一字母图块替换为独立的商业化 3D 产品图标，并同步用于工具市场、工作台和产品页。
+- 顶部介绍区改为完整产品主视觉：产品定位、价值主张、三项能力凭证、测试状态和上传/价格信息都有明确层级。
+- 图片模式继续保持参考图的三栏工作区结构，PPT 模式复用同一视觉语言，避免出现两个不一致的产品页面。
+- 桌面视口下主要操作完整可见，无页面级横向溢出；现有平台导航与商业化组件未被破坏。
+
+### 功能结果
+
+- PPT 改字已经开放，支持最大 50 MB 的 `.pptx` 上传、按页读取文字框、逐项修改和导出独立副本。
+- 导出只写回文字节点，原 PPTX 压缩包中的图片和其他资源保持存在；原始上传文件不会被覆盖。
+- 浏览器实测完成一次 PPT 上传、文字修改、30 积分扣除、异步导出、下载链接生成，以及任务中心和文件中心归档。
+- 数据库迁移检查、生产构建和完整 228 项自动化测试全部通过。
+- 浏览器控制台无错误或警告。
+
+final result: passed
