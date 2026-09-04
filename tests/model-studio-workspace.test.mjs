@@ -70,7 +70,7 @@ test("image text OCR can inherit the workspace key and return positioned text", 
     const body = JSON.parse(options.body);
     assert.equal(body.model, "qwen-vl-ocr-latest");
     assert.equal(body.parameters.ocr_options.task, "advanced_recognition");
-    return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ ocr_result: { words_info: [{ text: "TEST 123", rotate_rect: [235, 235, 310, 90, 0] }] } }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ ocr_result: { words_info: [{ text: "TEST 123", rotate_rect: [235, 235, 90, 310, 90], location: [80,190,390,190,390,280,80,280] }] } }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const saved = await imageModule.saveImageEditProviderConfiguration("image_text_ocr", {
     credentialSource: "workspace", modelId: "qwen-vl-ocr-latest", creditCost: 1, status: "active",

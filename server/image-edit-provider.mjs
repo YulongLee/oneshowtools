@@ -249,13 +249,18 @@ function parseBuiltinOcrDetections(payload, width, height) {
     const [centerX, centerY, boxWidth, boxHeight, angle = 0] = Array.isArray(item?.rotate_rect) ? item.rotate_rect.map(Number) : [];
     const text = clean(item?.text, 500);
     if (!text || ![centerX, centerY, boxWidth, boxHeight, angle].every(Number.isFinite) || boxWidth < 4 || boxHeight < 4) return null;
-    const x = clamp(centerX - boxWidth / 2, 0, width - 1);
-    const y = clamp(centerY - boxHeight / 2, 0, height - 1);
+    const points = Array.isArray(item?.location) ? item.location.map(Number) : [];
+    const hasPolygon = points.length >= 8 && points.every(Number.isFinite);
+    const radians = angle * Math.PI / 180;
+    const axisWidth = hasPolygon ? Math.max(...points.filter((_, index) => index % 2 === 0)) - Math.min(...points.filter((_, index) => index % 2 === 0)) : Math.abs(boxWidth * Math.cos(radians)) + Math.abs(boxHeight * Math.sin(radians));
+    const axisHeight = hasPolygon ? Math.max(...points.filter((_, index) => index % 2 === 1)) - Math.min(...points.filter((_, index) => index % 2 === 1)) : Math.abs(boxWidth * Math.sin(radians)) + Math.abs(boxHeight * Math.cos(radians));
+    const x = clamp(hasPolygon ? Math.min(...points.filter((_, index) => index % 2 === 0)) : centerX - axisWidth / 2, 0, width - 1);
+    const y = clamp(hasPolygon ? Math.min(...points.filter((_, index) => index % 2 === 1)) : centerY - axisHeight / 2, 0, height - 1);
     return {
       text, confidence: .95,
-      bbox: { x, y, width: clamp(boxWidth, 0, width - x), height: clamp(boxHeight, 0, height - y) },
+      bbox: { x, y, width: clamp(axisWidth, 0, width - x), height: clamp(axisHeight, 0, height - y) },
       rotation: clamp(angle, -90, 90),
-      style: { fontFamily: "auto", fontSize: clamp(boxHeight * .78, 8, 300), color: "#17264d", bold: false, align: "center" },
+      style: { fontFamily: "auto", fontSize: clamp(axisHeight * .78, 8, 300), color: "#17264d", bold: false, align: "center" },
     };
   }).filter(Boolean);
 }
