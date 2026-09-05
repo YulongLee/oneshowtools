@@ -137,6 +137,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const fileInput = useRef(null);
   const inlineEditor = useRef(null);
   const stageRef = useRef(null);
+  const resultPreviewRef = useRef(null);
   const asset = project?.assets?.find((item) => item.id === assetId) || project?.assets?.[0] || null;
   const selected = asset?.detections?.find((item) => item.id === selectedId) || null;
   const changedDetections = asset?.detections?.filter((item) => changedIds.has(item.id)) || [];
@@ -161,6 +162,11 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     document.title = "字迹 · AI 图片文字编辑 | OneShowTools";
     return () => { document.title = previous; };
   }, []);
+  useEffect(() => {
+    if (!showResult || !asset?.currentFileId) return;
+    const timer = setTimeout(() => resultPreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 160);
+    return () => clearTimeout(timer);
+  }, [showResult, asset?.currentFileId]);
   useEffect(() => {
     if (!task?.id || ["completed", "failed", "cancelled"].includes(task.status)) return undefined;
     const timer = setInterval(async () => {
@@ -260,7 +266,8 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     try {
       for (const item of edits) await api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }));
       setDraftStatus("saved");
-      const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), useAiRepair, preserveStyle }));
+      setShowResult(false);
+      const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), applyAllPending: true, useAiRepair, preserveStyle }));
       setTask(data.task);
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }
   }
@@ -278,7 +285,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     <button className="ite-back" onClick={onBack}><ArrowLeft size={16} />返回工具市场</button>
     <header className="ite-hero ite-hero-premium"><img className="ite-product-icon" src="/image-text-editor/image-text-editor-icon-v2.webp" alt="字迹 AI 图片文字编辑图标" /><div className="ite-hero-copy"><small>ONSHOWTOOLS · VISUAL TEXT STUDIO</small><h1>字迹 · AI 图片文字编辑</h1><p>不用重做整张图，也不用寻找源文件。识别、改写、修复与导出，在一个工作台完成。</p><div className="ite-hero-pills"><span><CheckCircle weight="fill" />图片文字智能识别</span><span><CheckCircle weight="fill" />PPTX 文字层编辑</span><span><CheckCircle weight="fill" />原文件安全保留</span></div></div><em>测试中</em><aside className="ite-hero-proof"><small>AI VISUAL EDITING</small><strong>让每一处文字<br />都能重新编辑</strong><div><span><b>20 MB</b>图片上传</span><span><b>50 MB</b>PPTX 上传</span><span><b>30 积分</b>每次导出</span></div></aside></header>
     <nav className="ite-mode-tabs"><button className={mode === "image" ? "active" : ""} onClick={() => setMode("image")}>图片改字</button><button className={mode === "ppt" ? "active" : ""} onClick={() => setMode("ppt")}>PPT 改字 <i>NEW</i></button></nav>
-    {mode === "image" ? <section className="ite-workbench">
+    {mode === "image" ? <><section className="ite-workbench">
       <aside className="ite-assets"><UploadCard busy={busy && !task} onFiles={upload} />
         <div className="ite-asset-list">{project?.assets?.map((item, index) => <button key={item.id} className={(asset?.id === item.id ? "active " : "") + item.status} onClick={() => { setAssetId(item.id); setSelectedId(""); setInlineEditingId(""); setDraftStatus("idle"); setShowResult(false); setZoom(1); }}><span>{String(index + 1).padStart(2, "0")}</span><img src={`/api/files/${item.originalFileId}/thumbnail`} alt={item.name} /><small>{item.detections.length} 处文字</small></button>)}</div>
         {project && <button className="ite-add-image" onClick={() => fileInput.current?.click()}><Plus size={16} />添加图片</button>}
@@ -302,7 +309,6 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
               {item.currentText !== item.originalText && <span>{item.currentText}</span>}
             </button>;
         })}</div></div>}
-        {showResult && asset?.currentFileId && <div className="ite-result-notice"><CheckCircle weight="fill" /><span><strong>生成结果已显示</strong><small>当前画布为无编辑框的最终图片，可直接下载或继续编辑。</small></span></div>}
         <footer><button disabled={!history.length} onClick={() => restore(history.at(-1), setFuture, setHistory)}><ArrowCounterClockwise />撤销</button><button disabled={!future.length} onClick={() => restore(future.at(-1), setHistory, setFuture)}><ArrowClockwise />重做</button><button disabled={!asset} onClick={() => setSelectedId(asset?.detections?.[0]?.id || "")}><ArrowsClockwise />重新选择文字</button></footer>
         {processing && <div className="ite-progress"><span><SpinnerGap className="ite-spin" /></span><div><strong>{progressText[task.output?.phase] || "正在处理图片"}</strong><p>后台处理中，你可以留在当前页面等待。</p><i><b style={{ width: `${Math.max(6, progress)}%` }} /></i></div><em>{progress}%</em></div>}
       </section>
@@ -322,7 +328,15 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
         {error && <p className="ite-error">{error}</p>}
         <footer><button className="secondary" disabled={(!selected && !changedDetections.length) || processing} onClick={apply}>{busy ? <SpinnerGap className="ite-spin" /> : <MagicWand />}{changedDetections.length > 1 ? `统一处理 ${changedDetections.length} 处` : "应用到图片"} · {tool.creditCost} 积分</button><a className={!asset ? "disabled" : ""} href={asset?.imageUrl || "#"} download><DownloadSimple />下载图片</a></footer>
       </aside>
-    </section> : <PptTextEditor tool={tool} authenticated={authenticated} onAuth={onAuth} onCompleted={onCompleted} />}
+    </section>
+    {showResult && asset?.currentFileId && <section className="ite-result-preview" ref={resultPreviewRef}>
+      <header><div><small>GENERATED RESULT</small><h2>生成结果预览</h2><p>本次已统一处理 <strong>{Number(task?.output?.editCount || changedDetections.length || 1)}</strong> 处文字。请先对比确认，满意后再下载。</p></div><span><CheckCircle weight="fill" />生成完成</span></header>
+      <div className="ite-result-compare">
+        <figure><figcaption><span>原始图片</span><small>修改前</small></figcaption><div><img src={`${asset.originalUrl}${asset.originalUrl.includes("?") ? "&" : "?"}v=${asset.originalFileId}`} alt={`${asset.name}原始图片`} /></div></figure>
+        <figure className="result"><figcaption><span>生成后</span><small>已合并全部修改</small></figcaption><div><img src={`${asset.imageUrl}${asset.imageUrl.includes("?") ? "&" : "?"}v=${asset.currentFileId}-${resultNonce}`} alt={`${asset.name}生成结果`} /></div></figure>
+      </div>
+      <footer><button onClick={() => { setShowResult(false); stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><ArrowLeft />继续修改</button><a href={task?.output?.downloadUrl || asset.imageUrl} download><DownloadSimple />确认满意，下载图片</a></footer>
+    </section>}</> : <PptTextEditor tool={tool} authenticated={authenticated} onAuth={onAuth} onCompleted={onCompleted} />}
     <p className="ite-tip"><FileImage size={16} />小提示：文字背景越简洁、清晰，修复效果越自然；复杂艺术字可手动微调字号和颜色。</p>
   </main>;
 }

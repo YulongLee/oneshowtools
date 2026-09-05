@@ -39,7 +39,8 @@ test("image text edits persist as a draft when the input loses focus", async () 
   assert.match(source, /onBlur=\{\(\) => saveDraft\(selected\)\}/);
   assert.match(source, /草稿已保存，可继续修改其他文字后统一处理/);
   assert.match(source, /detectionIds: edits\.map/);
-  assert.match(source, /生成结果已显示/);
+  assert.match(source, /生成结果预览/);
+  assert.match(source, /确认满意，下载图片/);
   assert.doesNotMatch(source, /ite-direct-edit-hint/);
 });
 
@@ -90,8 +91,9 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   const secondDetectionId = randomUUID(); const now = Date.now();
   db.prepare("INSERT INTO image_text_detections (id,asset_id,original_text,current_text,bbox_json,confidence,rotation,style_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
     .run(secondDetectionId, project.assets[0].id, "SECOND", "SECOND AI", JSON.stringify({ x: 40, y: 35, width: 180, height: 52 }), .95, 0, JSON.stringify({ fontFamily: "sans", fontSize: 36, color: "#315be8", bold: true, align: "center", appearanceAnalyzed: true }), now, now);
+  updateImageTextDetection(user.id, secondDetectionId, { text: "SECOND AI" });
   const tool = db.prepare("SELECT id,slug,name_zh AS nameZh,name_en AS nameEn,credit_cost AS creditCost FROM tools WHERE slug='image-text-editor'").get();
-  const queued = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionIds: [detection.id, secondDetectionId], useAiRepair: false, preserveStyle: true });
+  const queued = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionIds: [detection.id], applyAllPending: true, useAiRepair: false, preserveStyle: true });
   const task = db.prepare("SELECT * FROM tasks WHERE id=?").get(queued.id);
   assert.deepEqual(JSON.parse(task.input_json).detectionIds, [detection.id, secondDetectionId]);
   const result = await executeImageTextEditTask(task, JSON.parse(task.input_json));

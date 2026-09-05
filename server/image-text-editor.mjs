@@ -409,13 +409,23 @@ export async function rewriteImageText(userId, payload) {
 }
 
 export function createImageTextEditTask(user, tool, payload) {
-  const detectionIds = [...new Set((Array.isArray(payload.detectionIds) ? payload.detectionIds : [payload.detectionId]).map((id) => clean(id, 64)).filter(Boolean))];
+  const assetId = clean(payload.assetId, 64);
+  const requestedDetectionIds = (Array.isArray(payload.detectionIds) ? payload.detectionIds : [payload.detectionId]).map((id) => clean(id, 64)).filter(Boolean);
+  const pendingDetectionIds = payload.applyAllPending === false ? [] : db.prepare(`SELECT d.id
+    FROM image_text_detections d
+    JOIN image_text_assets a ON a.id=d.asset_id
+    JOIN image_text_projects p ON p.id=a.project_id
+    WHERE d.asset_id=? AND p.user_id=?
+      AND COALESCE((SELECT MAX(rowid) FROM image_text_operations o WHERE o.detection_id=d.id AND o.operation_type='update_text'),0)
+        > COALESCE((SELECT MAX(rowid) FROM image_text_operations o WHERE o.detection_id=d.id AND o.operation_type='apply'),0)
+    ORDER BY d.updated_at`).all(assetId, user.id).map((item) => item.id);
+  const detectionIds = [...new Set([...requestedDetectionIds, ...pendingDetectionIds])];
   if (!detectionIds.length) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
   if (detectionIds.length > 20) throw error("IMAGE_TEXT_BATCH_LIMIT", 422);
   const placeholders = detectionIds.map(() => "?").join(",");
   const detections = db.prepare(`SELECT d.*, a.project_id, a.original_file_id, a.current_file_id, a.width, a.height, p.user_id
     FROM image_text_detections d JOIN image_text_assets a ON a.id=d.asset_id JOIN image_text_projects p ON p.id=a.project_id
-    WHERE d.id IN (${placeholders}) AND a.id=? AND p.user_id=?`).all(...detectionIds, clean(payload.assetId, 64), user.id);
+    WHERE d.id IN (${placeholders}) AND a.id=? AND p.user_id=?`).all(...detectionIds, assetId, user.id);
   if (detections.length !== detectionIds.length) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
   const byId = new Map(detections.map((item) => [item.id, item]));
   const orderedDetections = detectionIds.map((id) => byId.get(id));
