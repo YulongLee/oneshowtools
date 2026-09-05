@@ -409,22 +409,28 @@ export async function rewriteImageText(userId, payload) {
 }
 
 export function createImageTextEditTask(user, tool, payload) {
-  const detection = db.prepare(`SELECT d.*, a.project_id, a.original_file_id, a.current_file_id, a.width, a.height, p.user_id
+  const detectionIds = [...new Set((Array.isArray(payload.detectionIds) ? payload.detectionIds : [payload.detectionId]).map((id) => clean(id, 64)).filter(Boolean))].slice(0, 20);
+  if (!detectionIds.length) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
+  const placeholders = detectionIds.map(() => "?").join(",");
+  const detections = db.prepare(`SELECT d.*, a.project_id, a.original_file_id, a.current_file_id, a.width, a.height, p.user_id
     FROM image_text_detections d JOIN image_text_assets a ON a.id=d.asset_id JOIN image_text_projects p ON p.id=a.project_id
-    WHERE d.id=? AND a.id=? AND p.user_id=?`).get(clean(payload.detectionId, 64), clean(payload.assetId, 64), user.id);
-  if (!detection) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
+    WHERE d.id IN (${placeholders}) AND a.id=? AND p.user_id=?`).all(...detectionIds, clean(payload.assetId, 64), user.id);
+  if (detections.length !== detectionIds.length) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
+  const byId = new Map(detections.map((item) => [item.id, item]));
+  const orderedDetections = detectionIds.map((id) => byId.get(id));
+  const detection = orderedDetections[0];
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance);
   if (available < tool.creditCost) throw error("INSUFFICIENT_CREDITS", 402);
   assertUserFileCapacity(user.id);
   let sourceFileId = detection.current_file_id || detection.original_file_id;
-  if (detection.current_file_id) {
+  if (detection.current_file_id && orderedDetections.length === 1) {
     const previousApply = db.prepare("SELECT before_json,after_json FROM image_text_operations WHERE asset_id=? AND detection_id=? AND operation_type='apply' ORDER BY created_at DESC LIMIT 1")
       .get(detection.asset_id, detection.id);
     const before = parse(previousApply?.before_json); const after = parse(previousApply?.after_json);
     if (after.fileId === detection.current_file_id && before.fileId) sourceFileId = before.fileId;
   }
   const taskId = randomUUID(); const timestamp = Date.now();
-  const input = { assetId: detection.asset_id, detectionId: detection.id, sourceFileId,
+  const input = { assetId: detection.asset_id, detectionId: detection.id, detectionIds, sourceFileId,
     useAiRepair: payload.useAiRepair !== false, preserveStyle: payload.preserveStyle !== false };
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -441,8 +447,8 @@ export function createImageTextEditTask(user, tool, payload) {
     db.prepare("UPDATE image_text_projects SET status='processing',updated_at=? WHERE id=?").run(timestamp, detection.project_id);
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); throw cause; }
-  audit(user.id, "image_text.apply", "task", taskId, { assetId: detection.asset_id, detectionId: detection.id });
-  return { id: taskId, status: "queued", creditCost: tool.creditCost, output: { progress: 8, phase: "preparing" } };
+  audit(user.id, "image_text.apply", "task", taskId, { assetId: detection.asset_id, detectionIds, editCount: detectionIds.length });
+  return { id: taskId, status: "queued", creditCost: tool.creditCost, output: { progress: 8, phase: "preparing", editCount: detectionIds.length } };
 }
 
 const xml = (value) => String(value).replace(/[<>&'"]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[char]));
@@ -544,32 +550,39 @@ async function executePptTextExportTask(task, input) {
 
 export async function executeImageTextEditTask(task, input) {
   if (input.mode === "ppt-export") return executePptTextExportTask(task, input);
-  const detection = db.prepare(`SELECT d.*, a.project_id, a.width, a.height FROM image_text_detections d
-    JOIN image_text_assets a ON a.id=d.asset_id WHERE d.id=? AND a.id=?`).get(input.detectionId, input.assetId);
+  const detectionIds = [...new Set((Array.isArray(input.detectionIds) ? input.detectionIds : [input.detectionId]).map((id) => clean(id, 64)).filter(Boolean))].slice(0, 20);
+  const placeholders = detectionIds.map(() => "?").join(",");
+  const found = detectionIds.length ? db.prepare(`SELECT d.*, a.project_id, a.width, a.height FROM image_text_detections d
+    JOIN image_text_assets a ON a.id=d.asset_id WHERE d.id IN (${placeholders}) AND a.id=?`).all(...detectionIds, input.assetId) : [];
+  const byId = new Map(found.map((item) => [item.id, item]));
+  const detections = detectionIds.map((id) => byId.get(id)).filter(Boolean);
   const sourceFile = fileRow(input.sourceFileId, task.user_id);
-  if (!detection || !sourceFile) throw error("IMAGE_TEXT_SOURCE_MISSING", 500);
-  const source = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
-  const bbox = parse(detection.bbox_json); const storedStyle = parse(detection.style_json);
-  const analyzedStyle = storedStyle.appearanceAnalyzed ? storedStyle : (await styleAnalyzer.analyzeAll(source, [{ text: detection.original_text, bbox, style: storedStyle }]))[0];
-  const style = input.preserveStyle === false ? { ...storedStyle, color: "#17264d", fontFamily: "sans", bold: true, letterSpacing: 0 } : analyzedStyle;
-  const x = Math.round(clamp(bbox.x, 0, detection.width - 1)); const y = Math.round(clamp(bbox.y, 0, detection.height - 1));
-  const width = Math.max(8, Math.round(clamp(bbox.width, 8, detection.width - x))); const height = Math.max(8, Math.round(clamp(bbox.height, 8, detection.height - y)));
-  const padding = Math.max(8, Math.round(Math.min(width, height) * .18));
-  const patchBox = { left: Math.max(0, x - padding), top: Math.max(0, y - padding) };
-  patchBox.width = Math.min(detection.width - patchBox.left, width + padding * 2);
-  patchBox.height = Math.min(detection.height - patchBox.top, height + padding * 2);
-  taskProgress(task.id, 24, "erasing");
-  const patch = await sharp(source).extract(patchBox).png().toBuffer();
-  taskProgress(task.id, 48, "repairing");
-  const repair = await restoreTextBackground(patch, patchBox.width, patchBox.height, input.useAiRepair);
-  const restored = repair.buffer; const repairMode = repair.repairMode;
-  taskProgress(task.id, 76, "rendering");
-  const mask = await textStrokeMask(patch, { left: x - patchBox.left, top: y - patchBox.top, width, height }, style.color);
-  const maskedRestore = await sharp(restored).removeAlpha().joinChannel(mask).png().toBuffer();
-  const cleanBase = await sharp(source).composite([{ input: maskedRestore, left: patchBox.left, top: patchBox.top }]).png().toBuffer();
-  const overlay = textOverlay(detection.current_text, style, width, height);
-  const output = await sharp(cleanBase).composite([{ input: overlay, left: x, top: y }]).png().toBuffer();
-  const fileId = randomUUID(); const fileName = `${detection.asset_id.slice(0, 8)}-edited.png`;
+  if (detections.length !== detectionIds.length || !sourceFile) throw error("IMAGE_TEXT_SOURCE_MISSING", 500);
+  let output = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
+  const analyzedStyles = await styleAnalyzer.analyzeAll(output, detections.map((detection) => ({ text: detection.original_text, bbox: parse(detection.bbox_json), style: parse(detection.style_json) })));
+  const applied = [];
+  for (let index = 0; index < detections.length; index += 1) {
+    const detection = detections[index]; const bbox = parse(detection.bbox_json); const storedStyle = parse(detection.style_json);
+    const analyzedStyle = storedStyle.appearanceAnalyzed ? storedStyle : analyzedStyles[index];
+    const style = input.preserveStyle === false ? { ...storedStyle, color: "#17264d", fontFamily: "sans", bold: true, letterSpacing: 0 } : analyzedStyle;
+    const x = Math.round(clamp(bbox.x, 0, detection.width - 1)); const y = Math.round(clamp(bbox.y, 0, detection.height - 1));
+    const width = Math.max(8, Math.round(clamp(bbox.width, 8, detection.width - x))); const height = Math.max(8, Math.round(clamp(bbox.height, 8, detection.height - y)));
+    const padding = Math.max(8, Math.round(Math.min(width, height) * .18));
+    const patchBox = { left: Math.max(0, x - padding), top: Math.max(0, y - padding) };
+    patchBox.width = Math.min(detection.width - patchBox.left, width + padding * 2);
+    patchBox.height = Math.min(detection.height - patchBox.top, height + padding * 2);
+    taskProgress(task.id, 12 + Math.round(index / detections.length * 72), index ? "processing-batch" : "erasing");
+    const patch = await sharp(output).extract(patchBox).png().toBuffer();
+    const repair = await restoreTextBackground(patch, patchBox.width, patchBox.height, input.useAiRepair);
+    const mask = await textStrokeMask(patch, { left: x - patchBox.left, top: y - patchBox.top, width, height }, style.color);
+    const maskedRestore = await sharp(repair.buffer).removeAlpha().joinChannel(mask).png().toBuffer();
+    const cleanBase = await sharp(output).composite([{ input: maskedRestore, left: patchBox.left, top: patchBox.top }]).png().toBuffer();
+    output = await sharp(cleanBase).composite([{ input: textOverlay(detection.current_text, style, width, height), left: x, top: y }]).png().toBuffer();
+    applied.push({ detection, storedStyle, style, repairMode: repair.repairMode });
+  }
+  taskProgress(task.id, 88, "rendering");
+  const firstDetection = detections[0];
+  const fileId = randomUUID(); const fileName = `${firstDetection.asset_id.slice(0, 8)}-edited.png`;
   const stored = await storageProvider.put({ userId: task.user_id, fileId, fileName, mimeType: "image/png", buffer: output });
   const timestamp = Date.now();
   db.exec("BEGIN IMMEDIATE");
@@ -580,13 +593,15 @@ export async function executeImageTextEditTask(task, input) {
       .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
     db.prepare("INSERT INTO task_files (task_id,file_id) VALUES (?,?)").run(task.id, fileId);
     db.prepare("UPDATE image_text_assets SET current_file_id=?,status='ready',updated_at=? WHERE id=?").run(fileId, timestamp, input.assetId);
-    db.prepare("UPDATE image_text_projects SET status='ready',updated_at=? WHERE id=?").run(timestamp, detection.project_id);
-    if (!storedStyle.appearanceAnalyzed && style.appearanceAnalyzed) db.prepare("UPDATE image_text_detections SET style_json=?,updated_at=? WHERE id=?").run(JSON.stringify(style), timestamp, input.detectionId);
-    db.prepare("INSERT INTO image_text_operations (id,project_id,asset_id,detection_id,task_id,operation_type,before_json,after_json,created_at) VALUES (?,?,?,?,?,'apply',?,?,?)")
-      .run(randomUUID(), detection.project_id, input.assetId, input.detectionId, task.id, JSON.stringify({ fileId: input.sourceFileId }), JSON.stringify({ fileId, repairMode }), timestamp);
+    db.prepare("UPDATE image_text_projects SET status='ready',updated_at=? WHERE id=?").run(timestamp, firstDetection.project_id);
+    const insertOperation = db.prepare("INSERT INTO image_text_operations (id,project_id,asset_id,detection_id,task_id,operation_type,before_json,after_json,created_at) VALUES (?,?,?,?,?,'apply',?,?,?)");
+    for (const item of applied) {
+      if (!item.storedStyle.appearanceAnalyzed && item.style.appearanceAnalyzed) db.prepare("UPDATE image_text_detections SET style_json=?,updated_at=? WHERE id=?").run(JSON.stringify(item.style), timestamp, item.detection.id);
+      insertOperation.run(randomUUID(), item.detection.project_id, input.assetId, item.detection.id, task.id, JSON.stringify({ fileId: input.sourceFileId }), JSON.stringify({ fileId, repairMode: item.repairMode, editCount: applied.length }), timestamp);
+    }
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); await deleteStoredFile(stored).catch(() => {}); throw cause; }
-  return { status: "completed", output: { progress: 100, phase: "completed", projectId: detection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, repairMode } };
+  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, repairModes: [...new Set(applied.map((item) => item.repairMode))] } };
 }
 
 export function failImageTextTask(taskId) {
