@@ -168,7 +168,49 @@ function platformCredentialRow(row) {
   };
 }
 
+function compatibleWorkspaceBaseUrl(value) {
+  const url = new URL(String(value || ""));
+  if (url.pathname.replace(/\/$/, "").endsWith("/api/v1")) {
+    url.pathname = url.pathname.replace(/\/api\/v1\/?$/, "/compatible-mode/v1");
+  }
+  return url.href.replace(/\/$/, "");
+}
+
+function foodNutritionWorkspaceRow() {
+  return db.prepare("SELECT * FROM model_studio_workspace_configs WHERE id = 'default' AND status = 'active'").get() || null;
+}
+
+function foodNutritionWorkspaceRoute() {
+  const workspace = foodNutritionWorkspaceRow();
+  if (!workspace) return null;
+  return {
+    protocol: "openai",
+    baseUrl: compatibleWorkspaceBaseUrl(workspace.base_url),
+    apiKey: decryptCredential({ ...workspace, id: "default", user_id: "platform:model_studio_workspace" }),
+    modelId: process.env.FOOD_NUTRITION_MODEL_ID || "qwen3.6-flash",
+    workspaceId: workspace.workspace_id || null,
+  };
+}
+
 function serializePlatformModel(row, purpose) {
+  const inheritedWorkspace = purpose === "food_nutrition" && !row ? foodNutritionWorkspaceRow() : null;
+  if (inheritedWorkspace) return {
+    purpose,
+    source: "workspace",
+    name: platformPurposeName(purpose),
+    providerTemplate: "openai",
+    baseUrl: compatibleWorkspaceBaseUrl(inheritedWorkspace.base_url),
+    modelId: process.env.FOOD_NUTRITION_MODEL_ID || "qwen3.6-flash",
+    workspaceId: inheritedWorkspace.workspace_id || null,
+    keyHint: inheritedWorkspace.key_hint,
+    configured: true,
+    status: "active",
+    lastTestStatus: inheritedWorkspace.last_test_status,
+    lastTestLatencyMs: inheritedWorkspace.last_test_latency_ms,
+    lastTestedAt: inheritedWorkspace.last_tested_at,
+    createdAt: inheritedWorkspace.created_at,
+    updatedAt: inheritedWorkspace.updated_at,
+  };
   if (!row) return {
     purpose,
     source: "environment",
@@ -642,6 +684,7 @@ export async function savePlatformModelConfiguration(purpose, data, actorUserId 
 
 export function platformModelRoute(purpose) {
   const row = platformModelRow(purpose);
+  if ((!row || row.status !== "active") && purpose === "food_nutrition") return foodNutritionWorkspaceRoute();
   if (!row || row.status !== "active") return null;
   return {
     protocol: row.provider_template,
@@ -686,7 +729,7 @@ export async function invokePlatformModel({ purpose, service = "unknown", instru
   }
 }
 
-export async function invokePlatformVisionModel({ purpose, service = "unknown", instruction, prompt, imageDataUrl, signal, timeoutMs = null }) {
+export async function invokePlatformVisionModel({ purpose, service = "unknown", instruction, prompt, imageDataUrl, signal, timeoutMs = null, maxOutputTokens = null, latencyOptimized = false }) {
   const route = platformModelRoute(purpose);
   if (!route) throw gatewayError("PLATFORM_MODEL_UNAVAILABLE", 503, true);
   const image = String(imageDataUrl || "");
@@ -710,6 +753,8 @@ export async function invokePlatformVisionModel({ purpose, service = "unknown", 
       messages: [{ role: "user", content }],
       signal,
       timeoutMs,
+      maxOutputTokens,
+      latencyOptimized,
     });
     db.prepare(`UPDATE platform_model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,
       latency_ms = ?, completed_at = ? WHERE id = ?`)

@@ -418,6 +418,8 @@ export function initializeDatabase() {
   if (!imageProviderColumns.has("credential_source")) db.exec("ALTER TABLE image_provider_configs ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'direct' CHECK(credential_source IN ('direct','workspace'))");
   const imageProviderWithOcrSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'image_provider_configs'").get()?.sql || "";
   if (!imageProviderWithOcrSchema.includes("image_text_ocr")) db.exec(readFileSync(resolve(projectRoot, "db/migrations/0039_image_text_ocr_provider.sql"), "utf8"));
+  const foodNutritionModelSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'platform_model_configs'").get()?.sql || "";
+  if (!foodNutritionModelSchema.includes("food_nutrition")) db.exec(readFileSync(resolve(projectRoot, "db/migrations/0040_food_nutrition_model_gateway.sql"), "utf8"));
   db.exec(`INSERT OR IGNORE INTO image_provider_configs (
     purpose,adapter,base_url,model_id,key_ciphertext,key_iv,key_tag,key_hint,credential_version,status,credit_cost,
     last_test_status,last_test_latency_ms,last_tested_at,updated_by,created_at,updated_at,credential_source
@@ -525,7 +527,7 @@ export function initializeDatabase() {
     ["tool_ai_cutout", "ai-smart-cutout", "智能抠图", "Smart AI Cutout", "识别人物、商品和复杂边缘，生成透明背景 PNG。", "Extract people and products with fine edges into a transparent PNG.", "image", "GridFour", 20, "platform-image-edit"],
     ["tool_ai_bg_replace", "ai-background-replacer", "背景替换", "AI Background Replacer", "保留主体细节并根据描述生成光影与透视自然的新背景。", "Replace a background while matching the subject's lighting, perspective, and contact shadow.", "image", "ArrowsClockwise", 25, "platform-image-edit"],
     ["tool_ai_restore", "ai-image-restorer", "图片高清修复", "AI Image Restorer", "修复模糊、噪点、压缩痕迹和老照片划痕，输出高清图片。", "Restore blur, noise, compression artifacts, and scratches into a high-resolution image.", "image", "Sparkle", 25, "platform-image-upscale"],
-    ["tool_food_nutrition", "food-nutrition-analyzer", "AI 食物热量分析", "AI Food Nutrition Analyzer", "上传一张食物照片，识别菜品与份量，估算热量、蛋白质、碳水、脂肪、膳食纤维和钠，并说明误差来源。", "Upload a food photo to estimate portions, calories, protein, carbs, fat, fiber, and sodium with transparent uncertainty.", "image", "ChartBar", 8, "openai"],
+    ["tool_food_nutrition", "food-nutrition-analyzer", "AI 食物热量分析", "AI Food Nutrition Analyzer", "上传一张食物照片，识别菜品与份量，估算热量、蛋白质、碳水、脂肪、膳食纤维和钠，并说明误差来源。", "Upload a food photo to estimate portions, calories, protein, carbs, fat, fiber, and sodium with transparent uncertainty.", "image", "ChartBar", 8, "platform-food-vision"],
     ["tool_fridge_recipe", "ai-fridge-recipe", "AI 冰箱食谱", "AI Fridge Recipe Planner", "上传冰箱照片识别现有食材，生成匹配度、缺少食材、采购清单与完整烹饪步骤。", "Upload a fridge photo to identify ingredients and get matched recipes, shopping gaps, and complete cooking steps.", "image", "ForkKnife", 30, "openai"],
     ["tool_stock_pet", "stock-pet", "牛来了桌面宠物", "Niu Lai Le Stock Pet", "把自选行情变成会涨会跌、会提醒的桌面小牛；一次解锁，支持 Windows 与 macOS。", "A lively desktop bull that follows your watchlist, reacts to market moves, and alerts you on Windows and macOS.", "data", "ChartLineUp", 2000, "desktop-product"],
     ["tool_fortune_cat", "fortune-cat", "招财滚滚", "Fortune Cat", "输入工资与工作时间，让招财猫在桌面实时告诉你今天和本月已经赚了多少钱。", "A lucky-cat desktop companion that turns salary and work hours into live earnings progress.", "productivity", "Coins", 1000, "desktop-product"],
@@ -833,7 +835,12 @@ export function refreshRuntimeStatuses() {
   `).get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(imageEditingReady ? "ready" : "configuration_required");
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(imageUpscalingReady ? "ready" : "configuration_required");
-  const foodVisionReady = db.prepare("SELECT 1 AS ready FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active' LIMIT 1").get();
+  const foodVisionReady = db.prepare(`
+    SELECT 1 AS ready FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active'
+    UNION ALL
+    SELECT 1 AS ready FROM model_studio_workspace_configs WHERE id = 'default' AND status = 'active'
+    LIMIT 1
+  `).get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-food-vision'").run(foodVisionReady ? "ready" : "configuration_required");
 }
 

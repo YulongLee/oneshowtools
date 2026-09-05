@@ -20,12 +20,14 @@ test("food nutrition analyzer returns structured estimates and safe input", asyn
   form.set("file", await imageFile());
   form.set("portionHint", "米饭半碗");
   form.set("mealContext", "lunch");
-  const result = await analyzeFoodNutrition(form, { userId: "user_food", modelConnectionId: "managed", modelInvoker: async ({ imageDataUrl, capability, userId, connectionId, latencyOptimized, maxOutputTokens }) => {
+  const result = await analyzeFoodNutrition(form, { userId: "user_food", modelConnectionId: "managed", modelInvoker: async ({ imageDataUrl, capability, purpose, userId, connectionId, latencyOptimized, maxOutputTokens, timeoutMs }) => {
     assert.equal(capability, "vision:food_nutrition");
+    assert.equal(purpose, "food_nutrition");
     assert.equal(userId, "user_food");
     assert.equal(connectionId, "managed");
     assert.equal(latencyOptimized, true);
-    assert.equal(maxOutputTokens, 1800);
+    assert.equal(maxOutputTokens, 1400);
+    assert.equal(timeoutMs, 35_000);
     assert.match(imageDataUrl, /^data:image\/jpeg;base64,/);
     return { modelId: "vision-test", text: JSON.stringify({
       isFood: true, mealName: "鸡肉米饭", summary: "一份鸡肉米饭", confidence: "medium",
@@ -75,4 +77,37 @@ test("food nutrition analyzer rejects unsupported files before model invocation"
   const form = new FormData();
   form.set("file", new File(["hello"], "meal.txt", { type: "text/plain" }));
   await assert.rejects(analyzeFoodNutrition(form), (error) => error.code === "IMAGE_FORMAT_UNSUPPORTED" && error.status === 415);
+});
+
+test("food nutrition analyzer accepts common provider aliases", async () => {
+  const form = new FormData();
+  form.set("file", await imageFile());
+  const result = await analyzeFoodNutrition(form, { modelInvoker: async () => ({ modelId: "qwen-vision-test", text: JSON.stringify({
+    is_food: true,
+    meal_name: "牛肉面",
+    confidence: "中等",
+    foods: [{ food_name: "牛肉面", portion: "一碗", weight_g: 520, calories: 680, protein: 32, carbohydrates: 84, fat: 21, fiber: 6, sodium: 1200 }],
+    uncertainties: ["汤汁摄入量不可见"],
+    suggestions: ["可补充实际份量"],
+  }) }) });
+  assert.equal(result.output.mealName, "牛肉面");
+  assert.equal(result.output.items[0].caloriesKcal.estimate, 680);
+  assert.equal(result.output.items[0].carbsG.estimate, 84);
+  assert.deepEqual(result.output.hiddenUncertainties, ["汤汁摄入量不可见"]);
+});
+
+test("food nutrition analyzer retries a malformed first response", async () => {
+  const form = new FormData();
+  form.set("file", await imageFile());
+  let attempts = 0;
+  const result = await analyzeFoodNutrition(form, { modelInvoker: async ({ timeoutMs }) => {
+    attempts += 1;
+    if (attempts === 1) return { modelId: "vision-test", text: "无法分析" };
+    assert.equal(timeoutMs, 45_000);
+    return { modelId: "vision-test", text: JSON.stringify({ mealName: "水果拼盘", confidence: "low", total: { calories: 260, carbs: 61 } }) };
+  } });
+  assert.equal(attempts, 2);
+  assert.equal(result.output.mealName, "水果拼盘");
+  assert.equal(result.output.total.caloriesKcal.estimate, 260);
+  assert.equal(result.output.items.length, 1);
 });

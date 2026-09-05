@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { invokeVisionModel } from "./model-gateway.mjs";
+import { invokePlatformVisionModel } from "./model-gateway.mjs";
 
 const nutritionError = (code, status = 422) => Object.assign(new Error(code), { code, status });
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
@@ -25,11 +25,72 @@ function metric(value, fallbackSpread = 0.25) {
   return { estimate, min: Math.min(min, estimate), max: Math.max(max, estimate) };
 }
 
+function firstDefined(source, ...keys) {
+  for (const key of keys) if (source?.[key] != null) return source[key];
+  return undefined;
+}
+
+function normalizeConfidence(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (["high", "高", "较高"].includes(normalized)) return "high";
+  if (["medium", "中", "中等", "moderate"].includes(normalized)) return "medium";
+  return "low";
+}
+
+function normalizeModelAnalysis(payload) {
+  const raw = payload?.output && typeof payload.output === "object" ? payload.output
+    : payload?.result && typeof payload.result === "object" ? payload.result
+    : payload?.data && typeof payload.data === "object" ? payload.data
+    : payload || {};
+  const rawItems = firstDefined(raw, "items", "foods", "foodItems", "food_items", "detectedFoods", "detected_foods");
+  const items = (Array.isArray(rawItems) ? rawItems : []).map((item) => {
+    const nutrition = item?.nutrition || item?.nutrients || item?.macros || {};
+    return {
+      ...item,
+      name: firstDefined(item, "name", "foodName", "food_name", "label"),
+      portionDescription: firstDefined(item, "portionDescription", "portion", "portion_description", "serving", "servingSize"),
+      estimatedWeightG: firstDefined(item, "estimatedWeightG", "estimated_weight_g", "weightG", "weight_g", "grams"),
+      caloriesKcal: firstDefined(item, "caloriesKcal", "calories", "calorie", "kcal") ?? firstDefined(nutrition, "caloriesKcal", "calories", "kcal"),
+      proteinG: firstDefined(item, "proteinG", "protein", "protein_g") ?? firstDefined(nutrition, "proteinG", "protein", "protein_g"),
+      carbsG: firstDefined(item, "carbsG", "carbs", "carbohydrates", "carbs_g") ?? firstDefined(nutrition, "carbsG", "carbs", "carbohydrates", "carbs_g"),
+      fatG: firstDefined(item, "fatG", "fat", "fat_g") ?? firstDefined(nutrition, "fatG", "fat", "fat_g"),
+      fiberG: firstDefined(item, "fiberG", "fiber", "fiber_g") ?? firstDefined(nutrition, "fiberG", "fiber", "fiber_g"),
+      sodiumMg: firstDefined(item, "sodiumMg", "sodium", "sodium_mg") ?? firstDefined(nutrition, "sodiumMg", "sodium", "sodium_mg"),
+      confidence: normalizeConfidence(item?.confidence || raw?.confidence),
+    };
+  });
+  const rawTotal = firstDefined(raw, "total", "totals", "totalNutrition", "total_nutrition", "nutrition") || {};
+  const total = {
+    caloriesKcal: firstDefined(rawTotal, "caloriesKcal", "calories", "calorie", "kcal"),
+    proteinG: firstDefined(rawTotal, "proteinG", "protein", "protein_g"),
+    carbsG: firstDefined(rawTotal, "carbsG", "carbs", "carbohydrates", "carbs_g"),
+    fatG: firstDefined(rawTotal, "fatG", "fat", "fat_g"),
+    fiberG: firstDefined(rawTotal, "fiberG", "fiber", "fiber_g"),
+    sodiumMg: firstDefined(rawTotal, "sodiumMg", "sodium", "sodium_mg"),
+  };
+  const hasTotal = Object.values(total).some((value) => number(value) > 0);
+  const mealName = firstDefined(raw, "mealName", "meal_name", "dishName", "dish_name", "title");
+  if (!items.length && raw?.isFood !== false && (hasTotal || mealName)) {
+    items.push({ name: mealName || "本餐食物", portionDescription: "图片可见份量", ...total, confidence: normalizeConfidence(raw?.confidence) });
+  }
+  return {
+    ...raw,
+    isFood: items.length ? true : firstDefined(raw, "isFood", "is_food", "foodDetected", "food_detected"),
+    mealName,
+    confidence: normalizeConfidence(raw?.confidence),
+    total,
+    items,
+    visibleEvidence: firstDefined(raw, "visibleEvidence", "visible_evidence", "evidence") || [],
+    hiddenUncertainties: firstDefined(raw, "hiddenUncertainties", "hidden_uncertainties", "uncertainties") || [],
+    tips: firstDefined(raw, "tips", "suggestions", "advice") || [],
+  };
+}
+
 function sanitizeAnalysis(raw, modelId) {
   if (raw?.isFood === false || !Array.isArray(raw?.items) || raw.items.length === 0) {
     throw nutritionError("FOOD_NOT_RECOGNIZED");
   }
-  const confidence = ["high", "medium", "low"].includes(raw.confidence) ? raw.confidence : "low";
+  const confidence = normalizeConfidence(raw.confidence);
   const spread = confidence === "high" ? 0.15 : confidence === "medium" ? 0.25 : 0.4;
   const items = raw.items.slice(0, 12).map((item, index) => ({
     name: String(item?.name || `食物 ${index + 1}`).slice(0, 80),
@@ -95,7 +156,7 @@ JSON Schema（所有营养字段均为数字）：
 {"isFood":true,"mealName":"","summary":"","confidence":"high|medium|low","total":{"caloriesKcal":0,"proteinG":0,"carbsG":0,"fatG":0,"fiberG":0,"sodiumMg":0},"items":[{"name":"","portionDescription":"","estimatedWeightG":0,"caloriesKcal":0,"proteinG":0,"carbsG":0,"fatG":0,"fiberG":0,"sodiumMg":0,"confidence":"high|medium|low","assumptions":[]}],"visibleEvidence":[],"hiddenUncertainties":[],"tips":[]}`;
 }
 
-export async function analyzeFoodNutrition(form, { userId = null, modelConnectionId = null, modelInvoker = invokeVisionModel } = {}) {
+export async function analyzeFoodNutrition(form, { userId = null, modelConnectionId = null, modelInvoker = invokePlatformVisionModel } = {}) {
   const file = form.get("file");
   if (!file?.size) throw nutritionError("IMAGE_REQUIRED", 400);
   if (file.size > 12 * 1024 * 1024) throw nutritionError("IMAGE_TOO_LARGE", 413);
@@ -104,14 +165,15 @@ export async function analyzeFoodNutrition(form, { userId = null, modelConnectio
   let optimized;
   try {
     optimized = await sharp(source, { limitInputPixels: 24_000_000 })
-      .rotate().resize({ width: 960, height: 960, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: 78, chromaSubsampling: "4:2:0" }).toBuffer();
+      .rotate().resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 76, chromaSubsampling: "4:2:0" }).toBuffer();
   } catch { throw nutritionError("IMAGE_INVALID", 422); }
 
   const portionHint = String(form.get("portionHint") || "").trim().slice(0, 300);
   const mealContext = String(form.get("mealContext") || "unspecified").slice(0, 30);
   const locale = String(form.get("locale") || "zh") === "en" ? "en" : "zh";
   const invoke = (verification = false) => modelInvoker({
+    purpose: "food_nutrition",
     userId,
     connectionId: modelConnectionId,
     capability: "vision:food_nutrition",
@@ -119,15 +181,26 @@ export async function analyzeFoodNutrition(form, { userId = null, modelConnectio
     instruction: "Return valid JSON only. Never include markdown fences.",
     prompt: buildPrompt({ portionHint, mealContext, locale, verification }),
     imageDataUrl: `data:image/jpeg;base64,${optimized.toString("base64")}`,
-    timeoutMs: 60_000,
-    maxOutputTokens: 1800,
+    timeoutMs: verification ? 45_000 : 35_000,
+    maxOutputTokens: 1400,
     latencyOptimized: true,
   });
-  let result = await invoke(false);
-  let raw = parseJson(result.text);
-  if (!recognizedFood(raw)) {
+  let result;
+  let raw;
+  let verificationUsed = false;
+  try {
+    result = await invoke(false);
+    raw = normalizeModelAnalysis(parseJson(result.text));
+  } catch (error) {
+    if (error?.code !== "FOOD_ANALYSIS_INVALID_RESPONSE") throw error;
+    verificationUsed = true;
     result = await invoke(true);
-    raw = parseJson(result.text);
+    raw = normalizeModelAnalysis(parseJson(result.text));
+  }
+  if (!recognizedFood(raw)) {
+    if (verificationUsed) throw nutritionError("FOOD_NOT_RECOGNIZED");
+    result = await invoke(true);
+    raw = normalizeModelAnalysis(parseJson(result.text));
   }
   return {
     output: sanitizeAnalysis(raw, result.modelId),

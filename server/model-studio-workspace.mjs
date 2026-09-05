@@ -117,5 +117,7 @@ export async function saveModelStudioWorkspaceConfiguration(data, actorUserId = 
   const runtimeStatus = input.status === "active" ? "ready" : "configuration_required";
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit' AND EXISTS (SELECT 1 FROM image_provider_configs WHERE purpose='image_editing' AND credential_source='workspace' AND status='active')").run(runtimeStatus);
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale' AND EXISTS (SELECT 1 FROM image_provider_configs WHERE purpose IN ('image_upscaling','image_editing') AND credential_source='workspace' AND status='active')").run(runtimeStatus);
+  const foodVisionReady = input.status === "active" || Boolean(db.prepare("SELECT 1 FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active'").get());
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-food-vision'").run(foodVisionReady ? "ready" : "configuration_required");
   return publicConfig();
 }

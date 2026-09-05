@@ -55,9 +55,11 @@ process.env.DASHSCOPE_COMPATIBLE_BASE_URL = `http://127.0.0.1:${address.port}/v1
 const {
   createModelConnection,
   decryptCredential,
+  encryptCredential,
   invokeModel,
   invokeVisionModel,
   invokePlatformModel,
+  invokePlatformVisionModel,
   listModelConnections,
   listPlatformModelConfigurations,
   listToolModelPreferences,
@@ -390,6 +392,60 @@ test("OneShow Home uses its own encrypted platform route and records the invocat
   const invocation = db.prepare("SELECT * FROM platform_model_invocations WHERE id = ?").get(result.invocationId);
   assert.equal(invocation.status, "completed");
   assert.equal(invocation.service, "oneshow-home-api");
+});
+
+test("food nutrition vision uses its dedicated platform route and workspace", async () => {
+  const actorId = addUser("food-platform-model@example.com");
+  await savePlatformModelConfiguration("food_nutrition", {
+    name: "Food Nutrition Vision",
+    providerTemplate: "openai",
+    baseUrl: `${providerBaseUrl}/v1`,
+    modelId: "food-vision-model",
+    workspaceId: "ws-food-runtime",
+    apiKey: "food-platform-key-9876",
+  }, actorId);
+  const before = observedRequests.length;
+  const result = await invokePlatformVisionModel({
+    purpose: "food_nutrition",
+    service: "food-nutrition-analyzer",
+    instruction: "Return JSON only.",
+    prompt: "Analyze this meal.",
+    imageDataUrl: `data:image/png;base64,${Buffer.from("test-image").toString("base64")}`,
+    timeoutMs: 35_000,
+    maxOutputTokens: 1400,
+    latencyOptimized: true,
+  });
+  assert.equal(result.text, "ok:food-vision-model");
+  assert.equal(result.modelId, "food-vision-model");
+  assert.equal(observedRequests.length, before + 1);
+  assert.equal(observedRequests.at(-1).workspaceId, "ws-food-runtime");
+  const invocation = db.prepare("SELECT purpose, service, status FROM platform_model_invocations WHERE id = ?").get(result.invocationId);
+  assert.equal(invocation.purpose, "food_nutrition");
+  assert.equal(invocation.service, "food-nutrition-analyzer");
+  assert.equal(invocation.status, "completed");
+});
+
+test("food nutrition vision inherits the existing Bailian workspace when no dedicated row exists", async () => {
+  db.prepare("DELETE FROM platform_model_configs WHERE purpose = 'food_nutrition'").run();
+  const timestamp = Date.now();
+  const encrypted = encryptCredential("workspace-food-key-1234", "platform:model_studio_workspace", "default", 1);
+  db.prepare(`INSERT OR REPLACE INTO model_studio_workspace_configs
+    (id,name,region,workspace_id,endpoint_mode,base_url,key_ciphertext,key_iv,key_tag,key_hint,credential_version,status,last_test_status,last_test_latency_ms,last_tested_at,updated_by,created_at,updated_at)
+    VALUES ('default','Bailian test','cn-beijing','ws-food-inherited','public',?,?,?,?,?,1,'active','healthy',10,?,?,?,?)`)
+    .run(`${providerBaseUrl}/v1`, encrypted.ciphertext, encrypted.iv, encrypted.tag, "••••1234", timestamp, null, timestamp, timestamp);
+  const result = await invokePlatformVisionModel({
+    purpose: "food_nutrition",
+    service: "food-nutrition-analyzer",
+    instruction: "Return JSON only.",
+    prompt: "Analyze this meal.",
+    imageDataUrl: `data:image/png;base64,${Buffer.from("test-image").toString("base64")}`,
+  });
+  assert.equal(result.text, "ok:qwen3.6-flash");
+  assert.equal(observedRequests.at(-1).authorization, "Bearer workspace-food-key-1234");
+  assert.equal(observedRequests.at(-1).workspaceId, "ws-food-inherited");
+  const status = listPlatformModelConfigurations().find((item) => item.purpose === "food_nutrition");
+  assert.equal(status.source, "workspace");
+  assert.equal(status.configured, true);
 });
 
 test("each model-backed tool stores an owner-scoped model preference", () => {
