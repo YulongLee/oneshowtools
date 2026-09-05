@@ -133,11 +133,10 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const inlineEditor = useRef(null);
   const stageRef = useRef(null);
   const asset = project?.assets?.find((item) => item.id === assetId) || project?.assets?.[0] || null;
-  const selected = asset?.detections?.find((item) => item.id === selectedId) || asset?.detections?.[0] || null;
+  const selected = asset?.detections?.find((item) => item.id === selectedId) || null;
   const imageUrl = asset ? (compare ? asset.originalUrl : asset.imageUrl) : "";
   const progressText = { preparing: "准备处理", erasing: "擦除原文字", repairing: "智能修复背景", rendering: "渲染新文字", completed: "处理完成" };
 
-  useEffect(() => { if (asset && !selectedId) setSelectedId(asset.detections?.[0]?.id || ""); }, [asset, selectedId]);
   useEffect(() => {
     if (!inlineEditingId || !inlineEditor.current) return;
     inlineEditor.current.focus();
@@ -220,7 +219,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     try {
       const data = await api(`/api/image-text/assets/${asset.id}/detect`, { method: "POST" });
       setProject((current) => ({ ...current, assets: current.assets.map((item) => item.id === data.asset.id ? data.asset : item) }));
-      setSelectedId(data.asset.detections?.[0]?.id || ""); setHistory([]); setFuture([]);
+      setSelectedId(""); setInlineEditingId(""); setHistory([]); setFuture([]);
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }
   }
 

@@ -82,6 +82,7 @@ test("image text OCR can inherit the workspace key and return positioned text", 
   assert.equal(calls, 2);
   assert.equal(detections[0].text, "TEST 123");
   assert.deepEqual(detections[0].bbox, { x: 80, y: 190, width: 310, height: 90 });
+  assert.equal(detections[0].rotation, 0);
   assert.equal(detections[0].style.color, "#17264d");
 });
 

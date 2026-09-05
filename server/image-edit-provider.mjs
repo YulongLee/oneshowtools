@@ -252,6 +252,7 @@ function parseBuiltinOcrDetections(payload, width, height) {
     const points = Array.isArray(item?.location) ? item.location.map(Number) : [];
     const hasPolygon = points.length >= 8 && points.every(Number.isFinite);
     const radians = angle * Math.PI / 180;
+    const visualAngle = hasPolygon ? Math.atan2(points[3] - points[1], points[2] - points[0]) * 180 / Math.PI : (Math.abs(boxHeight) >= Math.abs(boxWidth) ? angle - Math.sign(angle || 1) * 90 : angle);
     const axisWidth = hasPolygon ? Math.max(...points.filter((_, index) => index % 2 === 0)) - Math.min(...points.filter((_, index) => index % 2 === 0)) : Math.abs(boxWidth * Math.cos(radians)) + Math.abs(boxHeight * Math.sin(radians));
     const axisHeight = hasPolygon ? Math.max(...points.filter((_, index) => index % 2 === 1)) - Math.min(...points.filter((_, index) => index % 2 === 1)) : Math.abs(boxWidth * Math.sin(radians)) + Math.abs(boxHeight * Math.cos(radians));
     const x = clamp(hasPolygon ? Math.min(...points.filter((_, index) => index % 2 === 0)) : centerX - axisWidth / 2, 0, width - 1);
@@ -259,7 +260,7 @@ function parseBuiltinOcrDetections(payload, width, height) {
     return {
       text, confidence: .95,
       bbox: { x, y, width: clamp(axisWidth, 0, width - x), height: clamp(axisHeight, 0, height - y) },
-      rotation: clamp(angle, -90, 90),
+      rotation: clamp(visualAngle, -90, 90),
       style: { fontFamily: "auto", fontSize: clamp(axisHeight * .78, 8, 300), color: "#17264d", bold: false, align: "center" },
     };
   }).filter(Boolean);
