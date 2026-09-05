@@ -13,7 +13,7 @@ process.env.APP_URL = "http://localhost";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const { db } = await import("../server/database.mjs");
-const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
+const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
 const { readStoredFile } = await import("../server/object-storage.mjs");
 
 function userWithCredits() {
@@ -38,6 +38,15 @@ test("image text edits persist as a draft when the input loses focus", async () 
   assert.match(source, /onBlur=\{\(\) => saveDraft\(item\)\}/);
   assert.match(source, /onBlur=\{\(\) => saveDraft\(selected\)\}/);
   assert.match(source, /文字草稿已保存；应用到图片后生成最终结果/);
+  assert.doesNotMatch(source, /ite-direct-edit-hint/);
+});
+
+test("image repair provider failures fall back locally instead of failing the paid task", async () => {
+  const patch = await sharp({ create: { width: 180, height: 48, channels: 3, background: "#f4eddb" } }).png().toBuffer();
+  const rejectedProvider = { repair: async () => { throw Object.assign(new Error("rejected"), { code: "IMAGE_PROVIDER_REJECTED" }); } };
+  const result = await restoreTextBackground(patch, 180, 48, true, rejectedProvider);
+  assert.equal(result.repairMode, "local-smart-fill");
+  assert.deepEqual(await sharp(result.buffer).metadata().then(({ width, height, format }) => ({ width, height, format })), { width: 180, height: 48, format: "png" });
 });
 
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {

@@ -386,6 +386,19 @@ function taskProgress(taskId, progress, phase) {
   db.prepare("UPDATE tasks SET output_json=?,updated_at=? WHERE id=?").run(JSON.stringify({ progress, phase }), Date.now(), taskId);
 }
 
+export async function restoreTextBackground(patch, width, height, useAiRepair = true, provider = inpaintingProvider) {
+  let restored; let repairMode = "local-smart-fill";
+  if (useAiRepair) {
+    try {
+      const generated = await provider.repair(patch, "image/png", "Remove every letter, word, number, logo-like glyph and text mark from this image crop. Reconstruct only the natural background behind the removed text. Preserve the exact colors, lighting, texture and composition. Do not add any text, symbols, watermark, border or new object.");
+      restored = await sharp(generated.buffer).resize(width, height, { fit: "fill" }).png().toBuffer();
+      repairMode = "ai-inpainting";
+    } catch { /* Provider rejection, timeout or outage must not prevent the local repair fallback. */ }
+  }
+  if (!restored) restored = await sharp(patch).blur(Math.max(8, Math.round(Math.min(width, height) / 18))).png().toBuffer();
+  return { buffer: restored, repairMode };
+}
+
 async function executePptTextExportTask(task, input) {
   const project = db.prepare("SELECT * FROM ppt_text_projects WHERE id=? AND user_id=?").get(input.projectId, task.user_id);
   const sourceFile = project && fileRow(project.source_file_id, task.user_id);
@@ -440,18 +453,9 @@ export async function executeImageTextEditTask(task, input) {
   patchBox.height = Math.min(detection.height - patchBox.top, height + padding * 2);
   taskProgress(task.id, 24, "erasing");
   const patch = await sharp(source).extract(patchBox).png().toBuffer();
-  let restored; let repairMode = "local-smart-fill";
-  if (input.useAiRepair) {
-    try {
-      taskProgress(task.id, 48, "repairing");
-      const generated = await inpaintingProvider.repair(patch, "image/png", "Remove every letter, word, number, logo-like glyph and text mark from this image crop. Reconstruct only the natural background behind the removed text. Preserve the exact colors, lighting, texture and composition. Do not add any text, symbols, watermark, border or new object.");
-      restored = await sharp(generated.buffer).resize(patchBox.width, patchBox.height, { fit: "fill" }).png().toBuffer();
-      repairMode = "ai-inpainting";
-    } catch (cause) {
-      if (!cause?.code?.includes("NOT_CONFIGURED") && !cause?.code?.includes("UNAVAILABLE")) throw cause;
-    }
-  }
-  if (!restored) restored = await sharp(patch).blur(Math.max(8, Math.round(Math.min(patchBox.width, patchBox.height) / 18))).png().toBuffer();
+  taskProgress(task.id, 48, "repairing");
+  const repair = await restoreTextBackground(patch, patchBox.width, patchBox.height, input.useAiRepair);
+  const restored = repair.buffer; const repairMode = repair.repairMode;
   taskProgress(task.id, 76, "rendering");
   const cleanBase = await sharp(source).composite([{ input: restored, left: patchBox.left, top: patchBox.top }]).png().toBuffer();
   const overlay = textOverlay(detection.current_text, style, width, height);

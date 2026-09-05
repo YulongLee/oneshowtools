@@ -290,7 +290,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
             : <button key={item.id} aria-label={`选择图片文字：${item.originalText}`} className="ite-text-box" onClick={() => beginInlineEdit(item)} style={textStyle}>
               {item.currentText !== item.originalText && <span>{item.currentText}</span>}
             </button>;
-        })}<div className="ite-direct-edit-hint"><TextT weight="bold" />点击文字框，直接在图片上输入</div></div></div>}
+        })}</div></div>}
         <footer><button disabled={!history.length} onClick={() => restore(history.at(-1), setFuture, setHistory)}><ArrowCounterClockwise />撤销</button><button disabled={!future.length} onClick={() => restore(future.at(-1), setHistory, setFuture)}><ArrowClockwise />重做</button><button disabled={!asset} onClick={() => setSelectedId(asset?.detections?.[0]?.id || "")}><ArrowsClockwise />重新选择文字</button></footer>
         {processing && <div className="ite-progress"><span><SpinnerGap className="ite-spin" /></span><div><strong>{progressText[task.output?.phase] || "正在处理图片"}</strong><p>后台处理中，你可以留在当前页面等待。</p><i><b style={{ width: `${Math.max(6, progress)}%` }} /></i></div><em>{progress}%</em></div>}
       </section>
