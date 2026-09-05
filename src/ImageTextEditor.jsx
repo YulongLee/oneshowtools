@@ -15,6 +15,7 @@ const errors = {
   IMAGE_TEXT_BATCH_LIMIT: "一次最多统一处理 20 处文字，请分批生成。",
   IMAGE_TEXT_QUALITY_REJECTED: "生成文字与草稿未能核对一致，可能是漏改、错字或识别不清。本次积分已退回，草稿保留。请检查选中文字框及内容后重试。",
   IMAGE_TEXT_LAYOUT_CHANGED: "生成图片的版式发生变化，本次未交付结果，积分已退回。请重试。",
+  IMAGE_PROVIDER_CONTENT_REJECTED: "模型服务未通过本次内容审核，无法继续生成；本次积分已退回，草稿保留。如有疑问请联系客服核查。",
   IMAGE_EDITING_NOT_CONFIGURED: "背景修复模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "背景修复服务暂时不可用，请稍后重试。",
   PPT_FILE_REQUIRED: "请先上传 PPTX 文件。", PPT_FILE_UNSUPPORTED: "目前仅支持 .pptx 格式。", PPT_FILE_TOO_LARGE: "PPTX 文件不能超过 50 MB。",
   PPT_FILE_INVALID: "这个 PPTX 文件无法解析，请确认文件没有损坏。", PPT_PROJECT_NOT_FOUND: "这个 PPT 项目已失效，请重新上传。", PPT_TEXT_NOT_FOUND: "这段 PPT 文字已失效。",
@@ -142,7 +143,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const selected = asset?.detections?.find((item) => item.id === selectedId) || null;
   const changedDetections = asset?.detections?.filter((item) => changedIds.has(item.id)) || [];
   const imageUrl = asset ? `${compare ? asset.originalUrl : asset.imageUrl}${(compare ? asset.originalUrl : asset.imageUrl).includes("?") ? "&" : "?"}v=${asset.currentFileId || asset.originalFileId}-${resultNonce}` : "";
-  const progressText = { preparing: "准备处理", "model-editing": "正在按原图风格修改文字", "checking-text": "正在逐处检查生成文字", "retrying-quality": "正在重新生成以校正文字或版式", rendering: "保存生成结果", completed: "处理完成" };
+  const progressText = { preparing: "准备处理", "model-editing": "正在按原图风格修改文字", "checking-text": "正在逐处检查生成文字", "retrying-regions": "正在局部校正未通过的文字", "retrying-quality": "正在重新生成以校正文字或版式", rendering: "保存生成结果", completed: "处理完成" };
 
   useEffect(() => {
     if (!inlineEditingId || !inlineEditor.current) return;

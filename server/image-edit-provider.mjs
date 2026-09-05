@@ -130,6 +130,7 @@ function providerFailure(payload, status) {
   const providerCode = clean(payload?.code || payload?.error?.code || "", 160);
   const message = clean(payload?.message || payload?.error?.message || providerCode, 500).toLowerCase();
   const providerMessage = `${providerCode} ${message}`.toLowerCase();
+  if (/datainspectionfailed|inappropriate.?content|content.?moderation|content.?policy/.test(providerMessage)) return providerError("IMAGE_PROVIDER_CONTENT_REJECTED", 422, false);
   if (/model.*(not found|not exist|unavailable|access|denied)|not.*authorized.*model|permission.*model|未开通|模型.*无权限/.test(providerMessage)) return providerError("IMAGE_PROVIDER_MODEL_UNAVAILABLE", 422);
   if ([401, 403].includes(status) || /api.?key|auth|token|unauthorized|invalidapikey|鉴权|认证/.test(message)) return providerError("IMAGE_PROVIDER_AUTH_FAILED", 422);
   if (status === 429 && /allocationquota|insufficient_quota|quota exceeded|current quota|额度/.test(`${providerCode} ${message}`.toLowerCase())) return providerError("IMAGE_PROVIDER_QUOTA_EXCEEDED", 429, true);

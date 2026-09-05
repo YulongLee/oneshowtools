@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { composeProtectedResult, editRegions, generatePreservedTextImage, verifyReplacementText, textInsideRegion } from "../server/image-text-preservation.mjs";
+import { composeProtectedResult, editRegions, generatePreservedTextImage, verifyReplacementText, textInsideRegion, retryContext, replacementPrompt } from "../server/image-text-preservation.mjs";
 
 const edits = [{ originalText: "Spring", currentText: "Summer", bbox: { x: 30, y: 30, width: 90, height: 30 } }, { originalText: "2025", currentText: "2026", bbox: { x: 150, y: 110, width: 80, height: 30 } }];
 const image = (background, width = 300, height = 200) => sharp({ create: { width, height, channels: 3, background } }).png().toBuffer();
@@ -19,7 +19,7 @@ test("all pixels outside both replacement regions remain exactly the original", 
 test("a missed second replacement rejects the complete result after one bounded retry", async () => {
   const source = await image("#aabbcc"); let calls = 0; let reads = 0;
   await assert.rejects(generatePreservedTextImage({ source, edits,
-    generate: async (input) => { calls++; assert.deepEqual(input.buffer, source); return { buffer: source }; },
+    generate: async (input) => { calls++; if (calls === 1) assert.deepEqual(input.buffer, source); return { buffer: input.buffer }; },
     recognize: async () => [{ text: reads++ % 2 ? "2025" : "Summer" }],
   }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
   assert.equal(calls, 2); assert.equal(reads, 4);
@@ -74,4 +74,38 @@ test("punctuation and digits still require an exact match", async () => {
 test("empty OCR is a quality failure, while service errors are not disguised as wrong text", async () => {
   await assert.rejects(verifyReplacementText(await image("white"), edits, async () => { throw Object.assign(new Error(), { code: "IMAGE_TEXT_OCR_EMPTY" }); }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
   await assert.rejects(verifyReplacementText(await image("white"), edits, async () => { throw Object.assign(new Error(), { code: "IMAGE_PROVIDER_RATE_LIMITED" }); }), { code: "IMAGE_PROVIDER_RATE_LIMITED" });
+});
+
+test("regional retry retains correct regions and rechecks the whole final result", async () => {
+  const source = await image("#aabbcc"); let calls = 0, reads = 0;
+  const first = await sharp(source).composite([{ input: Buffer.from('<svg width="300" height="200"><rect x="40" y="40" width="12" height="12" fill="#123456"/></svg>') }]).png().toBuffer();
+  const events = [];
+  const result = await generatePreservedTextImage({ source, edits, onDiagnostic: (event) => events.push(event),
+    generate: async (request) => {
+      if (++calls === 1) return { buffer: first };
+      assert.ok(request.prompt.includes('"2026"')); assert.ok(!request.prompt.includes('Summer'));
+      const context = retryContext(edits[1].bbox, 300, 200);
+      const scale = Math.min(2048 / Math.max(context.width, context.height), Math.max(1, 512 / Math.min(context.width, context.height)));
+      assert.deepEqual(request.buffer, await sharp(source).extract(context).resize(Math.round(context.width * scale), Math.round(context.height * scale)).png().toBuffer());
+      return { buffer: request.buffer };
+    },
+    recognize: async () => [{ text: ["Summer", "2025", "Summer", "2026"][reads++] }],
+  });
+  assert.equal(calls, 2); assert.equal(reads, 4);
+  assert.equal(events.find((event) => event.attempt === 2 && event.phase === "generation").mode, "regional");
+  const raw = await sharp(result.buffer).removeAlpha().raw().toBuffer();
+  assert.deepEqual([...raw.subarray((42 * 300 + 42) * 3, (42 * 300 + 42) * 3 + 3)], [18, 52, 86]);
+});
+
+test("retry context remains in bounds at every image corner", () => {
+  for (const x of [0, 260]) for (const y of [0, 180]) {
+    const context = retryContext({ x, y, width: 40, height: 20 }, 300, 200);
+    assert.ok(context.left >= 0 && context.top >= 0 && context.left + context.width <= 300 && context.top + context.height <= 200);
+    assert.ok(context.left <= x && context.left + context.width >= x + 40);
+  }
+});
+
+test("longer replacements explicitly retain added numbers and punctuation", () => {
+  const prompt = replacementPrompt([{ ...edits[0], currentText: "Summer1!" }], 300, 200);
+  assert.ok(prompt.includes('Summer1!')); assert.ok(prompt.includes('新增数字和标点必须保留'));
 });

@@ -575,7 +575,7 @@ export async function executeImageTextEditTask(task, input, dependencies = {}) {
         timings, failedDetectionIds: (event.failedRegions || []).map((index) => edits[index - 1]?.id).filter(Boolean),
       });
     },
-    onProgress: (phase) => taskProgress(task.id, phase === "checking-text" ? 78 : phase === "retrying-quality" ? 48 : 20, phase) });
+    onProgress: (phase) => taskProgress(task.id, phase === "checking-text" ? 78 : phase.startsWith("retrying-") ? 48 : 20, phase) });
   const output = generated.buffer;
   const applied = detections.map((detection) => ({ detection, repairMode: generated.repairMode }));
   taskProgress(task.id, 88, "rendering");

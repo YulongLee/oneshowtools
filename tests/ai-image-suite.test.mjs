@@ -33,6 +33,14 @@ const providerFetch = async (url, options = {}) => {
   return new Response(JSON.stringify({ output: { choices: [{ message: { content: [{ image: "https://provider.example/result.png" }] } }] } }), { status: 200, headers: { "content-type": "application/json" } });
 };
 
+test("provider content moderation has a distinct non-retryable error", async () => {
+  let calls = 0;
+  await assert.rejects(testImageEditProviderConfiguration("image_editing", {
+    adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-2.0", apiKey: "moderation-test-key",
+  }, async () => { calls++; return new Response(JSON.stringify({ code: "DataInspectionFailed", message: "Input data may contain inappropriate content" }), { status: 400 }); }), { code: "IMAGE_PROVIDER_CONTENT_REJECTED", retryable: false });
+  assert.equal(calls, 1);
+});
+
 test("image editing configuration is encrypted, redacted, and activates all commercial image tools", async () => {
   const configuration = {
     adapter: "dashscope", baseUrl: "https://dashscope.aliyuncs.com/api/v1", modelId: "qwen-image-3.0-pro",
