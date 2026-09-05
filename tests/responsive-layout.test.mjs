@@ -64,6 +64,14 @@ test("authenticated pages share one content width and responsive gutter system",
   assert.match(tierListStyles, /\.tier-tool-page\{width:min\(1280px,100%\);max-width:1280px/);
 });
 
+test("desktop workspace navigation can collapse without affecting the mobile dock", () => {
+  assert.match(appSource, /ost_sidebar_collapsed/);
+  assert.match(appSource, /aria-label=\{sidebarCollapsed/);
+  assert.match(appSource, /setSidebarCollapsed\(\(value\) => !value\)/);
+  assert.match(styles, /\.platform-shell\.sidebar-collapsed \{ grid-template-columns: 0 minmax\(0,1fr\); \}/);
+  assert.match(styles, /@media \(max-width: 600px\)[\s\S]*\.sidebar-toggle \{ display:none; \}/);
+});
+
 test("guest homepage exposes real catalog states and a stable reference-led hero", () => {
   assert.match(appSource, /catalogStatus === "loading"/);
   assert.match(appSource, /catalogStatus === "error"/);

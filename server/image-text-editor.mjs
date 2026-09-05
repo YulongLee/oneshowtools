@@ -25,7 +25,7 @@ const decodeXml = (value) => String(value || "")
 const encodeXml = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 
 function parsePptShape(shapeXml, slideWidth, slideHeight) {
-  const text = [...shapeXml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match) => decodeXml(match[1])).join("").trim();
+  const text = [...shapeXml.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((match) => decodeXml(match[1])).join("").trim();
   if (!text) return null;
   const offset = shapeXml.match(/<a:off[^>]*\bx="(\d+)"[^>]*\by="(\d+)"/);
   const extent = shapeXml.match(/<a:ext[^>]*\bcx="(\d+)"[^>]*\bcy="(\d+)"/);
@@ -290,6 +290,11 @@ export function updatePptTextItem(userId, itemId, payload) {
 export function createPptTextExportTask(user, tool, payload) {
   const project = db.prepare("SELECT * FROM ppt_text_projects WHERE id=? AND user_id=?").get(clean(payload.projectId, 64), user.id);
   if (!project) throw error("PPT_PROJECT_NOT_FOUND", 404);
+  const edits = db.prepare("SELECT id,slide_number,shape_index,original_text,current_text FROM ppt_text_items WHERE project_id=? AND current_text<>original_text ORDER BY slide_number,shape_index").all(project.id);
+  if (!edits.length) throw error("PPT_NO_CHANGES", 422);
+  const existingTask = db.prepare("SELECT id,status,credit_cost,output_json,input_json FROM tasks WHERE user_id=? AND tool_id=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 12")
+    .all(user.id, tool.id).find((item) => { const input = parse(item.input_json); return input.mode === "ppt-export" && input.projectId === project.id; });
+  if (existingTask) return { id: existingTask.id, status: existingTask.status, creditCost: existingTask.credit_cost, output: parse(existingTask.output_json), duplicate: true };
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance);
   if (available < tool.creditCost) throw error("INSUFFICIENT_CREDITS", 402);
   assertUserFileCapacity(user.id);
@@ -297,7 +302,7 @@ export function createPptTextExportTask(user, tool, payload) {
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("INSERT INTO tasks (id,user_id,tool_id,status,input_json,output_json,credit_cost,created_at,updated_at) VALUES (?,?,?,'queued',?,?,?,?,?)")
-      .run(taskId, user.id, tool.id, JSON.stringify({ mode: "ppt-export", projectId: project.id, sourceFileId: project.source_file_id }), JSON.stringify({ progress: 8, phase: "preparing", mode: "ppt" }), tool.creditCost, timestamp, timestamp);
+      .run(taskId, user.id, tool.id, JSON.stringify({ mode: "ppt-export", projectId: project.id, sourceFileId: project.source_file_id, edits }), JSON.stringify({ progress: 8, phase: "preparing", mode: "ppt", editCount: edits.length }), tool.creditCost, timestamp, timestamp);
     if (tool.creditCost > 0) {
       db.prepare("INSERT INTO credit_ledger (id,user_id,type,amount,description_zh,description_en,reference_type,reference_id,created_at) VALUES (?,?,'consumption',?,?,?,'task',?,?)")
         .run(randomUUID(), user.id, -tool.creditCost, `导出${tool.nameZh} PPT`, `Exported ${tool.nameEn} PPT`, taskId, timestamp);
@@ -308,8 +313,8 @@ export function createPptTextExportTask(user, tool, payload) {
     db.prepare("UPDATE ppt_text_projects SET status='processing',updated_at=? WHERE id=?").run(timestamp, project.id);
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); throw cause; }
-  audit(user.id, "image_text.ppt_export", "task", taskId, { projectId: project.id });
-  return { id: taskId, status: "queued", creditCost: tool.creditCost, output: { progress: 8, phase: "preparing", mode: "ppt" } };
+  audit(user.id, "image_text.ppt_export", "task", taskId, { projectId: project.id, editCount: edits.length });
+  return { id: taskId, status: "queued", creditCost: tool.creditCost, output: { progress: 8, phase: "preparing", mode: "ppt", editCount: edits.length } };
 }
 
 export async function uploadImageTextAsset(request, user) {
@@ -525,22 +530,37 @@ async function executePptTextExportTask(task, input) {
   if (!project || !sourceFile) throw error("PPT_PROJECT_NOT_FOUND", 404);
   const source = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
   const { archive } = await parsePptx(source);
-  const items = db.prepare("SELECT * FROM ppt_text_items WHERE project_id=? ORDER BY slide_number,shape_index").all(project.id);
+  const edits = Array.isArray(input.edits) ? input.edits : [];
+  if (!edits.length) throw error("PPT_NO_CHANGES", 422);
+  const editsByShape = new Map(edits.map((item) => [`${item.slide_number}:${item.shape_index}`, item]));
   taskProgress(task.id, 42, "rendering");
   const slideFiles = Object.keys(archive.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).sort((a, b) => Number(a.match(/\d+/)?.[0]) - Number(b.match(/\d+/)?.[0]));
   for (let slideIndex = 0; slideIndex < slideFiles.length; slideIndex += 1) {
     const name = slideFiles[slideIndex]; const xmlText = await archive.file(name).async("string"); let shapeIndex = -1;
     const changed = xmlText.replace(/<p:sp(?:\s[^>]*)?>[\s\S]*?<\/p:sp>/g, (shapeXml) => {
       shapeIndex += 1;
-      const item = items.find((entry) => entry.slide_number === slideIndex + 1 && entry.shape_index === shapeIndex);
+      const item = editsByShape.get(`${slideIndex + 1}:${shapeIndex}`);
       if (!item) return shapeXml;
-      let textRun = 0;
-      return shapeXml.replace(/<a:t>([\s\S]*?)<\/a:t>/g, () => `<a:t>${textRun++ === 0 ? encodeXml(item.current_text) : ""}</a:t>`);
+      const runs = [...shapeXml.matchAll(/<a:t(\s[^>]*)?>([\s\S]*?)<\/a:t>/g)];
+      const originalLengths = runs.map((run) => Array.from(decodeXml(run[2])).length);
+      const total = originalLengths.reduce((sum, length) => sum + length, 0) || runs.length || 1;
+      const characters = Array.from(item.current_text); let consumed = 0; let cumulative = 0; let runIndex = 0;
+      return shapeXml.replace(/<a:t(\s[^>]*)?>([\s\S]*?)<\/a:t>/g, (_match, attributes = "") => {
+        cumulative += originalLengths[runIndex] || (total / Math.max(1, runs.length));
+        const end = runIndex === runs.length - 1 ? characters.length : Math.max(consumed, Math.round(characters.length * cumulative / total));
+        const value = characters.slice(consumed, end).join(""); consumed = end; runIndex += 1;
+        return `<a:t${attributes}>${encodeXml(value)}</a:t>`;
+      });
     });
     archive.file(name, changed);
   }
   taskProgress(task.id, 76, "packaging");
   const output = await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
+  const verified = await parsePptx(output);
+  for (const edit of edits) {
+    const actual = verified.slides.find((slide) => slide.number === edit.slide_number)?.items.find((item) => item.shapeIndex === edit.shape_index)?.text;
+    if (actual !== edit.current_text) throw error("PPT_EXPORT_VALIDATION_FAILED", 502);
+  }
   const fileId = randomUUID(); const fileName = `${clean(project.name, 100) || "presentation"}-改字版.pptx`;
   const stored = await storageProvider.put({ userId: task.user_id, fileId, fileName, mimeType: pptxMime, buffer: output });
   const timestamp = Date.now();
@@ -554,7 +574,7 @@ async function executePptTextExportTask(task, input) {
     db.prepare("UPDATE ppt_text_projects SET current_file_id=?,status='ready',updated_at=? WHERE id=?").run(fileId, timestamp, project.id);
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); await deleteStoredFile(stored).catch(() => {}); throw cause; }
-  return { status: "completed", output: { progress: 100, phase: "completed", mode: "ppt", projectId: project.id, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download` } };
+  return { status: "completed", output: { progress: 100, phase: "completed", mode: "ppt", projectId: project.id, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: edits.length, sourcePreserved: true } };
 }
 
 export async function executeImageTextEditTask(task, input, dependencies = {}) {

@@ -134,7 +134,8 @@ test("PPTX text layers can be uploaded, edited and exported without replacing th
   const archive = new JSZip();
   archive.file("ppt/presentation.xml", '<?xml version="1.0"?><p:presentation xmlns:p="p"><p:sldSz cx="12192000" cy="6858000"/></p:presentation>');
   archive.file("ppt/media/image1.png", await sharp({ create: { width: 8, height: 8, channels: 3, background: "#315be8" } }).png().toBuffer());
-  archive.file("ppt/slides/slide1.xml", '<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="5486400" cy="914400"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:rPr sz="3600" b="1"/><a:t>Original headline</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>');
+  const untouchedShape = '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="2743200"/><a:ext cx="5486400" cy="914400"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:rPr sz="1800"/><a:t>Do not </a:t></a:r><a:r><a:rPr sz="1800" i="1"/><a:t>touch</a:t></a:r></a:p></p:txBody></p:sp>';
+  archive.file("ppt/slides/slide1.xml", `<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="5486400" cy="914400"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:rPr sz="3600" b="1" solidFill="A"/><a:t xml:space="preserve">Original </a:t></a:r><a:r><a:rPr sz="3600" b="1" solidFill="B"/><a:t>headline</a:t></a:r></a:p></p:txBody></p:sp>${untouchedShape}</p:spTree></p:cSld></p:sld>`);
   const buffer = await archive.generateAsync({ type: "nodebuffer" });
   const form = new FormData(); form.append("file", new File([buffer], "deck.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
   const project = await uploadPptTextProject(new Request("http://localhost/api/image-text/ppt/projects", { method: "POST", body: form }), user);
@@ -143,18 +144,39 @@ test("PPTX text layers can be uploaded, edited and exported without replacing th
   updatePptTextItem(user.id, project.slides[0].items[0].id, { text: "New AI headline" });
   const tool = db.prepare("SELECT id,slug,name_zh AS nameZh,name_en AS nameEn,credit_cost AS creditCost FROM tools WHERE slug='image-text-editor'").get();
   const queued = createPptTextExportTask(user, tool, { projectId: project.id });
+  const duplicate = createPptTextExportTask(user, tool, { projectId: project.id });
+  assert.equal(duplicate.id, queued.id, "double submit must reuse the active PPT export");
+  assert.equal(duplicate.duplicate, true);
   const task = db.prepare("SELECT * FROM tasks WHERE id=?").get(queued.id);
+  assert.equal(JSON.parse(task.input_json).edits.length, 1);
   const result = await executeImageTextEditTask(task, JSON.parse(task.input_json));
   assert.equal(result.status, "completed");
   const resultFile = db.prepare(`SELECT f.storage_name,COALESCE(s.provider,'local') AS provider,s.object_key
     FROM files f LEFT JOIN file_storage_objects s ON s.file_id=f.id WHERE f.id=?`).get(result.output.resultFileId);
   const exported = await JSZip.loadAsync(await readStoredFile({ provider: resultFile.provider, objectKey: resultFile.object_key, storageName: resultFile.storage_name }));
-  assert.match(await exported.file("ppt/slides/slide1.xml").async("string"), /New AI headline/);
+  const exportedSlide = await exported.file("ppt/slides/slide1.xml").async("string");
+  assert.match(exportedSlide, /<a:rPr sz="3600" b="1" solidFill="A"\/>/);
+  assert.match(exportedSlide, /<a:rPr sz="3600" b="1" solidFill="B"\/>/);
+  assert.ok(exportedSlide.includes(untouchedShape), "unmodified text objects must remain byte-for-byte unchanged");
+  assert.equal(result.output.editCount, 1);
+  assert.equal(result.output.sourcePreserved, true);
   assert.ok(exported.file("ppt/media/image1.png"), "existing slide media should remain in the exported archive");
   const fresh = getPptTextProject(user.id, project.id);
   assert.ok(fresh.currentFileId);
   assert.notEqual(fresh.currentFileId, fresh.sourceFileId);
   assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70);
+});
+
+test("PPTX export rejects a project with no text changes before charging credits", async () => {
+  const user = userWithCredits();
+  const archive = new JSZip();
+  archive.file("ppt/presentation.xml", '<?xml version="1.0"?><p:presentation xmlns:p="p"><p:sldSz cx="12192000" cy="6858000"/></p:presentation>');
+  archive.file("ppt/slides/slide1.xml", '<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000" cy="1000"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Unchanged</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>');
+  const form = new FormData(); form.append("file", new File([await archive.generateAsync({ type: "nodebuffer" })], "unchanged.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }));
+  const project = await uploadPptTextProject(new Request("http://localhost/api/image-text/ppt/projects", { method: "POST", body: form }), user);
+  const tool = db.prepare("SELECT id,slug,name_zh AS nameZh,name_en AS nameEn,credit_cost AS creditCost FROM tools WHERE slug='image-text-editor'").get();
+  assert.throws(() => createPptTextExportTask(user, tool, { projectId: project.id }), { code: "PPT_NO_CHANGES" });
+  assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 100);
 });
 
 test.after(() => rm(dataDirectory, { recursive: true, force: true }));

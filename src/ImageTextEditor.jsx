@@ -22,6 +22,7 @@ const errors = {
   PPT_FILE_REQUIRED: "请先上传 PPTX 文件。", PPT_FILE_UNSUPPORTED: "目前仅支持 .pptx 格式。", PPT_FILE_TOO_LARGE: "PPTX 文件不能超过 50 MB。",
   PPT_FILE_INVALID: "这个 PPTX 文件无法解析，请确认文件没有损坏。", PPT_PROJECT_NOT_FOUND: "这个 PPT 项目已失效，请重新上传。", PPT_TEXT_NOT_FOUND: "这段 PPT 文字已失效。",
   PPT_FILE_TOO_COMPLEX: "这份 PPT 内容过多，测试版暂时支持最多 200 页或 5000 个文字框。",
+  PPT_NO_CHANGES: "请至少修改一处文字后再导出。", PPT_EXPORT_VALIDATION_FAILED: "导出文件校验未通过，本次积分已退回，原文件和文字草稿均已保留。",
 };
 
 async function api(path, options = {}) {
@@ -57,9 +58,15 @@ function PptTextEditor({ tool, authenticated, onAuth, onCompleted }) {
   const [busy, setBusy] = useState(false);
   const [task, setTask] = useState(null);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [dirtyIds, setDirtyIds] = useState(() => new Set());
+  const [saveStatus, setSaveStatus] = useState("idle");
   const input = useRef(null);
   const slide = project?.slides?.find((item) => item.number === slideNumber) || project?.slides?.[0] || null;
   const selected = slide?.items?.find((item) => item.id === selectedId) || slide?.items?.[0] || null;
+  const allItems = project?.slides?.flatMap((item) => item.items) || [];
+  const changedItems = allItems.filter((item) => item.currentText !== item.originalText);
+  const filteredSlides = project?.slides?.filter((item) => !query.trim() || item.items.some((text) => `${text.originalText} ${text.currentText}`.toLowerCase().includes(query.trim().toLowerCase()))) || [];
 
   useEffect(() => { if (slide && !selectedId) setSelectedId(slide.items?.[0]?.id || ""); }, [slide, selectedId]);
   useEffect(() => {
@@ -68,8 +75,8 @@ function PptTextEditor({ tool, authenticated, onAuth, onCompleted }) {
       try {
         const data = await api(`/api/tasks/${task.id}`); setTask(data.task);
         if (data.task.status === "completed") {
-          const fresh = await api(`/api/image-text/ppt/projects/${project.id}`); setProject(fresh.project); onCompleted?.();
-        } else if (data.task.status === "failed") setError("PPT 导出失败，积分已自动退回，请稍后重试。");
+          const fresh = await api(`/api/image-text/ppt/projects/${project.id}`); setProject(fresh.project); setDirtyIds(new Set()); setSaveStatus("exported"); onCompleted?.();
+        } else if (data.task.status === "failed") setError(errors[data.task.errorCode] || "PPT 导出失败，积分已自动退回，原文件和草稿不会受影响。");
       } catch (cause) { setError(cause.message); }
     }, 1000);
     return () => clearInterval(timer);
@@ -82,20 +89,40 @@ function PptTextEditor({ tool, authenticated, onAuth, onCompleted }) {
     try {
       const form = new FormData(); form.append("file", file);
       const data = await api("/api/image-text/ppt/projects", { method: "POST", body: form });
-      setProject(data.project); setSlideNumber(1); setSelectedId(""); setTask(null);
+      setProject(data.project); setSlideNumber(1); setSelectedId(""); setTask(null); setDirtyIds(new Set()); setSaveStatus("idle"); setQuery("");
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }
   }
 
   function updateLocal(text) {
     if (!selected) return;
     setProject((current) => ({ ...current, slides: current.slides.map((currentSlide) => currentSlide.number !== slide.number ? currentSlide : ({ ...currentSlide, items: currentSlide.items.map((item) => item.id === selected.id ? { ...item, currentText: text } : item) })) }));
+    setDirtyIds((items) => new Set(items).add(selected.id)); setSaveStatus("dirty"); setError("");
+  }
+
+  async function saveItem(item = selected) {
+    if (!item || !dirtyIds.has(item.id)) return;
+    if (!String(item.currentText || "").trim()) return setError("PPT 文字不能为空，请输入内容后再继续。");
+    setSaveStatus("saving");
+    try {
+      const data = await api(`/api/image-text/ppt/texts/${item.id}`, json("PATCH", { text: item.currentText }));
+      setProject((current) => ({ ...current, slides: current.slides.map((currentSlide) => ({ ...currentSlide, items: currentSlide.items.map((entry) => entry.id === data.item.id && entry.currentText === item.currentText ? data.item : entry) })) }));
+      setDirtyIds((items) => { const next = new Set(items); next.delete(item.id); return next; }); setSaveStatus("saved");
+    } catch (cause) { setSaveStatus("error"); setError(cause.message); }
+  }
+
+  async function saveItems(items) {
+    for (let index = 0; index < items.length; index += 8) {
+      await Promise.all(items.slice(index, index + 8).map((item) => api(`/api/image-text/ppt/texts/${item.id}`, json("PATCH", { text: item.currentText }))));
+    }
   }
 
   async function exportPpt() {
     if (!project) return;
     setBusy(true); setError("");
     try {
-      for (const item of project.slides.flatMap((currentSlide) => currentSlide.items)) await api(`/api/image-text/ppt/texts/${item.id}`, json("PATCH", { text: item.currentText }));
+      if (!changedItems.length) throw Object.assign(new Error(errors.PPT_NO_CHANGES), { code: "PPT_NO_CHANGES" });
+      await saveItems(allItems.filter((item) => dirtyIds.has(item.id)));
+      setDirtyIds(new Set()); setSaveStatus("saved");
       const data = await api("/api/image-text/ppt/export", json("POST", { projectId: project.id })); setTask(data.task);
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }
   }
@@ -105,16 +132,17 @@ function PptTextEditor({ tool, authenticated, onAuth, onCompleted }) {
   return <section className="ite-workbench ite-ppt-workbench">
     <aside className="ite-assets ite-ppt-assets">
       <button className="ite-upload-card ite-ppt-upload" onClick={() => input.current?.click()}><input ref={input} hidden type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(event) => upload(event.target.files?.[0])} />{busy && !task ? <SpinnerGap className="ite-spin" size={28} /> : <FilePpt size={30} weight="duotone" />}<strong>{busy && !task ? "正在解析演示文稿…" : "上传 PPTX"}</strong><span>保留原文件版式与素材</span><small>PPTX · 最大 50 MB</small></button>
-      <div className="ite-ppt-slides">{project?.slides?.map((item) => <button key={item.number} className={slide?.number === item.number ? "active" : ""} onClick={() => { setSlideNumber(item.number); setSelectedId(""); }}><span>{item.number}</span><div>{item.items.slice(0, 3).map((text) => <i key={text.id}>{text.currentText}</i>)}</div><small>{item.items.length} 段文字</small></button>)}</div>
+      {project && <label className="ite-ppt-search"><MagnifyingGlass size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索整份 PPT 文字" /></label>}
+      <div className="ite-ppt-slides">{filteredSlides.map((item) => { const changed = item.items.filter((text) => text.currentText !== text.originalText).length; return <button key={item.number} className={slide?.number === item.number ? "active" : ""} onClick={() => { setSlideNumber(item.number); setSelectedId(""); }}><span>{item.number}</span><div>{item.items.slice(0, 3).map((text) => <i key={text.id}>{text.currentText}</i>)}</div><small className={changed ? "changed" : ""}>{changed ? `已修改 ${changed} 处` : `${item.items.length} 段文字`}</small></button>; })}{project && !filteredSlides.length && <p className="ite-ppt-no-results">没有找到包含该文字的页面</p>}</div>
     </aside>
     <section className="ite-canvas-panel ite-ppt-canvas-panel">
-      {!project ? <div className="ite-empty-canvas"><span><PresentationChart size={42} weight="duotone" /></span><h2>让整份 PPT 的文字都能快速修改</h2><p>上传 PPTX 后，系统会按页提取文字层。你可以逐段修改，再导出保持原版式的新文件。</p><button onClick={() => authenticated ? input.current?.click() : onAuth?.()}><Plus size={17} />选择 PPTX 文件</button><div><i>1</i>上传 PPT<b /><i>2</i>选择文字<b /><i>3</i>导出新版</div></div> : <><header className="ite-ppt-canvas-title"><div><small>SLIDE {slide?.number} / {project.slideCount}</small><strong>{project.name}</strong></div><span>文字层预览</span></header><div className="ite-ppt-stage">{slide?.items?.map((item) => <button key={item.id} className={selected?.id === item.id ? "selected" : ""} onClick={() => setSelectedId(item.id)} style={{ left: `${item.bbox.x * 100}%`, top: `${item.bbox.y * 100}%`, width: `${Math.min(item.bbox.width, 1 - item.bbox.x) * 100}%`, height: `${Math.min(item.bbox.height, 1 - item.bbox.y) * 100}%`, color: item.style.color, fontWeight: item.style.bold ? 700 : 500, fontSize: `${Math.max(9, Math.min(24, item.style.fontSize * .32))}px` }}>{item.currentText}</button>)}</div><p className="ite-ppt-note">测试版预览聚焦文字层；导出时会保留原 PPT 中的图片、背景、动画和其他对象。</p></>}
+      {!project ? <div className="ite-empty-canvas"><span><PresentationChart size={42} weight="duotone" /></span><h2>批量修改整份 PPT 的文字</h2><p>上传 PPTX，按页面查找和修改文字。导出时保留图片、背景、母版、动画与文本格式。</p><button onClick={() => authenticated ? input.current?.click() : onAuth?.()}><Plus size={17} />选择 PPTX 文件</button><div><i>1</i>上传 PPT<b /><i>2</i>批量修改<b /><i>3</i>校验并导出</div></div> : <><header className="ite-ppt-canvas-title"><div><small>SLIDE {slide?.number} / {project.slideCount}</small><strong>{project.name}</strong></div><span>{changedItems.length ? `共修改 ${changedItems.length} 处` : "尚未修改"}</span></header><div className="ite-ppt-stage">{slide?.items?.map((item) => <button key={item.id} className={selected?.id === item.id ? "selected" : ""} onClick={() => setSelectedId(item.id)} style={{ left: `${item.bbox.x * 100}%`, top: `${item.bbox.y * 100}%`, width: `${Math.min(item.bbox.width, 1 - item.bbox.x) * 100}%`, height: `${Math.min(item.bbox.height, 1 - item.bbox.y) * 100}%`, color: item.style.color, fontWeight: item.style.bold ? 700 : 500, fontSize: `${Math.max(9, Math.min(24, item.style.fontSize * .32))}px` }}>{item.currentText}</button>)}</div><p className="ite-ppt-note">工作区展示可编辑文字层；最终文件直接修改原 PPTX 文字对象，不会重绘页面。</p></>}
       {processing && <div className="ite-progress"><span><SpinnerGap className="ite-spin" /></span><div><strong>正在生成新版 PPT</strong><p>正在写回文字并重新打包演示文稿。</p><i><b style={{ width: `${Math.max(6, progress)}%` }} /></i></div><em>{progress}%</em></div>}
     </section>
-    <aside className="ite-editor ite-ppt-editor"><header><div><small>PRESENTATION TEXT</small><h2>PPT 文字编辑</h2></div>{project && <em>{project.slideCount} 页</em>}</header>
-      {!selected ? <div className="ite-no-selection"><FilePpt size={30} /><strong>{project ? "当前页没有可编辑文字" : "等待上传 PPTX"}</strong><p>{project ? "请选择左侧其他页面继续检查。" : "上传后会自动列出每页中的文字对象。"}</p></div> : <><label><span>原文字</span><div className="ite-original-text">{selected.originalText}</div></label><label><span>修改为</span><textarea value={selected.currentText} maxLength={2000} onChange={(event) => updateLocal(event.target.value)} /><small>{selected.currentText.length}/2000</small></label><div className="ite-ppt-meta"><span>第 {slide.number} 页</span><span>文本框 {selected.shapeIndex + 1}</span><span>保留原格式</span></div><section className="ite-options"><h3>导出说明</h3><label><CheckCircle weight="fill" /><span><strong>只替换文字内容</strong><small>图片、背景、母版与页面尺寸保持不变</small></span></label><label><CheckCircle weight="fill" /><span><strong>生成独立副本</strong><small>不会覆盖你上传的原始文件</small></span></label></section></>}
+    <aside className="ite-editor ite-ppt-editor"><header><div><small>PRESENTATION TEXT</small><h2>PPT 文字编辑</h2></div>{project && <em>{changedItems.length} 处修改</em>}</header>
+      {!selected ? <div className="ite-no-selection"><FilePpt size={30} /><strong>{project ? "当前页没有可编辑文字" : "等待上传 PPTX"}</strong><p>{project ? "请选择左侧其他页面继续检查。" : "上传后会自动列出每页中的文字对象。"}</p></div> : <><div className={`ite-ppt-save-status ${saveStatus}`}><CheckCircle weight="fill" />{saveStatus === "saving" ? "正在保存草稿" : saveStatus === "dirty" ? "这处修改尚未保存" : saveStatus === "exported" ? "新版 PPT 已通过校验" : "修改会自动保存"}</div><label><span>原文字</span><div className="ite-original-text">{selected.originalText}</div></label><label><span>修改为</span><textarea value={selected.currentText} maxLength={2000} onChange={(event) => updateLocal(event.target.value)} onBlur={() => saveItem(selected)} /><small>{selected.currentText.length}/2000</small></label><div className="ite-ppt-edit-actions"><button disabled={selected.currentText === selected.originalText} onClick={() => updateLocal(selected.originalText)}>恢复原文字</button></div><div className="ite-ppt-meta"><span>第 {slide.number} 页</span><span>文本框 {selected.shapeIndex + 1}</span><span>保留原格式</span></div><section className="ite-options"><h3>商业级导出保护</h3><label><CheckCircle weight="fill" /><span><strong>只写入实际修改</strong><small>没有修改的文字对象完全不触碰</small></span></label><label><CheckCircle weight="fill" /><span><strong>保留多段文字格式</strong><small>尽量沿用原有字体、颜色和强调样式</small></span></label><label><CheckCircle weight="fill" /><span><strong>导出后自动校验</strong><small>文字不一致则不交付并自动退款</small></span></label></section></>}
       {error && <p className="ite-error">{error}</p>}
-      <footer><button className="secondary" disabled={!project || processing || busy} onClick={exportPpt}>{busy || processing ? <SpinnerGap className="ite-spin" /> : <MagicWand />}导出新版 · {tool.creditCost} 积分</button><a className={!project?.downloadUrl ? "disabled" : ""} href={project?.downloadUrl || "#"} download><DownloadSimple />下载 PPTX</a></footer>
+      <footer><button className="secondary" disabled={!project || !changedItems.length || processing || busy} onClick={exportPpt}>{busy || processing ? <SpinnerGap className="ite-spin" /> : <MagicWand />}校验并导出 {changedItems.length || 0} 处 · {tool.creditCost} 积分</button><a className={!project?.downloadUrl ? "disabled" : ""} href={project?.downloadUrl || "#"} download><DownloadSimple />{saveStatus === "exported" ? "下载新版 PPTX" : "下载上次导出"}</a></footer>
     </aside>
   </section>;
 }
@@ -292,7 +320,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     <input ref={fileInput} hidden multiple type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => upload(Array.from(event.target.files || []))} />
     <button className="ite-back" onClick={onBack}><ArrowLeft size={16} />返回工具市场</button>
     <header className="ite-hero ite-hero-premium"><img className="ite-product-icon" src="/image-text-editor/image-text-editor-icon-v2.webp" alt="字迹 AI 图片文字编辑图标" /><div className="ite-hero-copy"><small>ONSHOWTOOLS · VISUAL TEXT STUDIO</small><h1>字迹 · AI 图片文字编辑</h1><p>不用重做整张图，也不用寻找源文件。识别、改写、修复与导出，在一个工作台完成。</p><div className="ite-hero-pills"><span><CheckCircle weight="fill" />图片文字智能识别</span><span><CheckCircle weight="fill" />PPTX 文字层编辑</span><span><CheckCircle weight="fill" />原文件安全保留</span></div></div><em>测试中</em><aside className="ite-hero-proof"><small>AI VISUAL EDITING</small><strong>让每一处文字<br />都能重新编辑</strong><div><span><b>20 MB</b>图片上传</span><span><b>50 MB</b>PPTX 上传</span><span><b>30 积分</b>每次导出</span></div></aside></header>
-    <nav className="ite-mode-tabs"><button className={mode === "image" ? "active" : ""} onClick={() => setMode("image")}>图片改字</button><button className={mode === "ppt" ? "active" : ""} onClick={() => setMode("ppt")}>PPT 改字 <i>NEW</i></button></nav>
+    <nav className="ite-mode-tabs"><button className={mode === "image" ? "active" : ""} onClick={() => setMode("image")}>图片改字</button><button className={mode === "ppt" ? "active" : ""} onClick={() => setMode("ppt")}>PPT 改字 <i>增强版</i></button></nav>
     {mode === "image" ? <><section className="ite-workbench">
       <aside className="ite-assets"><UploadCard busy={busy && !task} onFiles={upload} />
         <div className="ite-asset-list">{project?.assets?.map((item, index) => <button key={item.id} className={(asset?.id === item.id ? "active " : "") + item.status} onClick={() => { setAssetId(item.id); setSelectedId(""); setInlineEditingId(""); setDraftStatus("idle"); setShowResult(false); setZoom(1); }}><span>{String(index + 1).padStart(2, "0")}</span><img src={`/api/files/${item.originalFileId}/thumbnail`} alt={item.name} /><small>{item.detections.length} 处文字</small></button>)}</div>
