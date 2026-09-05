@@ -13,7 +13,7 @@ process.env.APP_URL = "http://localhost";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const { db } = await import("../server/database.mjs");
-const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, textOverlay, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
+const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, TextStyleAnalyzer, textOverlay, textStrokeMask, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
 const { readStoredFile } = await import("../server/object-storage.mjs");
 
 function userWithCredits() {
@@ -58,6 +58,20 @@ test("Chinese replacement text uses a CJK font and is fitted inside its OCR box"
   assert.deepEqual(await sharp(rendered).metadata().then(({ width, height, format }) => ({ width, height, format })), { width: 420, height: 90, format: "png" });
 });
 
+test("original foreground color and display weight are inferred from the uploaded image", async () => {
+  const source = await sharp({ create: { width: 640, height: 220, channels: 3, background: "#f8ede1" } })
+    .composite([{ input: Buffer.from('<svg width="640" height="220"><text x="120" y="145" font-size="90" font-family="serif" font-weight="900" fill="#bd7517">营业执照</text></svg>') }]).png().toBuffer();
+  const [style] = await new TextStyleAnalyzer().analyzeAll(source, [{ text: "营业执照", bbox: { x: 105, y: 55, width: 430, height: 110 } }]);
+  assert.equal(style.appearanceAnalyzed, true);
+  assert.notEqual(style.color, "#17264d");
+  assert.equal(style.fontFamily, "serif");
+  assert.equal(style.bold, true);
+  const mask = await textStrokeMask(source, { left: 105, top: 55, width: 430, height: 110 }, style.color);
+  const stats = await sharp(mask).stats();
+  assert.equal(stats.channels[0].max, 255);
+  assert.ok(stats.channels[0].mean < 90, "background repair must be limited to text strokes instead of replacing a rectangle");
+});
+
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {
   const user = userWithCredits();
   const source = await sharp({ create: { width: 900, height: 420, channels: 3, background: "#f1f5ff" } })
@@ -83,6 +97,9 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   assert.ok(fresh.assets[0].currentFileId);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM task_files WHERE task_id=?").get(task.id).count, 1);
   assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70);
+  updateImageTextDetection(user.id, detection.id, { text: "HELLO AGAIN" });
+  const reapplied = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionId: detection.id, useAiRepair: false, preserveStyle: true });
+  assert.equal(JSON.parse(db.prepare("SELECT input_json FROM tasks WHERE id=?").get(reapplied.id).input_json).sourceFileId, project.assets[0].originalFileId);
 });
 
 test("PPTX text layers can be uploaded, edited and exported without replacing the source file", async () => {

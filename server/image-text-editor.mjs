@@ -111,9 +111,71 @@ export class HybridOCRProvider extends OCRProvider {
 }
 
 export class TextStyleAnalyzer {
-  analyze(detection) {
-    return { fontFamily: "auto", fontSize: Math.max(12, Math.round(detection.bbox.height * .78)), color: "#17264d", bold: true, italic: false, underline: false, align: "center", letterSpacing: 0, ...(detection.style || {}) };
+  async analyzeAll(buffer, detections) {
+    const metadata = await sharp(buffer).metadata();
+    const decoded = await sharp(buffer).resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" }).toColourspace("srgb").raw().toBuffer({ resolveWithObject: true });
+    const scaleX = decoded.info.width / Math.max(1, metadata.width || decoded.info.width);
+    const scaleY = decoded.info.height / Math.max(1, metadata.height || decoded.info.height);
+    return detections.map((detection) => this.analyze(detection, sampleTextAppearance(decoded, detection.bbox, scaleX, scaleY)));
   }
+
+  analyze(detection, sampled = {}) {
+    const supplied = detection.style || {};
+    const fontSize = clamp(supplied.fontSize || detection.bbox.height * .78, 8, 300);
+    const shortDisplayText = [...String(detection.text || "")].length <= 14 && detection.bbox.height >= 32;
+    return {
+      fontFamily: ["serif", "sans"].includes(supplied.fontFamily) ? supplied.fontFamily : (shortDisplayText ? "serif" : "sans"),
+      fontSize,
+      color: sampled.color || (/^#[0-9a-f]{6}$/i.test(supplied.color) ? supplied.color : "#17264d"),
+      bold: sampled.bold ?? supplied.bold ?? shortDisplayText,
+      italic: Boolean(supplied.italic), underline: Boolean(supplied.underline), align: supplied.align || "center",
+      letterSpacing: clamp(supplied.letterSpacing ?? (shortDisplayText ? fontSize * .07 : 0), 0, fontSize * .18),
+      appearanceAnalyzed: Boolean(sampled.color),
+    };
+  }
+}
+
+function median(values) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+const rgbDistance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+const rgbHex = (rgb) => `#${rgb.map((value) => Math.round(clamp(value, 0, 255)).toString(16).padStart(2, "0")).join("")}`;
+
+function sampleTextAppearance(decoded, bbox, scaleX = 1, scaleY = 1) {
+  const { data, info } = decoded;
+  const channels = info.channels;
+  const x0 = Math.round(clamp(bbox.x * scaleX, 0, info.width - 1));
+  const y0 = Math.round(clamp(bbox.y * scaleY, 0, info.height - 1));
+  const width = Math.max(4, Math.round(clamp(bbox.width * scaleX, 4, info.width - x0)));
+  const height = Math.max(4, Math.round(clamp(bbox.height * scaleY, 4, info.height - y0)));
+  const pixels = [];
+  const border = [];
+  const step = Math.max(1, Math.floor(Math.max(width, height) / 260));
+  for (let y = 0; y < height; y += step) for (let x = 0; x < width; x += step) {
+    const offset = ((y0 + y) * info.width + x0 + x) * channels;
+    const pixel = [data[offset], data[offset + 1], data[offset + 2]];
+    pixels.push(pixel);
+    if (x < step * 2 || y < step * 2 || x >= width - step * 2 || y >= height - step * 2) border.push(pixel);
+  }
+  const background = [0, 1, 2].map((channel) => median(border.map((pixel) => pixel[channel])));
+  const candidates = pixels.filter((pixel) => rgbDistance(pixel, background) >= 38);
+  if (candidates.length < Math.max(6, pixels.length * .008)) return {};
+  const buckets = new Map();
+  for (const pixel of candidates) {
+    const key = pixel.map((value) => Math.round(value / 24)).join(":");
+    const current = buckets.get(key) || { pixels: [], score: 0 };
+    current.pixels.push(pixel);
+    current.score += 1 + Math.min(2, rgbDistance(pixel, background) / 120);
+    buckets.set(key, current);
+  }
+  const selected = [...buckets.values()].sort((a, b) => b.score - a.score)[0];
+  if (!selected?.pixels.length) return {};
+  const color = [0, 1, 2].map((channel) => median(selected.pixels.map((pixel) => pixel[channel])));
+  return { color: rgbHex(color), bold: candidates.length / pixels.length >= .13 };
 }
 
 export class ImageInpaintingProvider {
@@ -268,6 +330,7 @@ export async function uploadImageTextAsset(request, user) {
   const timestamp = Date.now();
   try {
     const detections = await ocrProvider.detect(normalized.data);
+    const styles = await styleAnalyzer.analyzeAll(normalized.data, detections);
     db.exec("BEGIN IMMEDIATE");
     const existing = db.prepare("SELECT id FROM image_text_projects WHERE id = ? AND user_id = ?").get(projectId, user.id);
     if (!existing) db.prepare("INSERT INTO image_text_projects (id,user_id,name,status,created_at,updated_at) VALUES (?,?,?,'ready',?,?)")
@@ -279,7 +342,7 @@ export async function uploadImageTextAsset(request, user) {
     db.prepare("INSERT INTO image_text_assets (id,project_id,original_file_id,name,width,height,status,created_at,updated_at) VALUES (?,?,?,?,?,?,'ready',?,?)")
       .run(assetId, projectId, fileId, clean(file.name, 180), normalized.info.width, normalized.info.height, timestamp, timestamp);
     const insert = db.prepare("INSERT INTO image_text_detections (id,asset_id,original_text,current_text,bbox_json,confidence,rotation,style_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)");
-    for (const item of detections) insert.run(randomUUID(), assetId, item.text, item.text, JSON.stringify(item.bbox), item.confidence, item.rotation, JSON.stringify(styleAnalyzer.analyze(item)), timestamp, timestamp);
+    detections.forEach((item, index) => insert.run(randomUUID(), assetId, item.text, item.text, JSON.stringify(item.bbox), item.confidence, item.rotation, JSON.stringify(styles[index]), timestamp, timestamp));
     db.prepare("UPDATE image_text_projects SET updated_at = ? WHERE id = ?").run(timestamp, projectId);
     db.exec("COMMIT");
     audit(user.id, "image_text.upload", "image_text_project", projectId, { assetId, detectionCount: detections.length });
@@ -320,11 +383,12 @@ export async function redetectImageTextAsset(userId, assetId) {
   try {
     const source = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
     const detections = await ocrProvider.detect(source);
+    const styles = await styleAnalyzer.analyzeAll(source, detections);
     const timestamp = Date.now();
     db.exec("BEGIN IMMEDIATE");
     db.prepare("DELETE FROM image_text_detections WHERE asset_id=?").run(asset.id);
     const insert = db.prepare("INSERT INTO image_text_detections (id,asset_id,original_text,current_text,bbox_json,confidence,rotation,style_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)");
-    for (const item of detections) insert.run(randomUUID(), asset.id, item.text, item.text, JSON.stringify(item.bbox), item.confidence, item.rotation, JSON.stringify(styleAnalyzer.analyze(item)), timestamp, timestamp);
+    detections.forEach((item, index) => insert.run(randomUUID(), asset.id, item.text, item.text, JSON.stringify(item.bbox), item.confidence, item.rotation, JSON.stringify(styles[index]), timestamp, timestamp));
     db.prepare("UPDATE image_text_assets SET status='ready',updated_at=? WHERE id=?").run(timestamp, asset.id);
     db.prepare("UPDATE image_text_projects SET status='ready',updated_at=? WHERE id=?").run(timestamp, asset.project_id);
     db.exec("COMMIT");
@@ -352,8 +416,15 @@ export function createImageTextEditTask(user, tool, payload) {
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance);
   if (available < tool.creditCost) throw error("INSUFFICIENT_CREDITS", 402);
   assertUserFileCapacity(user.id);
+  let sourceFileId = detection.current_file_id || detection.original_file_id;
+  if (detection.current_file_id) {
+    const previousApply = db.prepare("SELECT before_json,after_json FROM image_text_operations WHERE asset_id=? AND detection_id=? AND operation_type='apply' ORDER BY created_at DESC LIMIT 1")
+      .get(detection.asset_id, detection.id);
+    const before = parse(previousApply?.before_json); const after = parse(previousApply?.after_json);
+    if (after.fileId === detection.current_file_id && before.fileId) sourceFileId = before.fileId;
+  }
   const taskId = randomUUID(); const timestamp = Date.now();
-  const input = { assetId: detection.asset_id, detectionId: detection.id, sourceFileId: detection.current_file_id || detection.original_file_id,
+  const input = { assetId: detection.asset_id, detectionId: detection.id, sourceFileId,
     useAiRepair: payload.useAiRepair !== false, preserveStyle: payload.preserveStyle !== false };
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -380,12 +451,40 @@ function textWidthUnits(text) {
 }
 
 export function textOverlay(text, style, width, height) {
-  const font = style.fontFamily === "serif" ? "Noto Serif CJK SC,serif" : "Noto Sans CJK SC,PingFang SC,Microsoft YaHei,sans-serif";
+  const font = style.fontFamily === "serif" ? "Noto Serif CJK SC,Songti SC,SimSun,serif" : "Noto Sans CJK SC,PingFang SC,Microsoft YaHei,sans-serif";
   const anchor = style.align === "left" ? "start" : style.align === "right" ? "end" : "middle";
   const x = style.align === "left" ? 2 : style.align === "right" ? width - 2 : width / 2;
   const requestedSize = clamp(style.fontSize, 8, 300);
-  const fittedSize = Math.max(8, Math.min(requestedSize, height * .8, (width - 6) / Math.max(1, textWidthUnits(text)) * .92));
-  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><text x="${x}" y="${height / 2}" dominant-baseline="central" text-anchor="${anchor}" fill="${xml(style.color || "#17264d")}" font-family="${xml(font)}" font-size="${fittedSize}" font-weight="${style.bold ? 700 : 400}">${xml(text)}</text></svg>`);
+  const characters = Math.max(1, [...String(text || "")].length);
+  const letterSpacing = clamp(style.letterSpacing, 0, requestedSize * .18);
+  const fittedSize = Math.max(8, Math.min(requestedSize, height * .8, (width - 6 - letterSpacing * Math.max(0, characters - 1)) / Math.max(1, textWidthUnits(text)) * .94));
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><text x="${x}" y="${height / 2}" dominant-baseline="central" text-anchor="${anchor}" fill="${xml(style.color || "#17264d")}" font-family="${xml(font)}" font-size="${fittedSize}" font-weight="${style.bold ? 900 : 400}" letter-spacing="${letterSpacing}">${xml(text)}</text></svg>`);
+}
+
+export async function textStrokeMask(patch, target, foreground) {
+  const decoded = await sharp(patch).flatten({ background: "#ffffff" }).toColourspace("srgb").raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = decoded; const channels = info.channels;
+  const mask = new Uint8Array(info.width * info.height);
+  const foregroundRgb = String(foreground || "").match(/[0-9a-f]{2}/gi)?.map((value) => parseInt(value, 16));
+  const x0 = Math.round(clamp(target.left, 0, info.width - 1)); const y0 = Math.round(clamp(target.top, 0, info.height - 1));
+  const x1 = Math.round(clamp(target.left + target.width, x0 + 1, info.width)); const y1 = Math.round(clamp(target.top + target.height, y0 + 1, info.height));
+  const border = [];
+  for (let x = x0; x < x1; x += 2) for (const y of [y0, y1 - 1]) { const offset = (y * info.width + x) * channels; border.push([data[offset], data[offset + 1], data[offset + 2]]); }
+  for (let y = y0; y < y1; y += 2) for (const x of [x0, x1 - 1]) { const offset = (y * info.width + x) * channels; border.push([data[offset], data[offset + 1], data[offset + 2]]); }
+  const background = [0, 1, 2].map((channel) => median(border.map((pixel) => pixel[channel])));
+  let marked = 0;
+  for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+    const offset = (y * info.width + x) * channels; const pixel = [data[offset], data[offset + 1], data[offset + 2]];
+    if (rgbDistance(pixel, background) > 30 && (!foregroundRgb || rgbDistance(pixel, foregroundRgb) < 88)) { mask[y * info.width + x] = 255; marked += 1; }
+  }
+  if (marked < 4) for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) mask[y * info.width + x] = 255;
+  const radius = Math.max(1, Math.min(4, Math.round(target.height / 24))); const dilated = Buffer.alloc(mask.length);
+  for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) if (mask[y * info.width + x]) {
+    for (let dy = -radius; dy <= radius; dy += 1) for (let dx = -radius; dx <= radius; dx += 1) {
+      const px = x + dx; const py = y + dy; if (px >= 0 && py >= 0 && px < info.width && py < info.height) dilated[py * info.width + px] = 255;
+    }
+  }
+  return sharp(dilated, { raw: { width: info.width, height: info.height, channels: 1 } }).blur(.7).png().toBuffer();
 }
 
 function taskProgress(taskId, progress, phase) {
@@ -450,7 +549,9 @@ export async function executeImageTextEditTask(task, input) {
   const sourceFile = fileRow(input.sourceFileId, task.user_id);
   if (!detection || !sourceFile) throw error("IMAGE_TEXT_SOURCE_MISSING", 500);
   const source = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
-  const bbox = parse(detection.bbox_json); const style = parse(detection.style_json);
+  const bbox = parse(detection.bbox_json); const storedStyle = parse(detection.style_json);
+  const analyzedStyle = storedStyle.appearanceAnalyzed ? storedStyle : (await styleAnalyzer.analyzeAll(source, [{ text: detection.original_text, bbox, style: storedStyle }]))[0];
+  const style = input.preserveStyle === false ? { ...storedStyle, color: "#17264d", fontFamily: "sans", bold: true, letterSpacing: 0 } : analyzedStyle;
   const x = Math.round(clamp(bbox.x, 0, detection.width - 1)); const y = Math.round(clamp(bbox.y, 0, detection.height - 1));
   const width = Math.max(8, Math.round(clamp(bbox.width, 8, detection.width - x))); const height = Math.max(8, Math.round(clamp(bbox.height, 8, detection.height - y)));
   const padding = Math.max(8, Math.round(Math.min(width, height) * .18));
@@ -463,7 +564,9 @@ export async function executeImageTextEditTask(task, input) {
   const repair = await restoreTextBackground(patch, patchBox.width, patchBox.height, input.useAiRepair);
   const restored = repair.buffer; const repairMode = repair.repairMode;
   taskProgress(task.id, 76, "rendering");
-  const cleanBase = await sharp(source).composite([{ input: restored, left: patchBox.left, top: patchBox.top }]).png().toBuffer();
+  const mask = await textStrokeMask(patch, { left: x - patchBox.left, top: y - patchBox.top, width, height }, style.color);
+  const maskedRestore = await sharp(restored).removeAlpha().joinChannel(mask).png().toBuffer();
+  const cleanBase = await sharp(source).composite([{ input: maskedRestore, left: patchBox.left, top: patchBox.top }]).png().toBuffer();
   const overlay = textOverlay(detection.current_text, style, width, height);
   const output = await sharp(cleanBase).composite([{ input: overlay, left: x, top: y }]).png().toBuffer();
   const fileId = randomUUID(); const fileName = `${detection.asset_id.slice(0, 8)}-edited.png`;
@@ -478,6 +581,7 @@ export async function executeImageTextEditTask(task, input) {
     db.prepare("INSERT INTO task_files (task_id,file_id) VALUES (?,?)").run(task.id, fileId);
     db.prepare("UPDATE image_text_assets SET current_file_id=?,status='ready',updated_at=? WHERE id=?").run(fileId, timestamp, input.assetId);
     db.prepare("UPDATE image_text_projects SET status='ready',updated_at=? WHERE id=?").run(timestamp, detection.project_id);
+    if (!storedStyle.appearanceAnalyzed && style.appearanceAnalyzed) db.prepare("UPDATE image_text_detections SET style_json=?,updated_at=? WHERE id=?").run(JSON.stringify(style), timestamp, input.detectionId);
     db.prepare("INSERT INTO image_text_operations (id,project_id,asset_id,detection_id,task_id,operation_type,before_json,after_json,created_at) VALUES (?,?,?,?,?,'apply',?,?,?)")
       .run(randomUUID(), detection.project_id, input.assetId, input.detectionId, task.id, JSON.stringify({ fileId: input.sourceFileId }), JSON.stringify({ fileId, repairMode }), timestamp);
     db.exec("COMMIT");
