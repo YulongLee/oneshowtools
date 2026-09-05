@@ -42,10 +42,10 @@ async function retryFailedRegions(source, candidate, edits, indices, generate) {
         const prompt = replacementPrompt([localEdit], context.width, context.height)
           + `\n这是局部纠正。目标共有 ${characters.length} 个字符，依次为 ${JSON.stringify(characters)}。必须完整出现，尤其不能漏掉末尾字符。`;
         const result = await generate({ buffer: crop, mimeType: "image/png", prompt, preserveLayout: true });
-        const metadata = await sharp(result.buffer).metadata();
-        if (Math.abs(metadata.width / metadata.height / (context.width / context.height) - 1) > .025) throw failure("IMAGE_TEXT_LAYOUT_CHANGED");
         const r = regions[index];
-        // Copy only the failed rectangle, never its wider context or already-correct edits.
+        // Regional model APIs are allowed to return a square/default canvas. Normalize
+        // that controlled crop back to its source coordinates, then copy only the
+        // selected rectangle. The wider context and all other source pixels are ignored.
         const patch = await sharp(result.buffer).resize(context.width, context.height, { fit: "fill" }).extract({ left: r.left - context.left, top: r.top - context.top, width: r.width, height: r.height }).png().toBuffer();
         overlays.push({ input: patch, left: r.left, top: r.top });
       } catch (cause) { errors.push(cause); }
@@ -168,25 +168,69 @@ export async function generatePreservedTextImage({ source, edits, generate, reco
   const prompt = replacementPrompt(edits, width, height);
   let feedback = "";
   let previousCandidate, regionalIndices = [];
+  let bestOutput = null;
+  let lastQualityFailure = null;
+  let lastFailedRegionIndices = [];
   // Retry a rejected result once from the original, never from a damaged generation.
   for (let attempt = 0; attempt < 2; attempt++) {
     onProgress(attempt ? (regionalIndices.length ? "retrying-regions" : "retrying-quality") : "model-editing");
     const started = Date.now();
-    const result = attempt && regionalIndices.length
-      ? await retryFailedRegions(source, previousCandidate, edits, regionalIndices, generate)
-      : await generate({ buffer: source, mimeType: "image/png", prompt: prompt + feedback, preserveLayout: true });
+    let result;
+    try {
+      result = attempt && regionalIndices.length
+        ? await retryFailedRegions(source, previousCandidate, edits, regionalIndices, generate)
+        : await generate({ buffer: source, mimeType: "image/png", prompt: prompt + feedback, preserveLayout: true });
+    } catch (cause) {
+      // A tightly cropped region can be misclassified by the upstream service. Retry
+      // once with the full, already accepted source image; never bypass a rejection
+      // that also applies to the full image.
+      if (attempt && regionalIndices.length && cause.code === "IMAGE_PROVIDER_CONTENT_REJECTED") {
+        onDiagnostic({ phase: "generation", attempt: attempt + 1, durationMs: Date.now() - started, mode: "regional", code: cause.code, fallback: "full" });
+        regionalIndices = [];
+        result = await generate({ buffer: source, mimeType: "image/png", prompt: prompt + feedback, preserveLayout: true });
+      } else throw cause;
+    }
     previousCandidate = result.buffer;
     onDiagnostic({ phase: "generation", attempt: attempt + 1, durationMs: Date.now() - started, mode: regionalIndices.length ? "regional" : "full" });
     const checkedAt = Date.now();
     try {
       const output = await composeProtectedResult(source, result.buffer, edits);
+      bestOutput = output;
       onProgress("checking-text");
       await verifyReplacementText(output, edits, recognize);
       onDiagnostic({ phase: "verification", attempt: attempt + 1, durationMs: Date.now() - checkedAt, failedRegions: [] });
       return { buffer: output, repairMode: "model-text-edit", attempts: attempt + 1, textVerified: true };
     } catch (cause) {
       onDiagnostic({ phase: "verification", attempt: attempt + 1, durationMs: Date.now() - checkedAt, code: cause.code, failedRegions: (cause.mismatches || []).map((item) => item.regionIndex + 1) });
-      if (attempt || !["IMAGE_TEXT_QUALITY_REJECTED", "IMAGE_TEXT_LAYOUT_CHANGED"].includes(cause.code)) throw cause;
+      const recoverable = ["IMAGE_TEXT_QUALITY_REJECTED", "IMAGE_TEXT_LAYOUT_CHANGED"].includes(cause.code);
+      if (recoverable) {
+        lastQualityFailure = cause;
+        if (cause.mismatches?.length) lastFailedRegionIndices = cause.mismatches.map((item) => item.regionIndex);
+      }
+      const verificationUnavailable = ["IMAGE_TEXT_OCR_TIMEOUT", "IMAGE_TEXT_OCR_FAILED", "IMAGE_PROVIDER_RATE_LIMITED", "IMAGE_PROVIDER_UNAVAILABLE", "IMAGE_PROVIDER_UNREACHABLE", "IMAGE_PROVIDER_TIMEOUT"].includes(cause.code);
+      if (verificationUnavailable && bestOutput) return {
+        buffer: bestOutput,
+        repairMode: "model-text-edit-needs-review",
+        attempts: attempt + 1,
+        textVerified: false,
+        qualityStatus: "needs-review",
+        failedRegionIndices: [],
+        warnings: [{ code: cause.code, failedRegionIndices: [] }],
+      };
+      if (attempt) {
+        if (!recoverable || !bestOutput) throw cause;
+        const failedRegionIndices = cause.mismatches?.length ? cause.mismatches.map((item) => item.regionIndex) : lastFailedRegionIndices;
+        return {
+          buffer: bestOutput,
+          repairMode: "model-text-edit-needs-review",
+          attempts: attempt + 1,
+          textVerified: false,
+          qualityStatus: "needs-review",
+          failedRegionIndices,
+          warnings: [{ code: cause.code, failedRegionIndices }],
+        };
+      }
+      if (!recoverable) throw cause;
       const indices = (cause.mismatches || []).map((item) => item.regionIndex);
       regionalIndices = canRetryRegions(indices, editRegions(edits, width, height)) ? indices : [];
       feedback = cause.code === "IMAGE_TEXT_QUALITY_REJECTED"
@@ -194,4 +238,6 @@ export async function generatePreservedTextImage({ source, edits, generate, reco
         : "\n请保持原图比例和排版，不添加任何文字边框、选区线或装饰。";
     }
   }
+  if (bestOutput) return { buffer: bestOutput, repairMode: "model-text-edit-needs-review", attempts: 2, textVerified: false, qualityStatus: "needs-review", failedRegionIndices: lastFailedRegionIndices, warnings: [{ code: lastQualityFailure?.code || "IMAGE_TEXT_QUALITY_REJECTED", failedRegionIndices: lastFailedRegionIndices }] };
+  throw lastQualityFailure || failure("IMAGE_TEXT_QUALITY_REJECTED");
 }

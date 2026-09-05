@@ -16,7 +16,9 @@ const errors = {
   IMAGE_TEXT_QUALITY_REJECTED: "生成文字与草稿未能核对一致，可能是漏改、错字或识别不清。本次积分已退回，草稿保留。请检查选中文字框及内容后重试。",
   IMAGE_TEXT_LAYOUT_CHANGED: "生成图片的版式发生变化，本次未交付结果，积分已退回。请重试。",
   IMAGE_PROVIDER_CONTENT_REJECTED: "模型服务未通过本次内容审核，无法继续生成；本次积分已退回，草稿保留。如有疑问请联系客服核查。",
-  IMAGE_EDITING_NOT_CONFIGURED: "背景修复模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "背景修复服务暂时不可用，请稍后重试。",
+  IMAGE_EDITING_NOT_CONFIGURED: "图片编辑模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "图片编辑服务暂时不可用，请稍后重试。",
+  IMAGE_PROVIDER_RATE_LIMITED: "当前使用人数较多，请稍后再试；失败任务不会重复扣积分。", IMAGE_PROVIDER_TIMEOUT: "模型处理超时，本次积分已退回，请稍后重试。",
+  IMAGE_PROVIDER_AUTH_FAILED: "图片编辑服务配置异常，请联系客服处理，本次积分已退回。",
   PPT_FILE_REQUIRED: "请先上传 PPTX 文件。", PPT_FILE_UNSUPPORTED: "目前仅支持 .pptx 格式。", PPT_FILE_TOO_LARGE: "PPTX 文件不能超过 50 MB。",
   PPT_FILE_INVALID: "这个 PPTX 文件无法解析，请确认文件没有损坏。", PPT_PROJECT_NOT_FOUND: "这个 PPT 项目已失效，请重新上传。", PPT_TEXT_NOT_FOUND: "这段 PPT 文字已失效。",
   PPT_FILE_TOO_COMPLEX: "这份 PPT 内容过多，测试版暂时支持最多 200 页或 5000 个文字框。",
@@ -144,6 +146,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const changedDetections = asset?.detections?.filter((item) => changedIds.has(item.id)) || [];
   const imageUrl = asset ? `${compare ? asset.originalUrl : asset.imageUrl}${(compare ? asset.originalUrl : asset.imageUrl).includes("?") ? "&" : "?"}v=${asset.currentFileId || asset.originalFileId}-${resultNonce}` : "";
   const progressText = { preparing: "准备处理", "model-editing": "正在按原图风格修改文字", "checking-text": "正在逐处检查生成文字", "retrying-regions": "正在局部校正未通过的文字", "retrying-quality": "正在重新生成以校正文字或版式", rendering: "保存生成结果", completed: "处理完成" };
+  const resultNeedsReview = task?.status === "completed" && task?.output?.textVerified === false;
 
   useEffect(() => {
     if (!inlineEditingId || !inlineEditor.current) return;
@@ -269,7 +272,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     const edits = changedDetections.length ? changedDetections : (selected ? [selected] : []);
     if (!edits.length) return; setBusy(true); setError("");
     try {
-      for (const item of edits) await api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }));
+      await Promise.all(edits.map((item) => api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }))));
       setDraftStatus("saved");
       setShowResult(false);
       const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), applyAllPending: true }));
@@ -330,12 +333,13 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
       </aside>
     </section>
     {showResult && asset?.currentFileId && <section className="ite-result-preview" ref={resultPreviewRef}>
-      <header><div><small>GENERATED RESULT</small><h2>生成结果预览</h2><p>本次已统一处理 <strong>{Number(task?.output?.editCount || changedDetections.length || 1)}</strong> 处文字。请先对比确认，满意后再下载。</p></div><span><CheckCircle weight="fill" />生成完成</span></header>
+      <header><div><small>GENERATED RESULT</small><h2>生成结果预览</h2><p>本次已统一处理 <strong>{Number(task?.output?.editCount || changedDetections.length || 1)}</strong> 处文字。{resultNeedsReview ? "模型已生成可用预览，但自动文字核对未完全一致，请人工确认后再下载。" : "自动核对已通过，请先对比确认，满意后再下载。"}</p></div><span className={resultNeedsReview ? "needs-review" : "verified"}><CheckCircle weight="fill" />{resultNeedsReview ? "请人工确认" : "文字核对通过"}</span></header>
       <div className="ite-result-compare">
         <figure><figcaption><span>原始图片</span><small>修改前</small></figcaption><div><img src={`${asset.originalUrl}${asset.originalUrl.includes("?") ? "&" : "?"}v=${asset.originalFileId}`} alt={`${asset.name}原始图片`} /></div></figure>
         <figure className="result"><figcaption><span>生成后</span><small>已合并全部修改</small></figcaption><div><img src={`${asset.imageUrl}${asset.imageUrl.includes("?") ? "&" : "?"}v=${asset.currentFileId}-${resultNonce}`} alt={`${asset.name}生成结果`} /></div></figure>
       </div>
-      <footer><button onClick={() => { setShowResult(false); stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><ArrowLeft />继续修改</button><a href={task?.output?.downloadUrl || asset.imageUrl} download><DownloadSimple />确认满意，下载图片</a></footer>
+      {resultNeedsReview && <p className="ite-result-warning">个别文字可能存在漏字、错字或字形偏差。你可以继续修改并重新生成；确认画面无误后，也可以直接下载当前结果。</p>}
+      <footer><button onClick={() => { const failedId = task?.output?.failedDetectionIds?.[0]; if (failedId) setSelectedId(failedId); setShowResult(false); stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><ArrowLeft />继续修改</button><a href={task?.output?.downloadUrl || asset.imageUrl} download><DownloadSimple />确认满意，下载图片</a></footer>
     </section>}</> : <PptTextEditor tool={tool} authenticated={authenticated} onAuth={onAuth} onCompleted={onCompleted} />}
     <p className="ite-tip"><FileImage size={16} />小提示：替换文字长度接近原文时更容易保留排版；复杂艺术字请在预览中仔细确认。</p>
   </main>;

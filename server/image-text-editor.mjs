@@ -436,6 +436,9 @@ export function createImageTextEditTask(user, tool, payload) {
   const byId = new Map(detections.map((item) => [item.id, item]));
   const orderedDetections = detectionIds.map((id) => byId.get(id));
   const detection = orderedDetections[0];
+  const existingTask = db.prepare("SELECT id,status,credit_cost,output_json,input_json FROM tasks WHERE user_id=? AND tool_id=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 12")
+    .all(user.id, tool.id).find((item) => parse(item.input_json).assetId === assetId);
+  if (existingTask) return { id: existingTask.id, status: existingTask.status, creditCost: existingTask.credit_cost, output: parse(existingTask.output_json), duplicate: true };
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance);
   if (available < tool.creditCost) throw error("INSUFFICIENT_CREDITS", 402);
   assertUserFileCapacity(user.id);
@@ -598,7 +601,8 @@ export async function executeImageTextEditTask(task, input, dependencies = {}) {
     }
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); await deleteStoredFile(stored).catch(() => {}); throw cause; }
-  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, timings, repairModes: [generated.repairMode] } };
+  const failedDetectionIds = (generated.failedRegionIndices || []).map((index) => edits[index]?.id).filter(Boolean);
+  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, qualityStatus: generated.qualityStatus || "verified", warnings: generated.warnings || [], failedDetectionIds, timings, repairModes: [generated.repairMode] } };
 }
 
 export function failImageTextTask(taskId) {

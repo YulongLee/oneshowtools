@@ -16,13 +16,17 @@ test("all pixels outside both replacement regions remain exactly the original", 
   }
   for (const e of edits) assert.deepEqual([...raw.subarray(((e.bbox.y + 5) * 300 + e.bbox.x + 5) * 3, ((e.bbox.y + 5) * 300 + e.bbox.x + 5) * 3 + 3)], [17, 51, 85]);
 });
-test("a missed second replacement rejects the complete result after one bounded retry", async () => {
+test("a missed second replacement returns an explicit needs-review preview after one bounded retry", async () => {
   const source = await image("#aabbcc"); let calls = 0; let reads = 0;
-  await assert.rejects(generatePreservedTextImage({ source, edits,
+  const result = await generatePreservedTextImage({ source, edits,
     generate: async (input) => { calls++; if (calls === 1) assert.deepEqual(input.buffer, source); return { buffer: input.buffer }; },
     recognize: async () => [{ text: reads++ % 2 ? "2025" : "Summer" }],
-  }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
+  });
   assert.equal(calls, 2); assert.equal(reads, 4);
+  assert.equal(result.textVerified, false);
+  assert.equal(result.qualityStatus, "needs-review");
+  assert.deepEqual(result.failedRegionIndices, [1]);
+  assert.equal((await sharp(result.buffer).metadata()).width, 300);
 });
 test("provider failure is propagated without manufacturing a blurred successful image", async () => {
   let reads = 0;
@@ -95,6 +99,35 @@ test("regional retry retains correct regions and rechecks the whole final result
   assert.equal(events.find((event) => event.attempt === 2 && event.phase === "generation").mode, "regional");
   const raw = await sharp(result.buffer).removeAlpha().raw().toBuffer();
   assert.deepEqual([...raw.subarray((42 * 300 + 42) * 3, (42 * 300 + 42) * 3 + 3)], [18, 52, 86]);
+});
+
+test("regional retry normalizes a provider default canvas instead of rejecting the whole image", async () => {
+  const source = await image("#aabbcc"); let calls = 0, reads = 0;
+  const result = await generatePreservedTextImage({ source, edits: [edits[0]],
+    generate: async () => ({ buffer: ++calls === 1 ? source : await image("#aabbcc", 1024, 1024) }),
+    recognize: async () => [{ text: reads++ ? "Summer" : "wrong" }],
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.textVerified, true);
+  assert.deepEqual(await sharp(result.buffer).metadata().then(({ width, height }) => ({ width, height })), { width: 300, height: 200 });
+});
+
+test("a full-image provider content rejection is propagated instead of delivered as a preview", async () => {
+  await assert.rejects(generatePreservedTextImage({ source: await image("white"), edits: [edits[0]],
+    generate: async () => { throw Object.assign(new Error("rejected"), { code: "IMAGE_PROVIDER_CONTENT_REJECTED" }); },
+    recognize: async () => [{ text: "Summer" }],
+  }), { code: "IMAGE_PROVIDER_CONTENT_REJECTED" });
+});
+
+test("an OCR outage returns the protected model result for manual review without a second generation", async () => {
+  let calls = 0;
+  const result = await generatePreservedTextImage({ source: await image("white"), edits: [edits[0]],
+    generate: async ({ buffer }) => { calls++; return { buffer }; },
+    recognize: async () => { throw Object.assign(new Error("timeout"), { code: "IMAGE_TEXT_OCR_TIMEOUT" }); },
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.textVerified, false);
+  assert.equal(result.warnings[0].code, "IMAGE_TEXT_OCR_TIMEOUT");
 });
 
 test("retry context remains in bounds at every image corner", () => {

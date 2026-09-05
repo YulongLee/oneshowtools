@@ -41,6 +41,8 @@ test("image text edits persist as a draft when the input loses focus", async () 
   assert.match(source, /detectionIds: edits\.map/);
   assert.match(source, /生成结果预览/);
   assert.match(source, /确认满意，下载图片/);
+  assert.match(source, /请人工确认/);
+  assert.match(source, /Promise\.all\(edits\.map/);
   assert.doesNotMatch(source, /ite-direct-edit-hint/);
 });
 
@@ -92,6 +94,10 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   updateImageTextDetection(user.id, secondDetectionId, { text: "SECOND AI" });
   const tool = db.prepare("SELECT id,slug,name_zh AS nameZh,name_en AS nameEn,credit_cost AS creditCost FROM tools WHERE slug='image-text-editor'").get();
   const queued = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionIds: [detection.id], applyAllPending: true, useAiRepair: false, preserveStyle: true });
+  const duplicate = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionIds: [detection.id], applyAllPending: true });
+  assert.equal(duplicate.id, queued.id, "double submit must reuse the active task");
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70, "double submit charges once");
   const task = db.prepare("SELECT * FROM tasks WHERE id=?").get(queued.id);
   assert.deepEqual(JSON.parse(task.input_json).detectionIds, [detection.id, secondDetectionId]);
   let recognizeIndex = 0;
@@ -101,6 +107,7 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   });
   assert.equal(result.status, "completed");
   assert.equal(result.output.editCount, 2);
+  db.prepare("UPDATE tasks SET status='completed',output_json=? WHERE id=?").run(JSON.stringify(result.output), task.id);
   const resultFile = db.prepare(`SELECT f.storage_name,COALESCE(s.provider,'local') AS provider,s.object_key
     FROM files f LEFT JOIN file_storage_objects s ON s.file_id=f.id WHERE f.id=?`).get(result.output.resultFileId);
   assert.equal((await sharp(await readStoredFile({ provider: resultFile.provider, objectKey: resultFile.object_key, storageName: resultFile.storage_name })).metadata()).format, "png");
