@@ -12,6 +12,7 @@ const errors = {
   IMAGE_TEXT_OCR_FAILED: "文字识别失败，请换一张更清晰的图片重试。", IMAGE_TEXT_ASSISTANT_UNAVAILABLE: "文案助手暂时不可用，仍可直接编辑文字。",
   IMAGE_TEXT_ASSISTANT_FAILED: "文案处理失败，请稍后重试。", IMAGE_TEXT_ASSET_NOT_FOUND: "这张图片已失效，请重新上传。", IMAGE_TEXT_DETECTION_NOT_FOUND: "这段文字已失效，请重新识别。",
   IMAGE_TEXT_REPLACEMENT_REQUIRED: "请输入修改后的文字。", INSUFFICIENT_CREDITS: "积分不足，请先充值后再应用修改。",
+  IMAGE_TEXT_BATCH_LIMIT: "一次最多统一处理 20 处文字，请分批生成。",
   IMAGE_EDITING_NOT_CONFIGURED: "背景修复模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "背景修复服务暂时不可用，请稍后重试。",
   PPT_FILE_REQUIRED: "请先上传 PPTX 文件。", PPT_FILE_UNSUPPORTED: "目前仅支持 .pptx 格式。", PPT_FILE_TOO_LARGE: "PPTX 文件不能超过 50 MB。",
   PPT_FILE_INVALID: "这个 PPTX 文件无法解析，请确认文件没有损坏。", PPT_PROJECT_NOT_FOUND: "这个 PPT 项目已失效，请重新上传。", PPT_TEXT_NOT_FOUND: "这段 PPT 文字已失效。",
