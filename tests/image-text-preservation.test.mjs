@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { composeProtectedResult, editRegions, generatePreservedTextImage } from "../server/image-text-preservation.mjs";
+import { composeProtectedResult, editRegions, generatePreservedTextImage, verifyReplacementText, textInsideRegion } from "../server/image-text-preservation.mjs";
 
 const edits = [{ originalText: "Spring", currentText: "Summer", bbox: { x: 30, y: 30, width: 90, height: 30 } }, { originalText: "2025", currentText: "2026", bbox: { x: 150, y: 110, width: 80, height: 30 } }];
 const image = (background, width = 300, height = 200) => sharp({ create: { width, height, channels: 3, background } }).png().toBuffer();
@@ -44,4 +44,34 @@ test("subtle generated background noise does not create rectangular patches", as
   const source = await image("#112233");
   const result = await composeProtectedResult(source, await image("#18293a"), edits);
   assert.deepEqual(await sharp(result).removeAlpha().raw().toBuffer(), await sharp(source).raw().toBuffer());
+});
+
+test("OCR ignores neighboring lines and restores spatial reading order", () => {
+  const word = (text, x, y) => ({ text, bbox: { x, y, width: 18, height: 10 } });
+  assert.equal(textInsideRegion([word("旁边", 80, 40), word("界", 40, 11), word("世", 20, 10)], { x: 10, y: 9, width: 60, height: 15 }), "世界");
+});
+
+test("three regions verify concurrently but concurrency never exceeds three", async () => {
+  let active = 0, maximum = 0, calls = 0;
+  await verifyReplacementText(await image("white"), Array.from({ length: 8 }, () => ({ ...edits[0], currentText: "OK" })), async () => {
+    active++; maximum = Math.max(maximum, active); calls++;
+    await new Promise((resolve) => setTimeout(resolve, 25)); active--;
+    return [{ text: "OK" }];
+  });
+  assert.equal(maximum, 3); assert.equal(calls, 8); assert.equal(active, 0);
+});
+
+test("all mismatching regions are reported, not just the first", async () => {
+  await assert.rejects(verifyReplacementText(await image("white"), edits, async () => [{ text: "wrong" }]), (cause) => {
+    assert.deepEqual(cause.mismatches.map((item) => item.regionIndex), [0, 1]); return true;
+  });
+});
+
+test("punctuation and digits still require an exact match", async () => {
+  await assert.rejects(verifyReplacementText(await image("white"), [{ ...edits[0], currentText: "2026!" }], async () => [{ text: "2026" }]), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
+});
+
+test("empty OCR is a quality failure, while service errors are not disguised as wrong text", async () => {
+  await assert.rejects(verifyReplacementText(await image("white"), edits, async () => { throw Object.assign(new Error(), { code: "IMAGE_TEXT_OCR_EMPTY" }); }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
+  await assert.rejects(verifyReplacementText(await image("white"), edits, async () => { throw Object.assign(new Error(), { code: "IMAGE_PROVIDER_RATE_LIMITED" }); }), { code: "IMAGE_PROVIDER_RATE_LIMITED" });
 });

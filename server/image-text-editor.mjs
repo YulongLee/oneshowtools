@@ -505,8 +505,9 @@ export async function textStrokeMask(patch, target, foreground) {
   return sharp(dilated, { raw: { width: info.width, height: info.height, channels: 1 } }).blur(.7).png().toBuffer();
 }
 
-function taskProgress(taskId, progress, phase) {
-  db.prepare("UPDATE tasks SET output_json=?,updated_at=? WHERE id=?").run(JSON.stringify({ progress, phase }), Date.now(), taskId);
+function taskProgress(taskId, progress, phase, details = {}) {
+  const previous = parse(db.prepare("SELECT output_json FROM tasks WHERE id=?").get(taskId)?.output_json);
+  db.prepare("UPDATE tasks SET output_json=?,updated_at=? WHERE id=?").run(JSON.stringify({ ...previous, ...details, progress, phase }), Date.now(), taskId);
 }
 
 export async function restoreTextBackground(patch, width, height, useAiRepair = true, provider = inpaintingProvider) {
@@ -565,8 +566,15 @@ export async function executeImageTextEditTask(task, input, dependencies = {}) {
   if (detections.length !== detectionIds.length || !sourceFile) throw error("IMAGE_TEXT_SOURCE_MISSING", 500);
   const source = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
   const edits = input.edits || detections.map((item) => ({ id: item.id, originalText: item.original_text, currentText: item.current_text, bbox: parse(item.bbox_json) }));
+  const timings = [];
   const generated = await generatePreservedTextImage({ source, edits,
     generate: dependencies.generate || editPlatformImage, recognize: dependencies.recognize || recognizePlatformImageText,
+    onDiagnostic: (event) => {
+      timings.push(event);
+      taskProgress(task.id, event.phase === "generation" ? 76 : 82, event.phase === "generation" ? "checking-text" : "verification-finished", {
+        timings, failedDetectionIds: (event.failedRegions || []).map((index) => edits[index - 1]?.id).filter(Boolean),
+      });
+    },
     onProgress: (phase) => taskProgress(task.id, phase === "checking-text" ? 78 : phase === "retrying-quality" ? 48 : 20, phase) });
   const output = generated.buffer;
   const applied = detections.map((detection) => ({ detection, repairMode: generated.repairMode }));
@@ -590,7 +598,7 @@ export async function executeImageTextEditTask(task, input, dependencies = {}) {
     }
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); await deleteStoredFile(stored).catch(() => {}); throw cause; }
-  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, repairModes: [generated.repairMode] } };
+  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, timings, repairModes: [generated.repairMode] } };
 }
 
 export function failImageTextTask(taskId) {

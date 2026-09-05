@@ -13,7 +13,7 @@ const errors = {
   IMAGE_TEXT_ASSISTANT_FAILED: "文案处理失败，请稍后重试。", IMAGE_TEXT_ASSET_NOT_FOUND: "这张图片已失效，请重新上传。", IMAGE_TEXT_DETECTION_NOT_FOUND: "这段文字已失效，请重新识别。",
   IMAGE_TEXT_REPLACEMENT_REQUIRED: "请输入修改后的文字。", INSUFFICIENT_CREDITS: "积分不足，请先充值后再应用修改。",
   IMAGE_TEXT_BATCH_LIMIT: "一次最多统一处理 20 处文字，请分批生成。",
-  IMAGE_TEXT_QUALITY_REJECTED: "生成图片中的文字未通过检查，本次未交付结果，积分已退回。请缩短文字或减少修改区域后重试。",
+  IMAGE_TEXT_QUALITY_REJECTED: "生成文字与草稿未能核对一致，可能是漏改、错字或识别不清。本次积分已退回，草稿保留。请检查选中文字框及内容后重试。",
   IMAGE_TEXT_LAYOUT_CHANGED: "生成图片的版式发生变化，本次未交付结果，积分已退回。请重试。",
   IMAGE_EDITING_NOT_CONFIGURED: "背景修复模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "背景修复服务暂时不可用，请稍后重试。",
   PPT_FILE_REQUIRED: "请先上传 PPTX 文件。", PPT_FILE_UNSUPPORTED: "目前仅支持 .pptx 格式。", PPT_FILE_TOO_LARGE: "PPTX 文件不能超过 50 MB。",
@@ -175,7 +175,11 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
         if (data.task.status === "completed") {
           const fresh = await api(`/api/image-text/projects/${project.id}`);
           setProject(fresh.project); setShowResult(true); setCompare(false); setInlineEditingId(""); setChangedIds(new Set()); setResultNonce(Date.now()); onCompleted?.();
-        } else if (data.task.status === "failed") setError(errors[data.task.errorCode] || "图片生成或检查失败，积分已自动退回，文字草稿仍保留，可稍后重试。");
+        } else if (data.task.status === "failed") {
+          setError(errors[data.task.errorCode] || "图片生成或检查失败，积分已自动退回，文字草稿仍保留，可稍后重试。");
+          const failedId = data.task.output?.failedDetectionIds?.[0];
+          if (failedId) { setSelectedId(failedId); setCompare(false); }
+        }
       } catch (cause) { setError(cause.message); }
     }, 1100);
     return () => clearInterval(timer);

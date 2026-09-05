@@ -69,20 +69,54 @@ export async function composeProtectedResult(source, candidate, edits) {
   return sharp(output, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
+export function textInsideRegion(words, target) {
+  const selected = words.filter((word) => {
+    const b = word.bbox;
+    if (!b) return true;
+    const x = b.x + b.width / 2, y = b.y + b.height / 2;
+    return x >= target.x && x <= target.x + target.width && y >= target.y && y <= target.y + target.height;
+  });
+  // Group into reading lines first: OCR response order is not always reading order.
+  const lines = [];
+  for (const word of selected.sort((a, b) => (a.bbox?.y || 0) - (b.bbox?.y || 0))) {
+    const box = word.bbox;
+    let line = box && lines.find((items) => items[0].bbox && Math.abs(items[0].bbox.y + items[0].bbox.height / 2 - box.y - box.height / 2) < Math.min(items[0].bbox.height, box.height) * .6);
+    if (!line) { line = []; lines.push(line); }
+    line.push(word);
+  }
+  return lines.map((line) => line.sort((a, b) => (a.bbox?.x || 0) - (b.bbox?.x || 0)).map((word) => word.text).join("")).join("");
+}
+
 export async function verifyReplacementText(buffer, edits, recognize) {
   const { width, height } = await sharp(buffer).metadata();
   const regions = editRegions(edits, width, height);
-  // Read each region separately so a matching phrase elsewhere cannot validate a missing edit.
-  for (let index = 0; index < edits.length; index++) {
+  const crops = await Promise.all(edits.map(async (edit, index) => {
     const { feather, ...box } = regions[index];
-    const crop = await sharp(buffer).extract(box).resize({ height: Math.max(160, box.height), withoutEnlargement: false }).png().toBuffer();
-    const words = await recognize({ buffer: crop, mimeType: "image/png" });
-    const text = words.map((word) => word.text).join("");
-    if (normalizedText(text) !== normalizedText(edits[index].currentText)) throw Object.assign(failure("IMAGE_TEXT_QUALITY_REJECTED"), { regionIndex: index, expectedText: edits[index].currentText, recognizedText: text });
-  }
+    const { data, info } = await sharp(buffer).extract(box).resize({ height: Math.max(160, box.height), withoutEnlargement: false }).png().toBuffer({ resolveWithObject: true });
+    return { buffer: data, target: { x: (edit.bbox.x - box.left) * info.width / box.width, y: (edit.bbox.y - box.top) * info.height / box.height, width: edit.bbox.width * info.width / box.width, height: edit.bbox.height * info.height / box.height } };
+  }));
+  const mismatches = [], errors = [];
+  let cursor = 0;
+  // Bounded concurrency reduces latency without flooding the OCR service.
+  await Promise.all(Array.from({ length: Math.min(3, edits.length) }, async () => {
+    while (cursor < edits.length) {
+      const index = cursor++;
+      try {
+        const words = await recognize({ buffer: crops[index].buffer, mimeType: "image/png" });
+        const text = textInsideRegion(words, crops[index].target);
+        if (normalizedText(text) !== normalizedText(edits[index].currentText)) mismatches.push({ regionIndex: index, expectedText: edits[index].currentText, recognizedText: text });
+      } catch (cause) {
+        if (cause.code === "IMAGE_TEXT_OCR_EMPTY") mismatches.push({ regionIndex: index, expectedText: edits[index].currentText, recognizedText: "" });
+        else errors.push(cause);
+      }
+    }
+  }));
+  if (errors.length) throw errors[0];
+  mismatches.sort((a, b) => a.regionIndex - b.regionIndex);
+  if (mismatches.length) throw Object.assign(failure("IMAGE_TEXT_QUALITY_REJECTED"), mismatches[0], { mismatches });
 }
 
-export async function generatePreservedTextImage({ source, edits, generate, recognize, onProgress = () => {} }) {
+export async function generatePreservedTextImage({ source, edits, generate, recognize, onProgress = () => {}, onDiagnostic = () => {} }) {
   const { width, height } = await sharp(source).metadata();
   if (!edits.length || edits.length > 20) throw failure("IMAGE_TEXT_BATCH_LIMIT");
   const prompt = replacementPrompt(edits, width, height);
@@ -90,16 +124,21 @@ export async function generatePreservedTextImage({ source, edits, generate, reco
   // Retry a rejected result once from the original, never from a damaged generation.
   for (let attempt = 0; attempt < 2; attempt++) {
     onProgress(attempt ? "retrying-quality" : "model-editing");
+    const started = Date.now();
     const result = await generate({ buffer: source, mimeType: "image/png", prompt: prompt + feedback, preserveLayout: true });
+    onDiagnostic({ phase: "generation", attempt: attempt + 1, durationMs: Date.now() - started });
+    const checkedAt = Date.now();
     try {
       const output = await composeProtectedResult(source, result.buffer, edits);
       onProgress("checking-text");
       await verifyReplacementText(output, edits, recognize);
+      onDiagnostic({ phase: "verification", attempt: attempt + 1, durationMs: Date.now() - checkedAt, failedRegions: [] });
       return { buffer: output, repairMode: "model-text-edit", attempts: attempt + 1, textVerified: true };
     } catch (cause) {
+      onDiagnostic({ phase: "verification", attempt: attempt + 1, durationMs: Date.now() - checkedAt, code: cause.code, failedRegions: (cause.mismatches || []).map((item) => item.regionIndex + 1) });
       if (attempt || !["IMAGE_TEXT_QUALITY_REJECTED", "IMAGE_TEXT_LAYOUT_CHANGED"].includes(cause.code)) throw cause;
       feedback = cause.code === "IMAGE_TEXT_QUALITY_REJECTED"
-        ? `\n请特别检查第 ${cause.regionIndex + 1} 处，必须在原位置准确显示 ${JSON.stringify(cause.expectedText)}，不能遗漏、错字或改到别的位置。`
+        ? (cause.mismatches || [cause]).map((item) => `\n请特别检查第 ${item.regionIndex + 1} 处，必须在原位置准确显示 ${JSON.stringify(item.expectedText)}，不能遗漏、错字或改到别的位置。`).join("")
         : "\n请保持原图比例和排版，不添加任何文字边框、选区线或装饰。";
     }
   }
