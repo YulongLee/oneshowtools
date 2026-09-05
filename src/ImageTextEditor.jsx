@@ -13,7 +13,7 @@ const errors = {
   IMAGE_TEXT_ASSISTANT_FAILED: "文案处理失败，请稍后重试。", IMAGE_TEXT_ASSET_NOT_FOUND: "这张图片已失效，请重新上传。", IMAGE_TEXT_DETECTION_NOT_FOUND: "这段文字已失效，请重新识别。",
   IMAGE_TEXT_REPLACEMENT_REQUIRED: "请输入修改后的文字。", INSUFFICIENT_CREDITS: "积分不足，请先充值后再应用修改。",
   IMAGE_TEXT_BATCH_LIMIT: "一次最多统一处理 20 处文字，请分批生成。",
-  IMAGE_TEXT_QUALITY_REJECTED: "生成文字与草稿未能核对一致，可能是漏改、错字或识别不清。本次积分已退回，草稿保留。请检查选中文字框及内容后重试。",
+  IMAGE_TEXT_QUALITY_REJECTED: "生成结果已保留，请在预览中人工确认文字效果。",
   IMAGE_TEXT_LAYOUT_CHANGED: "生成图片的版式发生变化，本次未交付结果，积分已退回。请重试。",
   IMAGE_PROVIDER_CONTENT_REJECTED: "模型服务未通过本次内容审核，无法继续生成；本次积分已退回，草稿保留。如有疑问请联系客服核查。",
   IMAGE_EDITING_NOT_CONFIGURED: "图片编辑模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "图片编辑服务暂时不可用，请稍后重试。",

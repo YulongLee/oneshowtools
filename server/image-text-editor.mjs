@@ -581,8 +581,19 @@ export async function generateCrispTextImage({ source, edits, generate = editPla
     input: textOverlay(edit.currentText, edit.style || {}, target.width, target.height), left: region.left + target.left, top: region.top + target.top,
   }))).png().toBuffer();
   onProgress("checking-text");
-  await verifyReplacementText(output, edits, recognize);
-  return { buffer: output, background: cleaned, repairMode: "ai-background-crisp-text", attempts: 1, textVerified: true, qualityStatus: "verified", warnings: [] };
+  try {
+    await verifyReplacementText(output, edits, recognize);
+    return { buffer: output, background: cleaned, repairMode: "ai-background-crisp-text", attempts: 1, textVerified: true, qualityStatus: "verified", warnings: [] };
+  } catch (cause) {
+    // Replacement glyphs are rendered by our deterministic SVG layer, not by the
+    // generative model. OCR is therefore a helpful visual warning only: stylized,
+    // tiny, rotated, or low-contrast text must never discard an otherwise valid
+    // editable project or charge/refund the user in a retry loop.
+    const failedRegionIndices = (cause.mismatches || []).map((item) => item.regionIndex);
+    onDiagnostic({ phase: "verification", attempt: 1, code: cause.code || "IMAGE_TEXT_OCR_FAILED", failedRegions: failedRegionIndices.map((index) => index + 1), advisory: true });
+    return { buffer: output, background: cleaned, repairMode: "ai-background-crisp-text", attempts: 1, textVerified: false,
+      qualityStatus: "needs-review", failedRegionIndices, warnings: [{ code: cause.code || "IMAGE_TEXT_OCR_FAILED", failedRegionIndices }] };
+  }
 }
 
 function svgTextLayer(item) {

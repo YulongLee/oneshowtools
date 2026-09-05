@@ -103,10 +103,14 @@ test("commercial image text output renders crisp text after the model repairs on
   assert.ok((await sharp(result.buffer).extract({ left: 135, top: 75, width: 340, height: 90 }).stats()).channels.some((channel) => channel.min < 80));
 });
 
-test("commercial image text output rejects an unreadable replacement instead of delivering it for review", async () => {
+test("OCR uncertainty never discards a deterministically rendered editable result", async () => {
   const source = await sharp({ create: { width: 400, height: 180, channels: 3, background: "#ffffff" } }).png().toBuffer();
   const edit = { id: "edit-2", originalText: "OLD", currentText: "EXACT", bbox: { x: 80, y: 50, width: 220, height: 70 }, style: { fontFamily: "sans", fontSize: 50, color: "#111111", bold: true, align: "center" } };
-  await assert.rejects(generateCrispTextImage({ source, edits: [edit], generate: async ({ buffer }) => ({ buffer }), recognize: async () => [{ text: "WRONG" }] }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
+  const result = await generateCrispTextImage({ source, edits: [edit], generate: async ({ buffer }) => ({ buffer }), recognize: async () => [{ text: "WRONG" }] });
+  assert.equal(result.textVerified, false);
+  assert.equal(result.qualityStatus, "needs-review");
+  assert.deepEqual(result.failedRegionIndices, [0]);
+  assert.equal((await sharp(result.buffer).metadata()).format, "png");
 });
 
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {
