@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlignCenterHorizontal, AlignLeft, AlignRight, ArrowLeft, ArrowsClockwise, CheckCircle,
-  CloudArrowUp, DownloadSimple, Eye, FileImage, MagicWand, MagnifyingGlassMinus,
+  CloudArrowUp, DownloadSimple, Eye, FileImage, MagicWand, MagnifyingGlass, MagnifyingGlassMinus,
   MagnifyingGlassPlus, Plus, SpinnerGap, TextT, Translate, ArrowCounterClockwise, ArrowClockwise, FilePpt, PresentationChart,
 } from "@phosphor-icons/react";
 import "./image-text-editor.css";
@@ -173,7 +173,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const selected = asset?.detections?.find((item) => item.id === selectedId) || null;
   const changedDetections = asset?.detections?.filter((item) => changedIds.has(item.id)) || [];
   const imageUrl = asset ? `${compare ? asset.originalUrl : asset.imageUrl}${(compare ? asset.originalUrl : asset.imageUrl).includes("?") ? "&" : "?"}v=${asset.currentFileId || asset.originalFileId}-${resultNonce}` : "";
-  const progressText = { preparing: "准备处理", "model-editing": "正在按原图风格修改文字", "checking-text": "正在逐处检查生成文字", "retrying-regions": "正在局部校正未通过的文字", "retrying-quality": "正在重新生成以校正文字或版式", rendering: "保存生成结果", completed: "处理完成" };
+  const progressText = { preparing: "准备处理", "repairing-background": "正在修复原文字背景", "rendering-text": "正在精确写入新文字", "checking-text": "正在逐处检查生成文字", rendering: "保存生成结果", completed: "处理完成" };
   const resultNeedsReview = task?.status === "completed" && task?.output?.textVerified === false;
 
   useEffect(() => {

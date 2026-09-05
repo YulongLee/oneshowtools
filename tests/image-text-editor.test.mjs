@@ -13,7 +13,7 @@ process.env.APP_URL = "http://localhost";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const { db } = await import("../server/database.mjs");
-const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, TextStyleAnalyzer, textOverlay, textStrokeMask, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
+const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, generateCrispTextImage, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, TextStyleAnalyzer, textOverlay, textStrokeMask, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
 const { readStoredFile } = await import("../server/object-storage.mjs");
 
 function userWithCredits() {
@@ -75,6 +75,39 @@ test("original foreground color and display weight are inferred from the uploade
   assert.ok(stats.channels[0].mean < 90, "background repair must be limited to text strokes instead of replacing a rectangle");
 });
 
+test("text removal mask falls back to detected glyph contrast instead of replacing the whole box when the stored color is wrong", async () => {
+  const source = await sharp({ create: { width: 320, height: 120, channels: 3, background: "#f8ede1" } })
+    .composite([{ input: Buffer.from('<svg width="320" height="120"><text x="55" y="82" font-size="52" font-family="Arial" font-weight="700" fill="#16305d">TITLE</text></svg>') }]).png().toBuffer();
+  const mask = await textStrokeMask(source, { left: 40, top: 25, width: 230, height: 70 }, "#ff00ff");
+  const stats = await sharp(mask).stats();
+  assert.equal(stats.channels[0].max, 255);
+  assert.ok(stats.channels[0].mean < 115, "a wrong stored color must not turn the complete OCR rectangle into a repair mask");
+});
+
+test("commercial image text output renders crisp text after the model repairs only the old glyph background", async () => {
+  const source = await sharp({ create: { width: 600, height: 240, channels: 3, background: "#f5f0e8" } })
+    .composite([{ input: Buffer.from('<svg width="600" height="240"><text x="150" y="145" font-size="64" font-family="Arial" font-weight="700" fill="#17345f">OLD TEXT</text></svg>') }]).png().toBuffer();
+  const edit = { id: "edit-1", originalText: "OLD TEXT", currentText: "NEW TEXT", bbox: { x: 135, y: 75, width: 340, height: 90 }, style: { fontFamily: "sans", fontSize: 64, color: "#17345f", bold: true, align: "center" } };
+  let modelPrompt = "";
+  const result = await generateCrispTextImage({ source, edits: [edit],
+    generate: async ({ buffer, prompt }) => { modelPrompt = prompt; const meta = await sharp(buffer).metadata(); return { buffer: await sharp({ create: { width: meta.width, height: meta.height, channels: 3, background: "#f5f0e8" } }).png().toBuffer() }; },
+    recognize: async () => [{ text: "NEW TEXT" }],
+  });
+  assert.equal(result.textVerified, true);
+  assert.match(modelPrompt, /只移除/);
+  assert.ok(!modelPrompt.includes("NEW TEXT"), "the image model must not generate the replacement glyphs");
+  const output = await sharp(result.buffer).removeAlpha().raw().toBuffer();
+  const original = await sharp(source).removeAlpha().raw().toBuffer();
+  assert.deepEqual([...output.subarray(0, 120)], [...original.subarray(0, 120)], "pixels outside the edited region stay unchanged");
+  assert.ok((await sharp(result.buffer).extract({ left: 135, top: 75, width: 340, height: 90 }).stats()).channels.some((channel) => channel.min < 80));
+});
+
+test("commercial image text output rejects an unreadable replacement instead of delivering it for review", async () => {
+  const source = await sharp({ create: { width: 400, height: 180, channels: 3, background: "#ffffff" } }).png().toBuffer();
+  const edit = { id: "edit-2", originalText: "OLD", currentText: "EXACT", bbox: { x: 80, y: 50, width: 220, height: 70 }, style: { fontFamily: "sans", fontSize: 50, color: "#111111", bold: true, align: "center" } };
+  await assert.rejects(generateCrispTextImage({ source, edits: [edit], generate: async ({ buffer }) => ({ buffer }), recognize: async () => [{ text: "WRONG" }] }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
+});
+
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {
   const user = userWithCredits();
   const source = await sharp({ create: { width: 900, height: 420, channels: 3, background: "#f1f5ff" } })
@@ -102,7 +135,7 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   assert.deepEqual(JSON.parse(task.input_json).detectionIds, [detection.id, secondDetectionId]);
   let recognizeIndex = 0;
   const result = await executeImageTextEditTask(task, JSON.parse(task.input_json), {
-    generate: async ({ prompt }) => { assert.ok(prompt.includes("HELLO AI") && prompt.includes("SECOND AI")); return { buffer: source }; },
+    generate: async ({ buffer, prompt }) => { assert.ok(prompt.includes("只移除")); return { buffer }; },
     recognize: async () => [{ text: ["HELLO AI", "SECOND AI"][recognizeIndex++] }],
   });
   assert.equal(result.status, "completed");
