@@ -14,3 +14,10 @@
 .ite-direct-edit-status{margin-top:14px;padding:10px;border:1px solid #dcdff7;border-radius:10px;display:grid;gap:3px;background:#f5f3ff}
 .ite-direct-edit-status span{display:flex;align-items:center;gap:6px;color:#5342df;font-size:10px;font-weight:800}
 .ite-direct-edit-status small{color:#7e89a0;font-size:8px}
+.ite-direct-edit-status.dirty{border-color:#f0d58d;background:#fffaf0}
+.ite-direct-edit-status.dirty span{color:#9a6814}
+.ite-direct-edit-status.saving{border-color:#bfcef9;background:#f3f7ff}
+.ite-direct-edit-status.saved{border-color:#bce7d3;background:#f0fbf6}
+.ite-direct-edit-status.saved span{color:#16875a}
+.ite-direct-edit-status.error{border-color:#f2c5cc;background:#fff4f5}
+.ite-direct-edit-status.error span{color:#b44955}

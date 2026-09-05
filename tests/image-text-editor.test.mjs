@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -31,6 +31,13 @@ test("image text editor is an administrator-only testing tool with configurable 
   assert.equal(tool.credit_cost, 30);
   assert.equal(tool.active, 0);
   assert.equal(db.prepare("SELECT lifecycle_state FROM tool_versions WHERE tool_id=? ORDER BY version DESC LIMIT 1").get(tool.id).lifecycle_state, "testing");
+});
+
+test("image text edits persist as a draft when the input loses focus", async () => {
+  const source = await readFile(new URL("../src/ImageTextEditor.jsx", import.meta.url), "utf8");
+  assert.match(source, /onBlur=\{\(\) => saveDraft\(item\)\}/);
+  assert.match(source, /onBlur=\{\(\) => saveDraft\(selected\)\}/);
+  assert.match(source, /文字草稿已保存；应用到图片后生成最终结果/);
 });
 
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {
