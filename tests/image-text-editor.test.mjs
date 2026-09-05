@@ -44,12 +44,10 @@ test("image text edits persist as a draft when the input loses focus", async () 
   assert.doesNotMatch(source, /ite-direct-edit-hint/);
 });
 
-test("image repair provider failures fall back locally instead of failing the paid task", async () => {
+test("image repair provider failure cannot silently fall back to blur", async () => {
   const patch = await sharp({ create: { width: 180, height: 48, channels: 3, background: "#f4eddb" } }).png().toBuffer();
   const rejectedProvider = { repair: async () => { throw Object.assign(new Error("rejected"), { code: "IMAGE_PROVIDER_REJECTED" }); } };
-  const result = await restoreTextBackground(patch, 180, 48, true, rejectedProvider);
-  assert.equal(result.repairMode, "local-smart-fill");
-  assert.deepEqual(await sharp(result.buffer).metadata().then(({ width, height, format }) => ({ width, height, format })), { width: 180, height: 48, format: "png" });
+  await assert.rejects(restoreTextBackground(patch, 180, 48, true, rejectedProvider), { code: "IMAGE_PROVIDER_REJECTED" });
 });
 
 test("Chinese replacement text uses a CJK font and is fitted inside its OCR box", async () => {
@@ -96,7 +94,11 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   const queued = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionIds: [detection.id], applyAllPending: true, useAiRepair: false, preserveStyle: true });
   const task = db.prepare("SELECT * FROM tasks WHERE id=?").get(queued.id);
   assert.deepEqual(JSON.parse(task.input_json).detectionIds, [detection.id, secondDetectionId]);
-  const result = await executeImageTextEditTask(task, JSON.parse(task.input_json));
+  let recognizeIndex = 0;
+  const result = await executeImageTextEditTask(task, JSON.parse(task.input_json), {
+    generate: async ({ prompt }) => { assert.ok(prompt.includes("HELLO AI") && prompt.includes("SECOND AI")); return { buffer: source }; },
+    recognize: async () => [{ text: ["HELLO AI", "SECOND AI"][recognizeIndex++] }],
+  });
   assert.equal(result.status, "completed");
   assert.equal(result.output.editCount, 2);
   const resultFile = db.prepare(`SELECT f.storage_name,COALESCE(s.provider,'local') AS provider,s.object_key
@@ -109,6 +111,15 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   updateImageTextDetection(user.id, detection.id, { text: "HELLO AGAIN" });
   const reapplied = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionId: detection.id, useAiRepair: false, preserveStyle: true });
   assert.equal(JSON.parse(db.prepare("SELECT input_json FROM tasks WHERE id=?").get(reapplied.id).input_json).sourceFileId, project.assets[0].originalFileId);
+  const replay = JSON.parse(db.prepare("SELECT input_json FROM tasks WHERE id=?").get(reapplied.id).input_json);
+  assert.deepEqual(replay.detectionIds, [detection.id, secondDetectionId]);
+  updateImageTextDetection(user.id, detection.id, { text: "UNSUBMITTED CHANGE" });
+  assert.equal(replay.edits[0].currentText, "HELLO AGAIN", "queued edits must be an immutable snapshot");
+  const { failTaskExecution } = await import("../server/runtime.mjs");
+  failTaskExecution(reapplied.id, "IMAGE_TEXT_QUALITY_REJECTED");
+  failTaskExecution(reapplied.id, "IMAGE_TEXT_QUALITY_REJECTED");
+  assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70, "failed generation refunds once");
+  assert.equal(getImageTextProject(user.id, project.id).assets[0].currentFileId, fresh.assets[0].currentFileId, "failure retains the previous valid result");
 });
 
 test("PPTX text layers can be uploaded, edited and exported without replacing the source file", async () => {

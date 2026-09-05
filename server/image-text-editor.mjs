@@ -9,6 +9,7 @@ import chiSimData from "@tesseract.js-data/chi_sim";
 import { audit, dataDirectory, db } from "./database.mjs";
 import { assertUserFileCapacity } from "./file-quota.mjs";
 import { editPlatformImage, recognizePlatformImageText } from "./image-edit-provider.mjs";
+import { generatePreservedTextImage } from "./image-text-preservation.mjs";
 import { invokePlatformModel } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
 
@@ -419,7 +420,12 @@ export function createImageTextEditTask(user, tool, payload) {
       AND COALESCE((SELECT MAX(rowid) FROM image_text_operations o WHERE o.detection_id=d.id AND o.operation_type='update_text'),0)
         > COALESCE((SELECT MAX(rowid) FROM image_text_operations o WHERE o.detection_id=d.id AND o.operation_type='apply'),0)
     ORDER BY d.updated_at`).all(assetId, user.id).map((item) => item.id);
-  const detectionIds = [...new Set([...requestedDetectionIds, ...pendingDetectionIds])];
+  // Regenerate from the original with the complete desired text state. Re-editing
+  // one entry must not erase earlier edits or compound previous repair artifacts.
+  const previousEditIds = db.prepare(`SELECT d.id FROM image_text_detections d
+    JOIN image_text_assets a ON a.id=d.asset_id JOIN image_text_projects p ON p.id=a.project_id
+    WHERE a.id=? AND p.user_id=? AND d.current_text<>d.original_text`).all(assetId, user.id).map((item) => item.id);
+  const detectionIds = [...new Set([...requestedDetectionIds, ...pendingDetectionIds, ...previousEditIds])];
   if (!detectionIds.length) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
   if (detectionIds.length > 20) throw error("IMAGE_TEXT_BATCH_LIMIT", 422);
   const placeholders = detectionIds.map(() => "?").join(",");
@@ -433,16 +439,11 @@ export function createImageTextEditTask(user, tool, payload) {
   const available = Number(db.prepare("SELECT COALESCE(SUM(amount),0) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance);
   if (available < tool.creditCost) throw error("INSUFFICIENT_CREDITS", 402);
   assertUserFileCapacity(user.id);
-  let sourceFileId = detection.current_file_id || detection.original_file_id;
-  if (detection.current_file_id && orderedDetections.length === 1) {
-    const previousApply = db.prepare("SELECT before_json,after_json FROM image_text_operations WHERE asset_id=? AND detection_id=? AND operation_type='apply' ORDER BY created_at DESC LIMIT 1")
-      .get(detection.asset_id, detection.id);
-    const before = parse(previousApply?.before_json); const after = parse(previousApply?.after_json);
-    if (after.fileId === detection.current_file_id && before.fileId) sourceFileId = before.fileId;
-  }
+  const sourceFileId = detection.original_file_id;
   const taskId = randomUUID(); const timestamp = Date.now();
-  const input = { assetId: detection.asset_id, detectionId: detection.id, detectionIds, sourceFileId,
-    useAiRepair: payload.useAiRepair !== false, preserveStyle: payload.preserveStyle !== false };
+  const input = { assetId: detection.asset_id, detectionId: detection.id, detectionIds, sourceFileId, editEngine: "model-text-edit",
+    edits: orderedDetections.map((item) => ({ id: item.id, originalText: item.original_text, currentText: item.current_text, bbox: parse(item.bbox_json) })),
+    useAiRepair: true, preserveStyle: true };
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("INSERT INTO tasks (id,user_id,tool_id,status,input_json,output_json,credit_cost,created_at,updated_at) VALUES (?,?,?,'queued',?,?,?,?,?)")
@@ -509,16 +510,9 @@ function taskProgress(taskId, progress, phase) {
 }
 
 export async function restoreTextBackground(patch, width, height, useAiRepair = true, provider = inpaintingProvider) {
-  let restored; let repairMode = "local-smart-fill";
-  if (useAiRepair) {
-    try {
-      const generated = await provider.repair(patch, "image/png", "Remove every letter, word, number, logo-like glyph and text mark from this image crop. Reconstruct only the natural background behind the removed text. Preserve the exact colors, lighting, texture and composition. Do not add any text, symbols, watermark, border or new object.");
-      restored = await sharp(generated.buffer).resize(width, height, { fit: "fill" }).png().toBuffer();
-      repairMode = "ai-inpainting";
-    } catch { /* Provider rejection, timeout or outage must not prevent the local repair fallback. */ }
-  }
-  if (!restored) restored = await sharp(patch).blur(Math.max(8, Math.round(Math.min(width, height) / 18))).png().toBuffer();
-  return { buffer: restored, repairMode };
+  if (!useAiRepair) throw error("IMAGE_EDITING_NOT_CONFIGURED", 503);
+  const generated = await provider.repair(patch, "image/png", "Remove the text and restore the original background texture without adding objects or decorations.");
+  return { buffer: await sharp(generated.buffer).resize(width, height, { fit: "fill" }).png().toBuffer(), repairMode: "ai-inpainting" };
 }
 
 async function executePptTextExportTask(task, input) {
@@ -559,7 +553,7 @@ async function executePptTextExportTask(task, input) {
   return { status: "completed", output: { progress: 100, phase: "completed", mode: "ppt", projectId: project.id, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download` } };
 }
 
-export async function executeImageTextEditTask(task, input) {
+export async function executeImageTextEditTask(task, input, dependencies = {}) {
   if (input.mode === "ppt-export") return executePptTextExportTask(task, input);
   const detectionIds = [...new Set((Array.isArray(input.detectionIds) ? input.detectionIds : [input.detectionId]).map((id) => clean(id, 64)).filter(Boolean))].slice(0, 20);
   const placeholders = detectionIds.map(() => "?").join(",");
@@ -569,28 +563,13 @@ export async function executeImageTextEditTask(task, input) {
   const detections = detectionIds.map((id) => byId.get(id)).filter(Boolean);
   const sourceFile = fileRow(input.sourceFileId, task.user_id);
   if (detections.length !== detectionIds.length || !sourceFile) throw error("IMAGE_TEXT_SOURCE_MISSING", 500);
-  let output = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
-  const analyzedStyles = await styleAnalyzer.analyzeAll(output, detections.map((detection) => ({ text: detection.original_text, bbox: parse(detection.bbox_json), style: parse(detection.style_json) })));
-  const applied = [];
-  for (let index = 0; index < detections.length; index += 1) {
-    const detection = detections[index]; const bbox = parse(detection.bbox_json); const storedStyle = parse(detection.style_json);
-    const analyzedStyle = storedStyle.appearanceAnalyzed ? storedStyle : analyzedStyles[index];
-    const style = input.preserveStyle === false ? { ...storedStyle, color: "#17264d", fontFamily: "sans", bold: true, letterSpacing: 0 } : analyzedStyle;
-    const x = Math.round(clamp(bbox.x, 0, detection.width - 1)); const y = Math.round(clamp(bbox.y, 0, detection.height - 1));
-    const width = Math.max(8, Math.round(clamp(bbox.width, 8, detection.width - x))); const height = Math.max(8, Math.round(clamp(bbox.height, 8, detection.height - y)));
-    const padding = Math.max(8, Math.round(Math.min(width, height) * .18));
-    const patchBox = { left: Math.max(0, x - padding), top: Math.max(0, y - padding) };
-    patchBox.width = Math.min(detection.width - patchBox.left, width + padding * 2);
-    patchBox.height = Math.min(detection.height - patchBox.top, height + padding * 2);
-    taskProgress(task.id, 12 + Math.round(index / detections.length * 72), index ? "processing-batch" : "erasing");
-    const patch = await sharp(output).extract(patchBox).png().toBuffer();
-    const repair = await restoreTextBackground(patch, patchBox.width, patchBox.height, input.useAiRepair);
-    const mask = await textStrokeMask(patch, { left: x - patchBox.left, top: y - patchBox.top, width, height }, style.color);
-    const maskedRestore = await sharp(repair.buffer).removeAlpha().joinChannel(mask).png().toBuffer();
-    const cleanBase = await sharp(output).composite([{ input: maskedRestore, left: patchBox.left, top: patchBox.top }]).png().toBuffer();
-    output = await sharp(cleanBase).composite([{ input: textOverlay(detection.current_text, style, width, height), left: x, top: y }]).png().toBuffer();
-    applied.push({ detection, storedStyle, style, repairMode: repair.repairMode });
-  }
+  const source = await storageProvider.read({ provider: sourceFile.storage_provider, objectKey: sourceFile.object_key, storageName: sourceFile.storage_name });
+  const edits = input.edits || detections.map((item) => ({ id: item.id, originalText: item.original_text, currentText: item.current_text, bbox: parse(item.bbox_json) }));
+  const generated = await generatePreservedTextImage({ source, edits,
+    generate: dependencies.generate || editPlatformImage, recognize: dependencies.recognize || recognizePlatformImageText,
+    onProgress: (phase) => taskProgress(task.id, phase === "checking-text" ? 78 : phase === "retrying-quality" ? 48 : 20, phase) });
+  const output = generated.buffer;
+  const applied = detections.map((detection) => ({ detection, repairMode: generated.repairMode }));
   taskProgress(task.id, 88, "rendering");
   const firstDetection = detections[0];
   const fileId = randomUUID(); const fileName = `${firstDetection.asset_id.slice(0, 8)}-edited.png`;
@@ -607,12 +586,11 @@ export async function executeImageTextEditTask(task, input) {
     db.prepare("UPDATE image_text_projects SET status='ready',updated_at=? WHERE id=?").run(timestamp, firstDetection.project_id);
     const insertOperation = db.prepare("INSERT INTO image_text_operations (id,project_id,asset_id,detection_id,task_id,operation_type,before_json,after_json,created_at) VALUES (?,?,?,?,?,'apply',?,?,?)");
     for (const item of applied) {
-      if (!item.storedStyle.appearanceAnalyzed && item.style.appearanceAnalyzed) db.prepare("UPDATE image_text_detections SET style_json=?,updated_at=? WHERE id=?").run(JSON.stringify(item.style), timestamp, item.detection.id);
       insertOperation.run(randomUUID(), item.detection.project_id, input.assetId, item.detection.id, task.id, JSON.stringify({ fileId: input.sourceFileId }), JSON.stringify({ fileId, repairMode: item.repairMode, editCount: applied.length }), timestamp);
     }
     db.exec("COMMIT");
   } catch (cause) { db.exec("ROLLBACK"); await deleteStoredFile(stored).catch(() => {}); throw cause; }
-  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, repairModes: [...new Set(applied.map((item) => item.repairMode))] } };
+  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, repairModes: [generated.repairMode] } };
 }
 
 export function failImageTextTask(taskId) {

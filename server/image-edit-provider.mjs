@@ -159,7 +159,7 @@ async function outputBytes(payload, fetchImpl) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function invoke(config, apiKey, inputs, prompt, fetchImpl = fetch, negativePrompt = "") {
+async function invoke(config, apiKey, inputs, prompt, fetchImpl = fetch, negativePrompt = "", preserveLayout = false) {
   const normalized = await Promise.all((Array.isArray(inputs) ? inputs : [inputs]).slice(0, 3).map((input) => normalizedInput(input.buffer, input.mimeType)));
   const startedAt = Date.now();
   let body;
@@ -175,7 +175,7 @@ async function invoke(config, apiKey, inputs, prompt, fetchImpl = fetch, negativ
         { text: clean(prompt, 6000) },
       ] }] },
       parameters: {
-        prompt_extend: !preciseMultiImageEdit,
+        prompt_extend: !preciseMultiImageEdit && !preserveLayout,
         watermark: false,
         n: 1,
         ...(preciseMultiImageEdit ? { negative_prompt: clean(negativePrompt, 3000) || "reference person's face, identity, skin, hair, body, pose, hands, legs or background; swapping image roles; replacing the target person; changed target face; changed target pose; changed target body shape; two people; second person; duplicated person; collage; split screen; before-and-after layout; source thumbnails; unchanged original outfit; wrong garment; missing garment details; mixed clothing from both images; floating garment; broken fabric; distorted anatomy; extra limbs; fused hands; invented text; invented logo; watermark" } : {}),
@@ -343,10 +343,10 @@ export async function saveImageEditProviderConfiguration(purpose, data, actorUse
   return publicConfig(purpose);
 }
 
-export async function editPlatformImage({ purpose = "image_editing", buffer, mimeType, images, prompt, negativePrompt = "", fetchImpl = fetch }) {
+export async function editPlatformImage({ purpose = "image_editing", buffer, mimeType, images, prompt, negativePrompt = "", preserveLayout = false, fetchImpl = fetch }) {
   const config = credentials(assertPurpose(purpose));
   if (!config) throw providerError(purpose === "image_upscaling" ? "IMAGE_UPSCALING_NOT_CONFIGURED" : "IMAGE_EDITING_NOT_CONFIGURED", 503);
-  return invoke(config, config.apiKey, images?.length ? images : { buffer, mimeType }, prompt, fetchImpl, negativePrompt);
+  return invoke(config, config.apiKey, images?.length ? images : { buffer, mimeType }, prompt, fetchImpl, negativePrompt, preserveLayout);
 }
 
 export async function recognizePlatformImageText({ buffer, mimeType = "image/png", fetchImpl = fetch }) {

@@ -13,6 +13,8 @@ const errors = {
   IMAGE_TEXT_ASSISTANT_FAILED: "文案处理失败，请稍后重试。", IMAGE_TEXT_ASSET_NOT_FOUND: "这张图片已失效，请重新上传。", IMAGE_TEXT_DETECTION_NOT_FOUND: "这段文字已失效，请重新识别。",
   IMAGE_TEXT_REPLACEMENT_REQUIRED: "请输入修改后的文字。", INSUFFICIENT_CREDITS: "积分不足，请先充值后再应用修改。",
   IMAGE_TEXT_BATCH_LIMIT: "一次最多统一处理 20 处文字，请分批生成。",
+  IMAGE_TEXT_QUALITY_REJECTED: "生成图片中的文字未通过检查，本次未交付结果，积分已退回。请缩短文字或减少修改区域后重试。",
+  IMAGE_TEXT_LAYOUT_CHANGED: "生成图片的版式发生变化，本次未交付结果，积分已退回。请重试。",
   IMAGE_EDITING_NOT_CONFIGURED: "背景修复模型尚未配置，请联系管理员。", IMAGE_PROVIDER_UNAVAILABLE: "背景修复服务暂时不可用，请稍后重试。",
   PPT_FILE_REQUIRED: "请先上传 PPTX 文件。", PPT_FILE_UNSUPPORTED: "目前仅支持 .pptx 格式。", PPT_FILE_TOO_LARGE: "PPTX 文件不能超过 50 MB。",
   PPT_FILE_INVALID: "这个 PPTX 文件无法解析，请确认文件没有损坏。", PPT_PROJECT_NOT_FOUND: "这个 PPT 项目已失效，请重新上传。", PPT_TEXT_NOT_FOUND: "这段 PPT 文字已失效。",
@@ -124,8 +126,6 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const [task, setTask] = useState(null);
   const [error, setError] = useState("");
   const [compare, setCompare] = useState(false);
-  const [useAiRepair, setUseAiRepair] = useState(true);
-  const [preserveStyle, setPreserveStyle] = useState(true);
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
   const [inlineEditingId, setInlineEditingId] = useState("");
@@ -142,7 +142,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const selected = asset?.detections?.find((item) => item.id === selectedId) || null;
   const changedDetections = asset?.detections?.filter((item) => changedIds.has(item.id)) || [];
   const imageUrl = asset ? `${compare ? asset.originalUrl : asset.imageUrl}${(compare ? asset.originalUrl : asset.imageUrl).includes("?") ? "&" : "?"}v=${asset.currentFileId || asset.originalFileId}-${resultNonce}` : "";
-  const progressText = { preparing: "准备处理", erasing: "擦除原文字", repairing: "智能修复背景", "processing-batch": "正在处理多处文字", rendering: "渲染新文字", completed: "处理完成" };
+  const progressText = { preparing: "准备处理", "model-editing": "正在按原图风格修改文字", "checking-text": "正在逐处检查生成文字", "retrying-quality": "正在重新生成以校正文字或版式", rendering: "保存生成结果", completed: "处理完成" };
 
   useEffect(() => {
     if (!inlineEditingId || !inlineEditor.current) return;
@@ -175,7 +175,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
         if (data.task.status === "completed") {
           const fresh = await api(`/api/image-text/projects/${project.id}`);
           setProject(fresh.project); setShowResult(true); setCompare(false); setInlineEditingId(""); setChangedIds(new Set()); setResultNonce(Date.now()); onCompleted?.();
-        } else if (data.task.status === "failed") setError("图片处理失败，积分已自动退回，请稍后重试。");
+        } else if (data.task.status === "failed") setError(errors[data.task.errorCode] || "图片生成或检查失败，积分已自动退回，文字草稿仍保留，可稍后重试。");
       } catch (cause) { setError(cause.message); }
     }, 1100);
     return () => clearInterval(timer);
@@ -215,7 +215,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     setDraftStatus("saving");
     try {
       const data = await api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }));
-      setProject((current) => ({ ...current, assets: current.assets.map((currentAsset) => ({ ...currentAsset, detections: currentAsset.detections.map((detection) => detection.id === data.detection.id ? data.detection : detection) })) }));
+      setProject((current) => ({ ...current, assets: current.assets.map((currentAsset) => ({ ...currentAsset, detections: currentAsset.detections.map((detection) => detection.id === data.detection.id && detection.currentText === item.currentText ? data.detection : detection) })) }));
       setDraftStatus("saved");
       setError("");
     } catch (cause) {
@@ -267,7 +267,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
       for (const item of edits) await api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }));
       setDraftStatus("saved");
       setShowResult(false);
-      const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), applyAllPending: true, useAiRepair, preserveStyle }));
+      const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), applyAllPending: true }));
       setTask(data.task);
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }
   }
@@ -318,15 +318,10 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
           <label><span>识别到的文字</span><div className="ite-original-text">{selected.originalText}</div></label>
           <label><span>修改为</span><textarea value={selected.currentText} maxLength={100} onChange={(event) => updateLocal({ currentText: event.target.value })} onBlur={() => saveDraft(selected)} /><small>{selected.currentText.length}/100</small></label>
           <div className="ite-ai-actions"><button onClick={() => rewrite("polish")} disabled={busy}><MagicWand />AI 优化文案</button><button onClick={() => rewrite("translate")} disabled={busy}><Translate />中英互译</button></div>
-          <section className="ite-style"><h3>样式设置 <small>自动匹配原样式</small></h3><label><span>字体</span><select value={selected.style.fontFamily || "auto"} onChange={(event) => updateLocal({ style: { fontFamily: event.target.value } })}><option value="auto">自动匹配</option><option value="sans">现代黑体</option><option value="serif">优雅宋体</option></select></label>
-            <label><span>字号</span><div className="ite-stepper"><button onClick={() => updateLocal({ style: { fontSize: Math.max(8, selected.style.fontSize - 2) } })}>−</button><input type="number" value={selected.style.fontSize} onChange={(event) => updateLocal({ style: { fontSize: Number(event.target.value) } })} /><button onClick={() => updateLocal({ style: { fontSize: selected.style.fontSize + 2 } })}>＋</button></div></label>
-            <label><span>颜色</span><div className="ite-color"><input type="color" value={selected.style.color || "#17264d"} onChange={(event) => updateLocal({ style: { color: event.target.value } })} /><input value={selected.style.color || "#17264d"} onChange={(event) => updateLocal({ style: { color: event.target.value } })} /></div></label>
-            <div className="ite-format"><button className={selected.style.bold ? "active" : ""} onClick={() => updateLocal({ style: { bold: !selected.style.bold } })}>B</button><button className={selected.style.align === "left" ? "active" : ""} onClick={() => updateLocal({ style: { align: "left" } })}><AlignLeft /></button><button className={selected.style.align === "center" ? "active" : ""} onClick={() => updateLocal({ style: { align: "center" } })}><AlignCenterHorizontal /></button><button className={selected.style.align === "right" ? "active" : ""} onClick={() => updateLocal({ style: { align: "right" } })}><AlignRight /></button></div>
-          </section>
-          <section className="ite-options"><h3>生成设置</h3><label><input type="checkbox" checked={useAiRepair} onChange={(event) => setUseAiRepair(event.target.checked)} /><span><strong>智能修复原背景</strong><small>测试版将优先调用图片编辑模型</small></span></label><label><input type="checkbox" checked={preserveStyle} onChange={(event) => setPreserveStyle(event.target.checked)} /><span><strong>保持原文字风格</strong><small>保留字号、颜色、粗细与对齐</small></span></label></section>
+          <section className="ite-options"><h3>沿用原图风格</h3><p>按原文字的字体外观、颜色和排版生成。编辑框是文字草稿，最终效果以下方生成预览为准。</p><p>支持同时修改多处；所选区域以外的原图像素会保留。</p></section>
         </>}
         {error && <p className="ite-error">{error}</p>}
-        <footer><button className="secondary" disabled={(!selected && !changedDetections.length) || processing} onClick={apply}>{busy ? <SpinnerGap className="ite-spin" /> : <MagicWand />}{changedDetections.length > 1 ? `统一处理 ${changedDetections.length} 处` : "应用到图片"} · {tool.creditCost} 积分</button><a className={!asset ? "disabled" : ""} href={asset?.imageUrl || "#"} download><DownloadSimple />下载图片</a></footer>
+        <footer><button className="secondary" disabled={(!selected && !changedDetections.length) || processing || busy} onClick={apply}>{busy ? <SpinnerGap className="ite-spin" /> : <MagicWand />}{changedDetections.length > 1 ? `统一处理 ${changedDetections.length} 处` : "应用到图片"} · {tool.creditCost} 积分</button><button disabled={!asset?.currentFileId || processing} onClick={() => setShowResult(true)}><Eye />预览生成结果</button></footer>
       </aside>
     </section>
     {showResult && asset?.currentFileId && <section className="ite-result-preview" ref={resultPreviewRef}>
@@ -337,6 +332,6 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
       </div>
       <footer><button onClick={() => { setShowResult(false); stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><ArrowLeft />继续修改</button><a href={task?.output?.downloadUrl || asset.imageUrl} download><DownloadSimple />确认满意，下载图片</a></footer>
     </section>}</> : <PptTextEditor tool={tool} authenticated={authenticated} onAuth={onAuth} onCompleted={onCompleted} />}
-    <p className="ite-tip"><FileImage size={16} />小提示：文字背景越简洁、清晰，修复效果越自然；复杂艺术字可手动微调字号和颜色。</p>
+    <p className="ite-tip"><FileImage size={16} />小提示：替换文字长度接近原文时更容易保留排版；复杂艺术字请在预览中仔细确认。</p>
   </main>;
 }
