@@ -13,7 +13,7 @@ process.env.APP_URL = "http://localhost";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const { db } = await import("../server/database.mjs");
-const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
+const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, textOverlay, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
 const { readStoredFile } = await import("../server/object-storage.mjs");
 
 function userWithCredits() {
@@ -47,6 +47,15 @@ test("image repair provider failures fall back locally instead of failing the pa
   const result = await restoreTextBackground(patch, 180, 48, true, rejectedProvider);
   assert.equal(result.repairMode, "local-smart-fill");
   assert.deepEqual(await sharp(result.buffer).metadata().then(({ width, height, format }) => ({ width, height, format })), { width: 180, height: 48, format: "png" });
+});
+
+test("Chinese replacement text uses a CJK font and is fitted inside its OCR box", async () => {
+  const svg = textOverlay("营业执照1", { fontFamily: "sans", fontSize: 180, color: "#17264d", bold: true, align: "center" }, 420, 90).toString();
+  assert.match(svg, /font-family="Noto Sans CJK SC/);
+  const fontSize = Number(svg.match(/font-size="([\d.]+)"/)?.[1]);
+  assert.ok(fontSize <= 72);
+  const rendered = await sharp(Buffer.from(svg)).png().toBuffer();
+  assert.deepEqual(await sharp(rendered).metadata().then(({ width, height, format }) => ({ width, height, format })), { width: 420, height: 90, format: "png" });
 });
 
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {

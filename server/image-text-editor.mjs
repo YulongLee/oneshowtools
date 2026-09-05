@@ -375,11 +375,17 @@ export function createImageTextEditTask(user, tool, payload) {
 }
 
 const xml = (value) => String(value).replace(/[<>&'"]/g, (char) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" }[char]));
-function textOverlay(text, style, width, height) {
+function textWidthUnits(text) {
+  return [...String(text || "")].reduce((total, char) => total + (/^[\u0000-\u024f]$/.test(char) ? .56 : 1), 0);
+}
+
+export function textOverlay(text, style, width, height) {
   const font = style.fontFamily === "serif" ? "Noto Serif CJK SC,serif" : "Noto Sans CJK SC,PingFang SC,Microsoft YaHei,sans-serif";
   const anchor = style.align === "left" ? "start" : style.align === "right" ? "end" : "middle";
   const x = style.align === "left" ? 2 : style.align === "right" ? width - 2 : width / 2;
-  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><text x="${x}" y="${height / 2}" dominant-baseline="middle" text-anchor="${anchor}" fill="${xml(style.color || "#17264d")}" font-family="${xml(font)}" font-size="${clamp(style.fontSize, 8, 300)}" font-weight="${style.bold ? 700 : 400}">${xml(text)}</text></svg>`);
+  const requestedSize = clamp(style.fontSize, 8, 300);
+  const fittedSize = Math.max(8, Math.min(requestedSize, height * .8, (width - 6) / Math.max(1, textWidthUnits(text)) * .92));
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><text x="${x}" y="${height / 2}" dominant-baseline="central" text-anchor="${anchor}" fill="${xml(style.color || "#17264d")}" font-family="${xml(font)}" font-size="${fittedSize}" font-weight="${style.bold ? 700 : 400}">${xml(text)}</text></svg>`);
 }
 
 function taskProgress(taskId, progress, phase) {

@@ -15,7 +15,7 @@ DOMAIN="${DEPLOY_DOMAIN:-oneshowtools.com}"
 LETSENCRYPT_EMAIL="${DEPLOY_LETSENCRYPT_EMAIL:-}"
 
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl nginx rsync xz-utils certbot python3-certbot-nginx
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl nginx rsync xz-utils certbot python3-certbot-nginx fontconfig fonts-noto-cjk
 
 if ! id oneshowtools >/dev/null 2>&1; then
   useradd --system --home "$APP_ROOT" --shell /usr/sbin/nologin oneshowtools
