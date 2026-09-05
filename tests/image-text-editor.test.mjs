@@ -113,6 +113,23 @@ test("OCR uncertainty never discards a deterministically rendered editable resul
   assert.equal((await sharp(result.buffer).metadata()).format, "png");
 });
 
+test("multi-layer reconstruction uses one provider request and survives upstream rate limiting", async () => {
+  const source = await sharp({ create: { width: 640, height: 280, channels: 3, background: "#f4efe5" } })
+    .composite([{ input: Buffer.from('<svg width="640" height="280"><text x="60" y="100" font-size="42">FIRST</text><text x="360" y="210" font-size="42">SECOND</text></svg>') }]).png().toBuffer();
+  const edits = [
+    { originalText: "FIRST", currentText: "ONE", bbox: { x: 50, y: 55, width: 180, height: 60 }, style: { fontSize: 42, color: "#111111" } },
+    { originalText: "SECOND", currentText: "TWO", bbox: { x: 350, y: 165, width: 220, height: 60 }, style: { fontSize: 42, color: "#111111" } },
+  ];
+  let calls = 0;
+  const normal = await generateCrispTextImage({ source, edits, generate: async ({ buffer }) => { calls += 1; return { buffer }; }, recognize: async ({}) => [] });
+  assert.equal(calls, 1, "one image must not fan out into one paid provider request per text layer");
+  assert.ok(normal.buffer.length > 0);
+  const fallback = await generateCrispTextImage({ source, edits, generate: async () => { throw Object.assign(new Error("busy"), { code: "IMAGE_PROVIDER_RATE_LIMITED" }); }, recognize: async () => [] });
+  assert.equal(fallback.repairMode, "local-background-fallback");
+  assert.ok(fallback.warnings.some((item) => item.code === "IMAGE_PROVIDER_RATE_LIMITED"));
+  assert.equal((await sharp(fallback.buffer).metadata()).format, "png");
+});
+
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {
   const user = userWithCredits();
   const source = await sharp({ create: { width: 900, height: 420, channels: 3, background: "#f1f5ff" } })
