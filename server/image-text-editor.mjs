@@ -3,6 +3,7 @@ import { copyFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
 import JSZip from "jszip";
+import PptxGenJS from "pptxgenjs";
 import { createWorker } from "tesseract.js";
 import engData from "@tesseract.js-data/eng";
 import chiSimData from "@tesseract.js-data/chi_sim";
@@ -12,12 +13,14 @@ import { editPlatformImage, recognizePlatformImageText } from "./image-edit-prov
 import { editRegions, retryContext, verifyReplacementText } from "./image-text-preservation.mjs";
 import { invokePlatformModel } from "./model-gateway.mjs";
 import { deleteStoredFile, putStoredFile, readStoredFile } from "./object-storage.mjs";
+import { renderPdfPagesForEditing } from "./pdf-tools.mjs";
 
 const error = (code, status = 400, retryable = false) => Object.assign(new Error(code), { code, status, retryable });
 const parse = (value, fallback = {}) => { try { return JSON.parse(value || "") || fallback; } catch { return fallback; } };
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
 const clean = (value, max = 500) => String(value ?? "").replace(/\0/g, "").trim().slice(0, max);
 const supportedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const pdfMime = "application/pdf";
 const pptxMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 const decodeXml = (value) => String(value || "")
@@ -218,7 +221,9 @@ function publicDetection(row) {
 function publicAsset(row) {
   const fileId = row.current_file_id || row.original_file_id;
   return { id: row.id, projectId: row.project_id, name: row.name, width: row.width, height: row.height, status: row.status,
-    originalFileId: row.original_file_id, currentFileId: row.current_file_id, imageUrl: `/api/files/${fileId}/download`, originalUrl: `/api/files/${row.original_file_id}/download`,
+    originalFileId: row.original_file_id, currentFileId: row.current_file_id, backgroundFileId: row.background_file_id,
+    imageUrl: `/api/files/${fileId}/download`, originalUrl: `/api/files/${row.original_file_id}/download`,
+    backgroundUrl: row.background_file_id ? `/api/files/${row.background_file_id}/download` : null,
     detections: db.prepare("SELECT * FROM image_text_detections WHERE asset_id = ? ORDER BY created_at").all(row.id).map(publicDetection) };
 }
 
@@ -321,41 +326,47 @@ export async function uploadImageTextAsset(request, user) {
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File) || !file.size) throw error("IMAGE_REQUIRED");
-  if (!supportedTypes.has(file.type)) throw error("IMAGE_TEXT_FILE_UNSUPPORTED", 415);
+  if (!supportedTypes.has(file.type) && file.type !== pdfMime && !/\.pdf$/i.test(file.name)) throw error("IMAGE_TEXT_FILE_UNSUPPORTED", 415);
   if (file.size > 20 * 1024 * 1024) throw error("IMAGE_TEXT_FILE_TOO_LARGE", 413);
   assertUserFileCapacity(user.id);
   const source = Buffer.from(await file.arrayBuffer());
-  const normalized = await sharp(source).rotate().toBuffer({ resolveWithObject: true }).catch(() => null);
-  if (!normalized?.info?.width || !normalized?.info?.height) throw error("IMAGE_INVALID", 422);
-  if (normalized.info.width < 240 || normalized.info.height < 160) throw error("IMAGE_TEXT_RESOLUTION_TOO_LOW", 422);
-
-  const fileId = randomUUID();
-  const stored = await storageProvider.put({ userId: user.id, fileId, fileName: clean(file.name, 180) || "image.png", mimeType: file.type, buffer: normalized.data });
+  const isPdf = file.type === pdfMime || /\.pdf$/i.test(file.name);
+  const sources = isPdf
+    ? (await renderPdfPagesForEditing(source, 12)).map((page) => ({ name: `${file.name.replace(/\.pdf$/i, "")}-${page.pageNumber}.png`, mimeType: "image/png", buffer: page.buffer }))
+    : [{ name: clean(file.name, 180) || "image.png", mimeType: file.type, buffer: source }];
   const projectId = clean(form.get("projectId"), 64) || randomUUID();
-  const assetId = randomUUID();
   const timestamp = Date.now();
+  const storedFiles = [];
   try {
-    const detections = await ocrProvider.detect(normalized.data);
-    const styles = await styleAnalyzer.analyzeAll(normalized.data, detections);
     db.exec("BEGIN IMMEDIATE");
     const existing = db.prepare("SELECT id FROM image_text_projects WHERE id = ? AND user_id = ?").get(projectId, user.id);
     if (!existing) db.prepare("INSERT INTO image_text_projects (id,user_id,name,status,created_at,updated_at) VALUES (?,?,?,'ready',?,?)")
-      .run(projectId, user.id, clean(file.name.replace(/\.[^.]+$/, ""), 120) || "未命名图片项目", timestamp, timestamp);
-    db.prepare("INSERT INTO files (id,user_id,name,storage_name,mime_type,size_bytes,created_at) VALUES (?,?,?,?,?,?,?)")
-      .run(fileId, user.id, clean(file.name, 180), stored.storageName, file.type, normalized.data.length, timestamp);
-    db.prepare("INSERT INTO file_storage_objects (file_id,provider,object_key,etag,status,created_at,updated_at) VALUES (?,?,?,?, 'available',?,?)")
-      .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
-    db.prepare("INSERT INTO image_text_assets (id,project_id,original_file_id,name,width,height,status,created_at,updated_at) VALUES (?,?,?,?,?,?,'ready',?,?)")
-      .run(assetId, projectId, fileId, clean(file.name, 180), normalized.info.width, normalized.info.height, timestamp, timestamp);
+      .run(projectId, user.id, clean(file.name.replace(/\.[^.]+$/, ""), 120) || "未命名视觉工程", timestamp, timestamp);
     const insert = db.prepare("INSERT INTO image_text_detections (id,asset_id,original_text,current_text,bbox_json,confidence,rotation,style_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)");
-    detections.forEach((item, index) => insert.run(randomUUID(), assetId, item.text, item.text, JSON.stringify(item.bbox), item.confidence, item.rotation, JSON.stringify(styles[index]), timestamp, timestamp));
+    for (const item of sources) {
+      const normalized = await sharp(item.buffer).rotate().png().toBuffer({ resolveWithObject: true }).catch(() => null);
+      if (!normalized?.info?.width || !normalized?.info?.height) throw error("IMAGE_INVALID", 422);
+      if (normalized.info.width < 240 || normalized.info.height < 160) throw error("IMAGE_TEXT_RESOLUTION_TOO_LOW", 422);
+      const fileId = randomUUID(); const assetId = randomUUID();
+      const stored = await storageProvider.put({ userId: user.id, fileId, fileName: item.name, mimeType: "image/png", buffer: normalized.data });
+      storedFiles.push(stored);
+      const detections = await ocrProvider.detect(normalized.data);
+      const styles = await styleAnalyzer.analyzeAll(normalized.data, detections);
+      db.prepare("INSERT INTO files (id,user_id,name,storage_name,mime_type,size_bytes,created_at) VALUES (?,?,?,?,?,?,?)")
+        .run(fileId, user.id, item.name, stored.storageName, "image/png", normalized.data.length, timestamp);
+      db.prepare("INSERT INTO file_storage_objects (file_id,provider,object_key,etag,status,created_at,updated_at) VALUES (?,?,?,?, 'available',?,?)")
+        .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
+      db.prepare("INSERT INTO image_text_assets (id,project_id,original_file_id,name,width,height,status,created_at,updated_at) VALUES (?,?,?,?,?,?,'ready',?,?)")
+        .run(assetId, projectId, fileId, item.name, normalized.info.width, normalized.info.height, timestamp, timestamp);
+      detections.forEach((detection, index) => insert.run(randomUUID(), assetId, detection.text, detection.text, JSON.stringify(detection.bbox), detection.confidence, detection.rotation, JSON.stringify(styles[index]), timestamp, timestamp));
+    }
     db.prepare("UPDATE image_text_projects SET updated_at = ? WHERE id = ?").run(timestamp, projectId);
     db.exec("COMMIT");
-    audit(user.id, "image_text.upload", "image_text_project", projectId, { assetId, detectionCount: detections.length });
+    audit(user.id, "image_text.upload", "image_text_project", projectId, { assetCount: sources.length, sourceType: isPdf ? "pdf" : "image" });
     return getImageTextProject(user.id, projectId);
   } catch (cause) {
     try { db.exec("ROLLBACK"); } catch { /* no active transaction */ }
-    await deleteStoredFile(stored).catch(() => {});
+    await Promise.all(storedFiles.map((stored) => deleteStoredFile(stored).catch(() => {})));
     if (cause?.code) throw cause;
     throw error("IMAGE_TEXT_OCR_FAILED", 502);
   }
@@ -365,7 +376,7 @@ export function updateImageTextDetection(userId, detectionId, payload) {
   const row = db.prepare(`SELECT d.*, a.project_id, p.user_id FROM image_text_detections d
     JOIN image_text_assets a ON a.id=d.asset_id JOIN image_text_projects p ON p.id=a.project_id WHERE d.id=? AND p.user_id=?`).get(detectionId, userId);
   if (!row) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
-  const before = { text: row.current_text, style: parse(row.style_json) };
+  const before = { text: row.current_text, style: parse(row.style_json), bbox: parse(row.bbox_json), rotation: row.rotation };
   const currentText = clean(payload.text ?? row.current_text, 500);
   if (!currentText) throw error("IMAGE_TEXT_REPLACEMENT_REQUIRED", 422);
   const suppliedStyle = payload.style && typeof payload.style === "object" ? payload.style : {};
@@ -373,10 +384,16 @@ export function updateImageTextDetection(userId, detectionId, payload) {
     fontFamily: ["auto", "sans", "serif"].includes(suppliedStyle.fontFamily) ? suppliedStyle.fontFamily : before.style.fontFamily,
     fontSize: clamp(suppliedStyle.fontSize ?? before.style.fontSize, 8, 300), color: /^#[0-9a-f]{6}$/i.test(suppliedStyle.color) ? suppliedStyle.color : before.style.color,
     bold: suppliedStyle.bold == null ? before.style.bold : Boolean(suppliedStyle.bold), align: ["left", "center", "right"].includes(suppliedStyle.align) ? suppliedStyle.align : before.style.align };
+  const suppliedBox = payload.bbox && typeof payload.bbox === "object" ? payload.bbox : before.bbox;
+  const bbox = {
+    x: clamp(suppliedBox.x, 0, 100000), y: clamp(suppliedBox.y, 0, 100000),
+    width: clamp(suppliedBox.width, 8, 100000), height: clamp(suppliedBox.height, 8, 100000),
+  };
+  const rotation = clamp(payload.rotation ?? row.rotation, -180, 180);
   const timestamp = Date.now();
-  db.prepare("UPDATE image_text_detections SET current_text=?, style_json=?, updated_at=? WHERE id=?").run(currentText, JSON.stringify(style), timestamp, detectionId);
+  db.prepare("UPDATE image_text_detections SET current_text=?,bbox_json=?,rotation=?,style_json=?,updated_at=? WHERE id=?").run(currentText, JSON.stringify(bbox), rotation, JSON.stringify(style), timestamp, detectionId);
   db.prepare("INSERT INTO image_text_operations (id,project_id,asset_id,detection_id,operation_type,before_json,after_json,created_at) VALUES (?,?,?,?, 'update_text',?,?,?)")
-    .run(randomUUID(), row.project_id, row.asset_id, detectionId, JSON.stringify(before), JSON.stringify({ text: currentText, style }), timestamp);
+    .run(randomUUID(), row.project_id, row.asset_id, detectionId, JSON.stringify(before), JSON.stringify({ text: currentText, style, bbox, rotation }), timestamp);
   return publicDetection(db.prepare("SELECT * FROM image_text_detections WHERE id=?").get(detectionId));
 }
 
@@ -432,7 +449,7 @@ export function createImageTextEditTask(user, tool, payload) {
     WHERE a.id=? AND p.user_id=? AND d.current_text<>d.original_text`).all(assetId, user.id).map((item) => item.id);
   const detectionIds = [...new Set([...requestedDetectionIds, ...pendingDetectionIds, ...previousEditIds])];
   if (!detectionIds.length) throw error("IMAGE_TEXT_DETECTION_NOT_FOUND", 404);
-  if (detectionIds.length > 20) throw error("IMAGE_TEXT_BATCH_LIMIT", 422);
+  if (detectionIds.length > 80) throw error("IMAGE_TEXT_BATCH_LIMIT", 422);
   const placeholders = detectionIds.map(() => "?").join(",");
   const detections = db.prepare(`SELECT d.*, a.project_id, a.original_file_id, a.current_file_id, a.width, a.height, p.user_id
     FROM image_text_detections d JOIN image_text_assets a ON a.id=d.asset_id JOIN image_text_projects p ON p.id=a.project_id
@@ -531,7 +548,7 @@ export async function restoreTextBackground(patch, width, height, useAiRepair = 
 export async function generateCrispTextImage({ source, edits, generate = editPlatformImage, recognize = recognizePlatformImageText, onProgress = () => {}, onDiagnostic = () => {} }) {
   const metadata = await sharp(source).metadata(); const width = metadata.width; const height = metadata.height;
   if (!width || !height) throw error("IMAGE_INVALID", 422);
-  if (!edits.length || edits.length > 20) throw error("IMAGE_TEXT_BATCH_LIMIT", 422);
+  if (!edits.length || edits.length > 80) throw error("IMAGE_TEXT_BATCH_LIMIT", 422);
   const regions = editRegions(edits, width, height);
   onProgress("repairing-background");
   const repairs = new Array(edits.length); let cursor = 0;
@@ -565,7 +582,91 @@ export async function generateCrispTextImage({ source, edits, generate = editPla
   }))).png().toBuffer();
   onProgress("checking-text");
   await verifyReplacementText(output, edits, recognize);
-  return { buffer: output, repairMode: "ai-background-crisp-text", attempts: 1, textVerified: true, qualityStatus: "verified", warnings: [] };
+  return { buffer: output, background: cleaned, repairMode: "ai-background-crisp-text", attempts: 1, textVerified: true, qualityStatus: "verified", warnings: [] };
+}
+
+function svgTextLayer(item) {
+  const style = parse(item.style_json);
+  const bbox = parse(item.bbox_json);
+  const anchor = style.align === "left" ? "start" : style.align === "right" ? "end" : "middle";
+  const x = style.align === "left" ? bbox.x : style.align === "right" ? bbox.x + bbox.width : bbox.x + bbox.width / 2;
+  const y = bbox.y + bbox.height / 2;
+  const family = style.fontFamily === "serif" ? "Songti SC,STSong,serif" : "PingFang SC,Microsoft YaHei,sans-serif";
+  return `<text x="${x}" y="${y}" dominant-baseline="central" text-anchor="${anchor}" fill="${xml(style.color || "#17264d")}" font-family="${xml(family)}" font-size="${clamp(style.fontSize, 8, 300)}" font-weight="${style.bold ? 700 : 400}" transform="rotate(${Number(item.rotation || 0)} ${x} ${y})">${xml(item.current_text)}</text>`;
+}
+
+async function visualAssetRows(userId, projectId) {
+  const project = db.prepare("SELECT * FROM image_text_projects WHERE id=? AND user_id=?").get(clean(projectId, 64), userId);
+  if (!project) throw error("IMAGE_TEXT_PROJECT_NOT_FOUND", 404);
+  const assets = db.prepare("SELECT * FROM image_text_assets WHERE project_id=? ORDER BY created_at").all(project.id);
+  if (!assets.length || assets.some((asset) => !asset.background_file_id)) throw error("VISUAL_PROJECT_NOT_RECONSTRUCTED", 422);
+  return { project, assets: assets.map((asset) => ({ ...asset, detections: db.prepare("SELECT * FROM image_text_detections WHERE asset_id=? ORDER BY created_at").all(asset.id) })) };
+}
+
+async function visualBackground(asset, userId) {
+  const row = fileRow(asset.background_file_id, userId);
+  if (!row) throw error("IMAGE_TEXT_SOURCE_MISSING", 404);
+  return storageProvider.read({ provider: row.storage_provider, objectKey: row.object_key, storageName: row.storage_name });
+}
+
+async function flattenVisualAsset(asset, userId) {
+  const background = await visualBackground(asset, userId);
+  return sharp(background).composite(asset.detections.map((item) => {
+    const bbox = parse(item.bbox_json); const style = parse(item.style_json);
+    const width = Math.max(8, Math.round(bbox.width)); const height = Math.max(8, Math.round(bbox.height));
+    return { input: textOverlay(item.current_text, style, width, height), left: Math.max(0, Math.round(bbox.x)), top: Math.max(0, Math.round(bbox.y)) };
+  })).png().toBuffer();
+}
+
+async function storeGeneratedFile(userId, name, mimeType, buffer) {
+  assertUserFileCapacity(userId);
+  const fileId = randomUUID(); const timestamp = Date.now();
+  const stored = await storageProvider.put({ userId, fileId, fileName: name, mimeType, buffer });
+  try {
+    db.prepare("INSERT INTO files (id,user_id,name,storage_name,mime_type,size_bytes,created_at) VALUES (?,?,?,?,?,?,?)")
+      .run(fileId, userId, name, stored.storageName, mimeType, buffer.length, timestamp);
+    db.prepare("INSERT INTO file_storage_objects (file_id,provider,object_key,etag,status,created_at,updated_at) VALUES (?,?,?,?, 'available',?,?)")
+      .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
+    return { fileId, downloadUrl: `/api/files/${fileId}/download`, name };
+  } catch (cause) { await deleteStoredFile(stored).catch(() => {}); throw cause; }
+}
+
+export async function exportVisualProject(userId, payload) {
+  const format = ["png", "svg", "pptx"].includes(payload.format) ? payload.format : "pptx";
+  const { project, assets } = await visualAssetRows(userId, payload.projectId);
+  const safe = clean(project.name, 80).replace(/[^A-Za-z0-9\u4e00-\u9fff_-]+/g, "-") || "visual-project";
+  if (format === "png") {
+    if (assets.length === 1) return storeGeneratedFile(userId, `${safe}.png`, "image/png", await flattenVisualAsset(assets[0], userId));
+    const archive = new JSZip();
+    for (let index = 0; index < assets.length; index += 1) archive.file(`${safe}-${index + 1}.png`, await flattenVisualAsset(assets[index], userId));
+    return storeGeneratedFile(userId, `${safe}-PNG.zip`, "application/zip", await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  }
+  if (format === "svg") {
+    const archive = assets.length > 1 ? new JSZip() : null; let single = null;
+    for (let index = 0; index < assets.length; index += 1) {
+      const asset = assets[index]; const background = await visualBackground(asset, userId);
+      const body = `<svg xmlns="http://www.w3.org/2000/svg" width="${asset.width}" height="${asset.height}" viewBox="0 0 ${asset.width} ${asset.height}"><image width="100%" height="100%" href="data:image/png;base64,${background.toString("base64")}"/>${asset.detections.map(svgTextLayer).join("")}</svg>`;
+      if (archive) archive.file(`${safe}-${index + 1}.svg`, body); else single = Buffer.from(body);
+    }
+    return archive
+      ? storeGeneratedFile(userId, `${safe}-SVG.zip`, "application/zip", await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }))
+      : storeGeneratedFile(userId, `${safe}.svg`, "image/svg+xml", single);
+  }
+  const first = assets[0]; const slideWidth = 10; const slideHeight = slideWidth * first.height / first.width;
+  const pptx = new PptxGenJS(); pptx.defineLayout({ name: "VISUAL_REBUILD", width: slideWidth, height: slideHeight }); pptx.layout = "VISUAL_REBUILD";
+  pptx.author = "OneShowTools"; pptx.subject = "AI visual reconstruction"; pptx.title = project.name;
+  for (const asset of assets) {
+    const slide = pptx.addSlide(); const background = await visualBackground(asset, userId);
+    slide.addImage({ data: `data:image/png;base64,${background.toString("base64")}`, x: 0, y: 0, w: slideWidth, h: slideHeight });
+    for (const item of asset.detections) {
+      const bbox = parse(item.bbox_json); const style = parse(item.style_json);
+      slide.addText(item.current_text, { x: bbox.x / asset.width * slideWidth, y: bbox.y / asset.height * slideHeight, w: bbox.width / asset.width * slideWidth, h: bbox.height / asset.height * slideHeight,
+        fontFace: style.fontFamily === "serif" ? "宋体" : "微软雅黑", fontSize: clamp(style.fontSize, 8, 300) * .75, color: String(style.color || "#17264d").replace("#", ""), bold: Boolean(style.bold),
+        align: style.align || "center", valign: "mid", margin: 0, breakLine: false, rotate: Number(item.rotation || 0), fit: "shrink" });
+    }
+  }
+  const output = Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
+  return storeGeneratedFile(userId, `${safe}-可编辑.pptx`, pptxMime, output);
 }
 
 async function executePptTextExportTask(task, input) {
@@ -623,7 +724,7 @@ async function executePptTextExportTask(task, input) {
 
 export async function executeImageTextEditTask(task, input, dependencies = {}) {
   if (input.mode === "ppt-export") return executePptTextExportTask(task, input);
-  const detectionIds = [...new Set((Array.isArray(input.detectionIds) ? input.detectionIds : [input.detectionId]).map((id) => clean(id, 64)).filter(Boolean))].slice(0, 20);
+  const detectionIds = [...new Set((Array.isArray(input.detectionIds) ? input.detectionIds : [input.detectionId]).map((id) => clean(id, 64)).filter(Boolean))].slice(0, 80);
   const placeholders = detectionIds.map(() => "?").join(",");
   const found = detectionIds.length ? db.prepare(`SELECT d.*, a.project_id, a.width, a.height FROM image_text_detections d
     JOIN image_text_assets a ON a.id=d.asset_id WHERE d.id IN (${placeholders}) AND a.id=?`).all(...detectionIds, input.assetId) : [];
@@ -650,6 +751,8 @@ export async function executeImageTextEditTask(task, input, dependencies = {}) {
   const firstDetection = detections[0];
   const fileId = randomUUID(); const fileName = `${firstDetection.asset_id.slice(0, 8)}-edited.png`;
   const stored = await storageProvider.put({ userId: task.user_id, fileId, fileName, mimeType: "image/png", buffer: output });
+  const backgroundFileId = randomUUID(); const backgroundName = `${firstDetection.asset_id.slice(0, 8)}-clean-background.png`;
+  const storedBackground = await storageProvider.put({ userId: task.user_id, fileId: backgroundFileId, fileName: backgroundName, mimeType: "image/png", buffer: generated.background });
   const timestamp = Date.now();
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -657,17 +760,22 @@ export async function executeImageTextEditTask(task, input, dependencies = {}) {
       .run(fileId, task.user_id, fileName, stored.storageName, "image/png", output.length, timestamp);
     db.prepare("INSERT INTO file_storage_objects (file_id,provider,object_key,etag,status,created_at,updated_at) VALUES (?,?,?,?, 'available',?,?)")
       .run(fileId, stored.provider, stored.objectKey, stored.etag, timestamp, timestamp);
+    db.prepare("INSERT INTO files (id,user_id,name,storage_name,mime_type,size_bytes,created_at) VALUES (?,?,?,?,?,?,?)")
+      .run(backgroundFileId, task.user_id, backgroundName, storedBackground.storageName, "image/png", generated.background.length, timestamp);
+    db.prepare("INSERT INTO file_storage_objects (file_id,provider,object_key,etag,status,created_at,updated_at) VALUES (?,?,?,?, 'available',?,?)")
+      .run(backgroundFileId, storedBackground.provider, storedBackground.objectKey, storedBackground.etag, timestamp, timestamp);
     db.prepare("INSERT INTO task_files (task_id,file_id) VALUES (?,?)").run(task.id, fileId);
-    db.prepare("UPDATE image_text_assets SET current_file_id=?,status='ready',updated_at=? WHERE id=?").run(fileId, timestamp, input.assetId);
+    db.prepare("INSERT INTO task_files (task_id,file_id) VALUES (?,?)").run(task.id, backgroundFileId);
+    db.prepare("UPDATE image_text_assets SET current_file_id=?,background_file_id=?,status='ready',updated_at=? WHERE id=?").run(fileId, backgroundFileId, timestamp, input.assetId);
     db.prepare("UPDATE image_text_projects SET status='ready',updated_at=? WHERE id=?").run(timestamp, firstDetection.project_id);
     const insertOperation = db.prepare("INSERT INTO image_text_operations (id,project_id,asset_id,detection_id,task_id,operation_type,before_json,after_json,created_at) VALUES (?,?,?,?,?,'apply',?,?,?)");
     for (const item of applied) {
       insertOperation.run(randomUUID(), item.detection.project_id, input.assetId, item.detection.id, task.id, JSON.stringify({ fileId: input.sourceFileId }), JSON.stringify({ fileId, repairMode: item.repairMode, editCount: applied.length }), timestamp);
     }
     db.exec("COMMIT");
-  } catch (cause) { db.exec("ROLLBACK"); await deleteStoredFile(stored).catch(() => {}); throw cause; }
+  } catch (cause) { db.exec("ROLLBACK"); await Promise.all([deleteStoredFile(stored).catch(() => {}), deleteStoredFile(storedBackground).catch(() => {})]); throw cause; }
   const failedDetectionIds = (generated.failedRegionIndices || []).map((index) => edits[index]?.id).filter(Boolean);
-  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, qualityStatus: generated.qualityStatus || "verified", warnings: generated.warnings || [], failedDetectionIds, timings, repairModes: [generated.repairMode] } };
+  return { status: "completed", output: { progress: 100, phase: "completed", projectId: firstDetection.project_id, assetId: input.assetId, resultFileId: fileId, backgroundFileId, downloadUrl: `/api/files/${fileId}/download`, editCount: applied.length, textVerified: generated.textVerified, qualityStatus: generated.qualityStatus || "verified", warnings: generated.warnings || [], failedDetectionIds, timings, repairModes: [generated.repairMode] } };
 }
 
 export function failImageTextTask(taskId) {

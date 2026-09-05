@@ -7,7 +7,7 @@ import {
 import "./image-text-editor.css";
 
 const errors = {
-  IMAGE_REQUIRED: "请先上传图片。", IMAGE_TEXT_FILE_UNSUPPORTED: "仅支持 JPG、PNG 和 WebP 图片。",
+  IMAGE_REQUIRED: "请先上传图片或 PDF。", IMAGE_TEXT_FILE_UNSUPPORTED: "仅支持 JPG、PNG、WebP 图片和 PDF。",
   IMAGE_TEXT_FILE_TOO_LARGE: "单张图片不能超过 20 MB。", IMAGE_TEXT_RESOLUTION_TOO_LOW: "图片分辨率过低，请上传更清晰的图片。",
   IMAGE_TEXT_OCR_FAILED: "文字识别失败，请换一张更清晰的图片重试。", IMAGE_TEXT_ASSISTANT_UNAVAILABLE: "文案助手暂时不可用，仍可直接编辑文字。",
   IMAGE_TEXT_ASSISTANT_FAILED: "文案处理失败，请稍后重试。", IMAGE_TEXT_ASSET_NOT_FOUND: "这张图片已失效，请重新上传。", IMAGE_TEXT_DETECTION_NOT_FOUND: "这段文字已失效，请重新识别。",
@@ -23,6 +23,8 @@ const errors = {
   PPT_FILE_INVALID: "这个 PPTX 文件无法解析，请确认文件没有损坏。", PPT_PROJECT_NOT_FOUND: "这个 PPT 项目已失效，请重新上传。", PPT_TEXT_NOT_FOUND: "这段 PPT 文字已失效。",
   PPT_FILE_TOO_COMPLEX: "这份 PPT 内容过多，测试版暂时支持最多 200 页或 5000 个文字框。",
   PPT_NO_CHANGES: "请至少修改一处文字后再导出。", PPT_EXPORT_VALIDATION_FAILED: "导出文件校验未通过，本次积分已退回，原文件和文字草稿均已保留。",
+  VISUAL_PROJECT_NOT_RECONSTRUCTED: "请先逐页完成 AI 结构重建，再导出可编辑文件。",
+  PDF_PAGE_LIMIT: "测试版单个 PDF 最多导入 12 页，请拆分后重试。", PDF_INVALID_OR_ENCRYPTED: "PDF 无法读取或已加密，请更换文件。",
 };
 
 async function api(path, options = {}) {
@@ -41,14 +43,14 @@ function UploadCard({ busy, onFiles }) {
   const accept = (list) => onFiles(Array.from(list || []).slice(0, 8));
   return <button type="button" className="ite-upload-card" onClick={() => input.current?.click()}
     onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); accept(event.dataTransfer.files); }}>
-    <input ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => accept(event.target.files)} />
+    <input ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" hidden onChange={(event) => accept(event.target.files)} />
     {busy ? <SpinnerGap className="ite-spin" size={28} /> : <CloudArrowUp size={28} weight="duotone" />}
-    <strong>{busy ? "正在识别文字…" : "上传图片"}</strong><span>拖拽或点击上传</span><small>JPG · PNG · WEBP · 20 MB</small>
+    <strong>{busy ? "正在分析视觉结构…" : "上传图片 / PDF"}</strong><span>拖拽或点击上传</span><small>图片 20 MB · PDF 最多 12 页</small>
   </button>;
 }
 
 function EmptyCanvas({ onUpload }) {
-  return <div className="ite-empty-canvas"><span><TextT size={40} weight="duotone" /></span><h2>把图片里的文字重新变得可编辑</h2><p>上传海报、AI 生图或截图，系统会自动识别可修改的文字区域。</p><button onClick={onUpload}><Plus size={17} />选择第一张图片</button><div><i>1</i>上传图片<b /> <i>2</i>点击文字<b /> <i>3</i>修改并下载</div></div>;
+  return <div className="ite-empty-canvas"><span><TextT size={40} weight="duotone" /></span><h2>把图片重建成可编辑设计稿</h2><p>上传图片、海报、截图或 PDF，AI 识别文字与版式并重建为独立图层。</p><button onClick={onUpload}><Plus size={17} />创建视觉工程</button><div><i>1</i>导入文件<b /> <i>2</i>AI 分层重建<b /> <i>3</i>编辑并导出</div></div>;
 }
 
 function PptTextEditor({ tool, authenticated, onAuth, onCompleted }) {
@@ -164,6 +166,9 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const [changedIds, setChangedIds] = useState(() => new Set());
   const [showResult, setShowResult] = useState(false);
   const [resultNonce, setResultNonce] = useState(0);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportFormat, setExportFormat] = useState("pptx");
+  const [exportFile, setExportFile] = useState(null);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
   const fileInput = useRef(null);
   const inlineEditor = useRef(null);
@@ -172,7 +177,9 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   const asset = project?.assets?.find((item) => item.id === assetId) || project?.assets?.[0] || null;
   const selected = asset?.detections?.find((item) => item.id === selectedId) || null;
   const changedDetections = asset?.detections?.filter((item) => changedIds.has(item.id)) || [];
-  const imageUrl = asset ? `${compare ? asset.originalUrl : asset.imageUrl}${(compare ? asset.originalUrl : asset.imageUrl).includes("?") ? "&" : "?"}v=${asset.currentFileId || asset.originalFileId}-${resultNonce}` : "";
+  const workingUrl = asset?.backgroundUrl || asset?.originalUrl || "";
+  const displayedUrl = compare ? asset?.originalUrl : showResult && asset?.currentFileId ? asset.imageUrl : workingUrl;
+  const imageUrl = asset ? `${displayedUrl}${displayedUrl.includes("?") ? "&" : "?"}v=${asset.backgroundFileId || asset.currentFileId || asset.originalFileId}-${resultNonce}` : "";
   const progressText = { preparing: "准备处理", "repairing-background": "正在修复原文字背景", "rendering-text": "正在精确写入新文字", "checking-text": "正在逐处检查生成文字", rendering: "保存生成结果", completed: "处理完成" };
   const resultNeedsReview = task?.status === "completed" && task?.output?.textVerified === false;
 
@@ -191,7 +198,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   }, [asset?.id]);
   useEffect(() => {
     const previous = document.title;
-    document.title = "字迹 · AI 图片文字编辑 | OneShowTools";
+    document.title = "字迹 · AI 视觉结构重建 | OneShowTools";
     return () => { document.title = previous; };
   }, []);
   useEffect(() => {
@@ -250,7 +257,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
     }
     setDraftStatus("saving");
     try {
-      const data = await api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }));
+      const data = await api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style, bbox: item.bbox, rotation: item.rotation }));
       setProject((current) => ({ ...current, assets: current.assets.map((currentAsset) => ({ ...currentAsset, detections: currentAsset.detections.map((detection) => detection.id === data.detection.id && detection.currentText === item.currentText ? data.detection : detection) })) }));
       setDraftStatus("saved");
       setError("");
@@ -297,15 +304,29 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   }
 
   async function apply() {
-    const edits = changedDetections.length ? changedDetections : (selected ? [selected] : []);
+    const edits = !asset?.backgroundFileId ? (asset?.detections || []) : (changedDetections.length ? changedDetections : (selected ? [selected] : []));
     if (!edits.length) return; setBusy(true); setError("");
     try {
-      await Promise.all(edits.map((item) => api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style }))));
+      await Promise.all(edits.map((item) => api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style, bbox: item.bbox, rotation: item.rotation }))));
       setDraftStatus("saved");
       setShowResult(false);
+      if (asset.backgroundFileId) {
+        const fresh = await api(`/api/image-text/projects/${project.id}`);
+        setProject(fresh.project); setChangedIds(new Set()); setBusy(false); return;
+      }
       const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), applyAllPending: true }));
       setTask(data.task);
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }
+  }
+
+  async function exportProject() {
+    if (!project) return;
+    setExportBusy(true); setError("");
+    try {
+      const data = await api("/api/image-text/export", json("POST", { projectId: project.id, format: exportFormat }));
+      setExportFile(data.file);
+    } catch (cause) { setError(cause.message); }
+    finally { setExportBusy(false); }
   }
 
   const progress = Number(task?.output?.progress || (task?.status === "running" ? 20 : 0));
@@ -317,10 +338,10 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   }, [asset, stageSize, zoom]);
 
   return <main className="ite-page">
-    <input ref={fileInput} hidden multiple type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => upload(Array.from(event.target.files || []))} />
+    <input ref={fileInput} hidden multiple type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => upload(Array.from(event.target.files || []))} />
     <button className="ite-back" onClick={onBack}><ArrowLeft size={16} />返回工具市场</button>
-    <header className="ite-hero ite-hero-premium"><img className="ite-product-icon" src="/image-text-editor/image-text-editor-icon-v2.webp" alt="字迹 AI 图片文字编辑图标" /><div className="ite-hero-copy"><small>ONSHOWTOOLS · VISUAL TEXT STUDIO</small><h1>字迹 · AI 图片文字编辑</h1><p>不用重做整张图，也不用寻找源文件。识别、改写、修复与导出，在一个工作台完成。</p><div className="ite-hero-pills"><span><CheckCircle weight="fill" />图片文字智能识别</span><span><CheckCircle weight="fill" />PPTX 文字层编辑</span><span><CheckCircle weight="fill" />原文件安全保留</span></div></div><em>测试中</em><aside className="ite-hero-proof"><small>AI VISUAL EDITING</small><strong>让每一处文字<br />都能重新编辑</strong><div><span><b>20 MB</b>图片上传</span><span><b>50 MB</b>PPTX 上传</span><span><b>30 积分</b>每次导出</span></div></aside></header>
-    <nav className="ite-mode-tabs"><button className={mode === "image" ? "active" : ""} onClick={() => setMode("image")}>图片改字</button><button className={mode === "ppt" ? "active" : ""} onClick={() => setMode("ppt")}>PPT 改字 <i>增强版</i></button></nav>
+    <header className="ite-hero ite-hero-premium"><img className="ite-product-icon" src="/image-text-editor/image-text-editor-icon-v2.webp" alt="字迹 AI 视觉重建图标" /><div className="ite-hero-copy"><small>ONSHOWTOOLS · VISUAL RECONSTRUCTION</small><h1>字迹 · AI 视觉结构重建</h1><p>把图片、海报、截图和 PDF 重建成可编辑图层，并导出可编辑 PPTX、SVG 或高清图片。</p><div className="ite-hero-pills"><span><CheckCircle weight="fill" />OCR 与版面分析</span><span><CheckCircle weight="fill" />文字图层独立编辑</span><span><CheckCircle weight="fill" />多格式可编辑导出</span></div></div><em>测试中</em><aside className="ite-hero-proof"><small>AI LAYERED DESIGN</small><strong>从一张平面图<br />恢复可编辑结构</strong><div><span><b>12 页</b>PDF 导入</span><span><b>PPTX / SVG</b>可编辑</span><span><b>30 积分</b>AI 重建</span></div></aside></header>
+    <nav className="ite-mode-tabs"><button className={mode === "image" ? "active" : ""} onClick={() => setMode("image")}>图片 / PDF 转可编辑设计</button><button className={mode === "ppt" ? "active" : ""} onClick={() => setMode("ppt")}>已有 PPTX 改字 <i>保留原文件</i></button></nav>
     {mode === "image" ? <><section className="ite-workbench">
       <aside className="ite-assets"><UploadCard busy={busy && !task} onFiles={upload} />
         <div className="ite-asset-list">{project?.assets?.map((item, index) => <button key={item.id} className={(asset?.id === item.id ? "active " : "") + item.status} onClick={() => { setAssetId(item.id); setSelectedId(""); setInlineEditingId(""); setDraftStatus("idle"); setShowResult(false); setZoom(1); }}><span>{String(index + 1).padStart(2, "0")}</span><img src={`/api/files/${item.originalFileId}/thumbnail`} alt={item.name} /><small>{item.detections.length} 处文字</small></button>)}</div>
@@ -328,7 +349,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
       </aside>
       <section className="ite-canvas-panel">
         <div className="ite-toolbar"><button onClick={() => setZoom(Math.max(.5, zoom - .1))}><MagnifyingGlassMinus /></button><button onClick={() => setZoom(Math.min(1.8, zoom + .1))}><MagnifyingGlassPlus /></button><strong>{Math.round(zoom * 100)}%</strong><button className="wide" onPointerDown={() => setCompare(true)} onPointerUp={() => setCompare(false)} onPointerLeave={() => setCompare(false)}><Eye />按住对比</button>{asset?.currentFileId && <button className={`wide ${showResult ? "active" : ""}`} onClick={() => setShowResult((value) => !value)}><CheckCircle />{showResult ? "继续编辑" : "查看结果"}</button>}</div>
-        {!asset ? <EmptyCanvas onUpload={() => authenticated ? fileInput.current?.click() : onAuth?.()} /> : <div className="ite-stage" ref={stageRef}><div className="ite-image-wrap" style={{ width: `${asset.width * displayScale}px`, height: `${asset.height * displayScale}px` }}><img key={imageUrl} src={imageUrl} alt={asset.name} />{!compare && !showResult && asset.detections.map((item) => {
+        {!asset ? <EmptyCanvas onUpload={() => authenticated ? fileInput.current?.click() : onAuth?.()} /> : <div className="ite-stage" ref={stageRef}><div className={`ite-image-wrap ${asset.backgroundFileId ? "layered" : "detected"}`} style={{ width: `${asset.width * displayScale}px`, height: `${asset.height * displayScale}px` }}><img key={imageUrl} src={imageUrl} alt={asset.name} />{!compare && !showResult && asset.detections.map((item) => {
           const isSelected = selected?.id === item.id;
           const textStyle = {
             left: `${item.bbox.x * displayScale}px`, top: `${item.bbox.y * displayScale}px`, width: `${item.bbox.width * displayScale}px`, height: `${item.bbox.height * displayScale}px`,
@@ -342,24 +363,31 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
             onBlur={() => saveDraft(item)}
             onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); apply(); } if (event.key === "Escape") event.currentTarget.blur(); }} style={textStyle} />
             : <button key={item.id} aria-label={`选择图片文字：${item.originalText}`} className="ite-text-box" onClick={() => beginInlineEdit(item)} style={textStyle}>
-              {item.currentText !== item.originalText && <span>{item.currentText}</span>}
+              {(asset.backgroundFileId || item.currentText !== item.originalText) && <span>{item.currentText}</span>}
             </button>;
         })}</div></div>}
         <footer><button disabled={!history.length} onClick={() => restore(history.at(-1), setFuture, setHistory)}><ArrowCounterClockwise />撤销</button><button disabled={!future.length} onClick={() => restore(future.at(-1), setHistory, setFuture)}><ArrowClockwise />重做</button><button disabled={!asset} onClick={() => setSelectedId(asset?.detections?.[0]?.id || "")}><ArrowsClockwise />重新选择文字</button></footer>
         {processing && <div className="ite-progress"><span><SpinnerGap className="ite-spin" /></span><div><strong>{progressText[task.output?.phase] || "正在处理图片"}</strong><p>后台处理中，你可以留在当前页面等待。</p><i><b style={{ width: `${Math.max(6, progress)}%` }} /></i></div><em>{progress}%</em></div>}
       </section>
-      <aside className="ite-editor"><header><div><small>TEXT EDITOR</small><h2>文字编辑</h2></div><button disabled={!asset || busy || processing} onClick={redetect}>{busy ? <SpinnerGap className="ite-spin" /> : <ArrowsClockwise />}重新识别</button></header>
+      <aside className="ite-editor"><header><div><small>LAYER EDITOR</small><h2>图层与导出</h2></div><button disabled={!asset || busy || processing} onClick={redetect}>{busy ? <SpinnerGap className="ite-spin" /> : <ArrowsClockwise />}重新识别</button></header>
         {!selected ? <div className="ite-no-selection"><TextT size={28} /><strong>{asset?.detections?.length === 0 ? "没有识别到文字" : "请选择一段文字"}</strong><p>{asset?.detections?.length === 0 ? "可以换一张更清晰、文字对比度更高的图片。" : "点击画布中的虚线框，即可原位输入修改。"}</p></div> : <>
           <div className={`ite-direct-edit-status ${draftStatus}`}><span><TextT weight="bold" />画布内直接编辑{changedDetections.length > 0 && <em>{changedDetections.length} 处待处理</em>}</span><small>{draftStatus === "saving" ? "正在自动保存文字草稿…" : draftStatus === "saved" ? "草稿已保存，可继续修改其他文字后统一处理" : draftStatus === "dirty" ? "点击其他区域保存这一处，再继续修改其他文字" : draftStatus === "error" ? "草稿未保存，请检查内容后重试" : "可连续修改多处，最后一次生成最终图片"}</small></div>
           <label><span>识别到的文字</span><div className="ite-original-text">{selected.originalText}</div></label>
           <label><span>修改为</span><textarea value={selected.currentText} maxLength={100} onChange={(event) => updateLocal({ currentText: event.target.value })} onBlur={() => saveDraft(selected)} /><small>{selected.currentText.length}/100</small></label>
           <div className="ite-ai-actions"><button onClick={() => rewrite("polish")} disabled={busy}><MagicWand />AI 优化文案</button><button onClick={() => rewrite("translate")} disabled={busy}><Translate />中英互译</button></div>
-          <section className="ite-options"><h3>沿用原图风格</h3><p>按原文字的字体外观、颜色和排版生成。编辑框是文字草稿，最终效果以下方生成预览为准。</p><p>支持同时修改多处；所选区域以外的原图像素会保留。</p></section>
+          <section className="ite-style"><h3>图层样式与位置 <small>可精确调整</small></h3>
+            <label><span>字号</span><div className="ite-stepper"><button onClick={() => updateLocal({ style: { fontSize: Math.max(8, Number(selected.style?.fontSize || 16) - 2) } })}>−</button><input value={Math.round(selected.style?.fontSize || 16)} readOnly /><button onClick={() => updateLocal({ style: { fontSize: Math.min(300, Number(selected.style?.fontSize || 16) + 2) } })}>＋</button></div></label>
+            <label><span>颜色</span><div className="ite-color"><input type="color" value={selected.style?.color || "#17264d"} onChange={(event) => updateLocal({ style: { color: event.target.value } })} /><input value={selected.style?.color || "#17264d"} readOnly /></div></label>
+            <div className="ite-layer-position">{[["X", "x"], ["Y", "y"], ["宽", "width"], ["高", "height"]].map(([label, key]) => <label key={key}><span>{label}</span><input type="number" value={Math.round(selected.bbox[key])} onChange={(event) => updateLocal({ bbox: { ...selected.bbox, [key]: Number(event.target.value) } })} onBlur={() => saveDraft(selected)} /></label>)}</div>
+            <div className="ite-format"><button className={selected.style?.bold ? "active" : ""} onClick={() => updateLocal({ style: { bold: !selected.style?.bold } })}>B</button><button className={selected.style?.align === "left" ? "active" : ""} onClick={() => updateLocal({ style: { align: "left" } })}><AlignLeft /></button><button className={selected.style?.align === "center" ? "active" : ""} onClick={() => updateLocal({ style: { align: "center" } })}><AlignCenterHorizontal /></button><button className={selected.style?.align === "right" ? "active" : ""} onClick={() => updateLocal({ style: { align: "right" } })}><AlignRight /></button></div>
+          </section>
+          <section className="ite-options"><h3>{asset.backgroundFileId ? "可编辑工程已建立" : "下一步：AI 分层重建"}</h3><p>{asset.backgroundFileId ? "当前画布由无文字背景和独立文字图层组成，修改位置与样式后可再次导出。" : "当前只是识别预览。点击下方按钮后，AI 会修复文字背后的背景，并把全部文字重建为独立图层。"}</p></section>
         </>}
         {error && <p className="ite-error">{error}</p>}
-        <footer><button className="secondary" disabled={(!selected && !changedDetections.length) || processing || busy} onClick={apply}>{busy ? <SpinnerGap className="ite-spin" /> : <MagicWand />}{changedDetections.length > 1 ? `统一处理 ${changedDetections.length} 处` : "应用到图片"} · {tool.creditCost} 积分</button><button disabled={!asset?.currentFileId || processing} onClick={() => setShowResult(true)}><Eye />预览生成结果</button></footer>
+        <footer><button className="secondary" disabled={!asset?.detections?.length || processing || busy} onClick={apply}>{busy ? <SpinnerGap className="ite-spin" /> : <MagicWand />}{asset?.backgroundFileId ? `保存 ${Math.max(1, changedDetections.length)} 个图层` : `AI 重建 ${asset?.detections?.length || 0} 个图层 · ${tool.creditCost} 积分`}</button><button disabled={!asset?.backgroundFileId || processing} onClick={() => setShowResult(false)}><Eye />画布实时预览</button></footer>
       </aside>
     </section>
+    {project && <section className="ite-export-panel"><div><small>EDITABLE EXPORT</small><h2>导出可编辑工程</h2><p>PNG 为最终成品；SVG 保留可编辑文字；PPTX 中每段文字都是可直接修改的文本框。</p></div><div className="ite-export-formats">{[["pptx", "可编辑 PPTX"], ["svg", "分层 SVG"], ["png", "高清 PNG"]].map(([value, label]) => <button key={value} className={exportFormat === value ? "active" : ""} onClick={() => { setExportFormat(value); setExportFile(null); }}>{label}</button>)}</div>{exportFile ? <a href={exportFile.downloadUrl} download><DownloadSimple />下载 {exportFile.name}</a> : <button className="ite-export-action" disabled={exportBusy || project.assets.some((item) => !item.backgroundFileId)} onClick={exportProject}>{exportBusy ? <SpinnerGap className="ite-spin" /> : <DownloadSimple />}{project.assets.some((item) => !item.backgroundFileId) ? "请先完成每页重建" : "生成导出文件"}</button>}</section>}
     {showResult && asset?.currentFileId && <section className="ite-result-preview" ref={resultPreviewRef}>
       <header><div><small>GENERATED RESULT</small><h2>生成结果预览</h2><p>本次已统一处理 <strong>{Number(task?.output?.editCount || changedDetections.length || 1)}</strong> 处文字。{resultNeedsReview ? "模型已生成可用预览，但自动文字核对未完全一致，请人工确认后再下载。" : "自动核对已通过，请先对比确认，满意后再下载。"}</p></div><span className={resultNeedsReview ? "needs-review" : "verified"}><CheckCircle weight="fill" />{resultNeedsReview ? "请人工确认" : "文字核对通过"}</span></header>
       <div className="ite-result-compare">
@@ -369,6 +397,6 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
       {resultNeedsReview && <p className="ite-result-warning">个别文字可能存在漏字、错字或字形偏差。你可以继续修改并重新生成；确认画面无误后，也可以直接下载当前结果。</p>}
       <footer><button onClick={() => { const failedId = task?.output?.failedDetectionIds?.[0]; if (failedId) setSelectedId(failedId); setShowResult(false); stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}><ArrowLeft />继续修改</button><a href={task?.output?.downloadUrl || asset.imageUrl} download><DownloadSimple />确认满意，下载图片</a></footer>
     </section>}</> : <PptTextEditor tool={tool} authenticated={authenticated} onAuth={onAuth} onCompleted={onCompleted} />}
-    <p className="ite-tip"><FileImage size={16} />小提示：替换文字长度接近原文时更容易保留排版；复杂艺术字请在预览中仔细确认。</p>
+    <p className="ite-tip"><FileImage size={16} />测试版优先重建文字与背景；普通图片、形状和复杂艺术字的进一步分层会持续增强。</p>
   </main>;
 }

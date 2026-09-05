@@ -370,6 +370,8 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0036_word_immersion.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0037_image_text_editor.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0038_ppt_text_editor.sql"), "utf8"));
+  const imageTextAssetColumns = new Set(db.prepare("PRAGMA table_info(image_text_assets)").all().map((item) => item.name));
+  if (!imageTextAssetColumns.has("background_file_id")) db.exec("ALTER TABLE image_text_assets ADD COLUMN background_file_id TEXT REFERENCES files(id) ON DELETE SET NULL");
   const taskColumns = new Set(db.prepare("PRAGMA table_info(tasks)").all().map((item) => item.name));
   if (!taskColumns.has("deleted_at")) db.exec("ALTER TABLE tasks ADD COLUMN deleted_at INTEGER");
   db.exec("CREATE INDEX IF NOT EXISTS tasks_user_visible_created_idx ON tasks(user_id, deleted_at, created_at DESC)");
@@ -552,7 +554,7 @@ export function initializeDatabase() {
     ["tool_qr_generator", "qr-code-generator", "二维码生成器", "QR Code Generator", "将网址、文本、Wi-Fi 或联系方式生成高清二维码图片。", "Create a high-resolution QR code from a URL, text, Wi-Fi settings, or contact details.", "marketing", "GridFour", 0, "builtin-text"],
     ["tool_qr_reader", "qr-code-reader", "二维码识别器", "QR Code Reader", "从图片中安全识别二维码内容，不上传到第三方服务。", "Read QR code content from an image without sending it to a third-party service.", "image", "MagnifyingGlass", 0, "builtin-image"],
     ["tool_image_ocr", "image-ocr", "图片 OCR 文字识别", "Image OCR", "识别截图和照片中的中英文文字并导出可编辑文本。", "Recognize Chinese and English text in screenshots or photos and export editable text.", "image", "FileText", 3, "builtin-image"],
-    ["tool_image_text_editor", "image-text-editor", "字迹 · AI 图片文字编辑", "Image Text Editor", "自动识别图片文字，修复原背景并保持样式写入新文字。", "Detect text in images, restore the background, and replace copy while preserving its visual style.", "image", "TextAa", 30, "image-text-edit"],
+    ["tool_image_text_editor", "image-text-editor", "字迹 · AI 视觉结构重建", "AI Visual Reconstruction", "将图片、海报、截图和 PDF 重建为可编辑文字图层，并导出可编辑 PPTX、SVG 或高清图片。", "Reconstruct images, posters, screenshots, and PDFs into editable text layers for PPTX, SVG, and high-resolution exports.", "image", "TextAa", 30, "image-text-edit"],
     ["tool_text_statistics", "text-statistics", "字数与阅读时间统计", "Word & Reading Time Counter", "统计中英文字词、字符、句子、段落和预计阅读时间。", "Count Chinese and English words, characters, sentences, paragraphs, and reading time.", "writing", "TextAa", 0, "builtin-text"],
     ["tool_csv_json", "csv-json-converter", "CSV / JSON 转换", "CSV / JSON Converter", "在 CSV 与 JSON 之间转换，支持常用分隔符和规范引号。", "Convert between CSV and JSON with common delimiters and standards-compliant quoting.", "data", "ArrowsClockwise", 0, "builtin-text"],
     ["tool_csv_cleaner", "csv-cleaner", "CSV 清理与去重", "CSV Cleaner & Deduplicator", "清理单元格空格、删除重复数据并输出规范 CSV。", "Trim cells, remove duplicate records, and produce clean CSV.", "data", "Database", 0, "builtin-text"],
@@ -702,6 +704,25 @@ export function initializeDatabase() {
       db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  const visualReconstructionUpgradeKey = "tool_image_text_editor_visual_reconstruction_v2";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(visualReconstructionUpgradeKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`UPDATE tools SET name_zh='字迹 · AI 视觉结构重建',name_en='AI Visual Reconstruction',
+        description_zh='将图片、海报、截图和 PDF 重建为可编辑文字图层，并导出可编辑 PPTX、SVG 或高清图片。',
+        description_en='Reconstruct images, posters, screenshots, and PDFs into editable text layers for PPTX, SVG, and high-resolution exports.',updated_at=?
+        WHERE slug='image-text-editor'`).run(timestamp);
+      db.prepare(`INSERT INTO tool_versions
+        (id,tool_id,version,lifecycle_state,visibility,name_zh,name_en,description_zh,description_en,category,icon,credit_cost,contract_version,runtime_kind,created_at)
+        SELECT ?,id,2,'testing','private',name_zh,name_en,description_zh,description_en,category,icon,credit_cost,'v2',runtime_kind,?
+        FROM tools WHERE slug='image-text-editor' AND NOT EXISTS (SELECT 1 FROM tool_versions WHERE tool_id='tool_image_text_editor' AND version=2)`)
+        .run(randomUUID(), timestamp);
+      db.prepare("INSERT INTO platform_settings (key,value_json,updated_at) VALUES (?,?,?)")
+        .run(visualReconstructionUpgradeKey, JSON.stringify({ slug: "image-text-editor", lifecycle: "testing", product: "visual-reconstruction" }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
   }
 
   const interviewAssistantPublicationKey = "tool_interview_assistant_publication_v1";

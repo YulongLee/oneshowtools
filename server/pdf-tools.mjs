@@ -64,6 +64,18 @@ async function renderPage(document, pageNumber, scale = 1.6, format = "png", qua
   return canvas.toBuffer("image/png");
 }
 
+export async function renderPdfPagesForEditing(buffer, maxPages = 12) {
+  const document = await openPdfJs(buffer);
+  try {
+    if (document.numPages > maxPages) throw pdfError("PDF_PAGE_LIMIT", 413);
+    const pages = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      pages.push({ pageNumber, buffer: await renderPage(document, pageNumber, 2, "png") });
+    }
+    return pages;
+  } finally { await closePdfJs(document); }
+}
+
 function outputFile(buffer, name, mimeType, output = {}) {
   return { buffer, name, mimeType, extension: `.${name.split(".").pop()}`, output };
 }

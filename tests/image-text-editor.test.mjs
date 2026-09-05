@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import sharp from "sharp";
 import JSZip from "jszip";
+import { PDFDocument } from "pdf-lib";
 
 const dataDirectory = await mkdtemp(join(tmpdir(), "oneshowtools-image-text-"));
 process.env.DATA_DIR = dataDirectory;
@@ -13,7 +14,7 @@ process.env.APP_URL = "http://localhost";
 process.env.MODEL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 
 const { db } = await import("../server/database.mjs");
-const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, generateCrispTextImage, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, TextStyleAnalyzer, textOverlay, textStrokeMask, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
+const { createImageTextEditTask, createPptTextExportTask, executeImageTextEditTask, exportVisualProject, generateCrispTextImage, getImageTextProject, getPptTextProject, redetectImageTextAsset, restoreTextBackground, TextStyleAnalyzer, textOverlay, textStrokeMask, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } = await import(`../server/image-text-editor.mjs?test=${Date.now()}`);
 const { readStoredFile } = await import("../server/object-storage.mjs");
 
 function userWithCredits() {
@@ -146,7 +147,12 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   assert.equal((await sharp(await readStoredFile({ provider: resultFile.provider, objectKey: resultFile.object_key, storageName: resultFile.storage_name })).metadata()).format, "png");
   const fresh = getImageTextProject(user.id, project.id);
   assert.ok(fresh.assets[0].currentFileId);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM task_files WHERE task_id=?").get(task.id).count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM task_files WHERE task_id=?").get(task.id).count, 2, "the task retains both the flattened preview and clean editable background");
+  assert.ok(fresh.assets[0].backgroundFileId, "visual reconstruction keeps a separate clean background");
+  const editablePpt = await exportVisualProject(user.id, { projectId: project.id, format: "pptx" });
+  const editableRow = db.prepare(`SELECT f.storage_name,COALESCE(s.provider,'local') AS provider,s.object_key FROM files f LEFT JOIN file_storage_objects s ON s.file_id=f.id WHERE f.id=?`).get(editablePpt.fileId);
+  const editableArchive = await JSZip.loadAsync(await readStoredFile({ provider: editableRow.provider, objectKey: editableRow.object_key, storageName: editableRow.storage_name }));
+  assert.ok(editableArchive.file("ppt/slides/slide1.xml"), "an image project exports a real editable PPTX");
   assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70);
   updateImageTextDetection(user.id, detection.id, { text: "HELLO AGAIN" });
   const reapplied = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionId: detection.id, useAiRepair: false, preserveStyle: true });
@@ -160,6 +166,19 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   failTaskExecution(reapplied.id, "IMAGE_TEXT_QUALITY_REJECTED");
   assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70, "failed generation refunds once");
   assert.equal(getImageTextProject(user.id, project.id).assets[0].currentFileId, fresh.assets[0].currentFileId, "failure retains the previous valid result");
+});
+
+test("a PDF page imports as an OCR-backed visual reconstruction asset", async () => {
+  const user = userWithCredits();
+  const pdf = await PDFDocument.create(); const page = pdf.addPage([640, 360]);
+  const artwork = await sharp({ create: { width: 640, height: 360, channels: 3, background: "#ffffff" } })
+    .composite([{ input: Buffer.from('<svg width="640" height="360"><text x="100" y="190" font-size="62" font-family="Arial" fill="#111827">EDITABLE PAGE</text></svg>') }]).png().toBuffer();
+  const embedded = await pdf.embedPng(artwork); page.drawImage(embedded, { x: 0, y: 0, width: 640, height: 360 });
+  const form = new FormData(); form.append("file", new File([await pdf.save()], "poster.pdf", { type: "application/pdf" }));
+  const project = await uploadImageTextAsset(new Request("http://localhost/api/image-text/assets", { method: "POST", body: form }), user);
+  assert.equal(project.assets.length, 1);
+  assert.match(project.assets[0].name, /poster-1\.png/);
+  assert.ok(project.assets[0].detections.length >= 1);
 });
 
 test("PPTX text layers can be uploaded, edited and exported without replacing the source file", async () => {

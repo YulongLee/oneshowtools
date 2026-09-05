@@ -73,7 +73,7 @@ import {
 } from "./domestic-payments.mjs";
 import { effectiveMembership } from "./membership.mjs";
 import { createAncestorTask } from "./ancestor-jobs.mjs";
-import { createImageTextEditTask, createPptTextExportTask, getImageTextProject, getPptTextProject, redetectImageTextAsset, rewriteImageText, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } from "./image-text-editor.mjs";
+import { createImageTextEditTask, createPptTextExportTask, exportVisualProject, getImageTextProject, getPptTextProject, redetectImageTextAsset, rewriteImageText, updateImageTextDetection, updatePptTextItem, uploadImageTextAsset, uploadPptTextProject } from "./image-text-editor.mjs";
 import { publicTaskInput } from "./task-presentation.mjs";
 import { listPublicToolManuals, publicToolManual } from "./tool-manuals.mjs";
 import {
@@ -2651,6 +2651,10 @@ export async function handleApi(request) {
       runNextJob().catch(() => {});
       return json({ task }, 202);
     } catch (error) { return fail(error.code || "IMAGE_TEXT_APPLY_FAILED", error.status || 500); }
+  }
+  if (path === "/api/image-text/export" && request.method === "POST") {
+    try { return json({ file: await exportVisualProject(user.id, await body(request)) }, 201); }
+    catch (error) { return fail(error.code || "VISUAL_PROJECT_EXPORT_FAILED", error.status || 500); }
   }
 
   if (path === "/api/word-immersion/catalog" && request.method === "GET")
