@@ -240,6 +240,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
   }
 
   function updateLocal(patch, remember = true) {
+    setExportFile(null);
     if (!selected) return;
     if (remember) { setHistory((items) => [...items.slice(-29), { assetId: asset.id, detectionId: selected.id, value: selected }]); setFuture([]); }
     setDraftStatus("dirty");
@@ -279,6 +280,8 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
 
   function restore(entry, targetSetter, sourceSetter) {
     if (!entry) return;
+    setExportFile(null); setDraftStatus("unsaved");
+    setChangedIds((ids) => new Set([...ids, entry.detectionId]));
     const current = project.assets.find((item) => item.id === entry.assetId)?.detections.find((item) => item.id === entry.detectionId);
     if (current) targetSetter((items) => [...items, { assetId: entry.assetId, detectionId: entry.detectionId, value: current }]);
     setAssetId(entry.assetId); setSelectedId(entry.detectionId);
@@ -310,10 +313,7 @@ export function ImageTextEditor({ tool, authenticated, onBack, onAuth, onComplet
       await Promise.all(edits.map((item) => api(`/api/image-text/texts/${item.id}`, json("PATCH", { text: item.currentText, style: item.style, bbox: item.bbox, rotation: item.rotation }))));
       setDraftStatus("saved");
       setShowResult(false);
-      if (asset.backgroundFileId) {
-        const fresh = await api(`/api/image-text/projects/${project.id}`);
-        setProject(fresh.project); setChangedIds(new Set()); setBusy(false); return;
-      }
+      setExportFile(null);
       const data = await api("/api/image-text/apply", json("POST", { assetId: asset.id, detectionIds: edits.map((item) => item.id), applyAllPending: true }));
       setTask(data.task);
     } catch (cause) { setError(cause.message); } finally { setBusy(false); }

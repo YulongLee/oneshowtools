@@ -113,7 +113,7 @@ test("OCR uncertainty never discards a deterministically rendered editable resul
   assert.equal((await sharp(result.buffer).metadata()).format, "png");
 });
 
-test("multi-layer reconstruction uses one provider request and survives upstream rate limiting", async () => {
+test("multi-layer reconstruction uses one provider request and does not substitute blur on rate limiting", async () => {
   const source = await sharp({ create: { width: 640, height: 280, channels: 3, background: "#f4efe5" } })
     .composite([{ input: Buffer.from('<svg width="640" height="280"><text x="60" y="100" font-size="42">FIRST</text><text x="360" y="210" font-size="42">SECOND</text></svg>') }]).png().toBuffer();
   const edits = [
@@ -121,13 +121,29 @@ test("multi-layer reconstruction uses one provider request and survives upstream
     { originalText: "SECOND", currentText: "TWO", bbox: { x: 350, y: 165, width: 220, height: 60 }, style: { fontSize: 42, color: "#111111" } },
   ];
   let calls = 0;
-  const normal = await generateCrispTextImage({ source, edits, generate: async ({ buffer }) => { calls += 1; return { buffer }; }, recognize: async ({}) => [] });
+  const normal = await generateCrispTextImage({ source, edits, generate: async () => { calls += 1; return { buffer: await sharp({ create: { width: 640, height: 280, channels: 3, background: "#f4efe5" } }).png().toBuffer() }; }, recognize: async ({}) => [] });
   assert.equal(calls, 1, "one image must not fan out into one paid provider request per text layer");
   assert.ok(normal.buffer.length > 0);
-  const fallback = await generateCrispTextImage({ source, edits, generate: async () => { throw Object.assign(new Error("busy"), { code: "IMAGE_PROVIDER_RATE_LIMITED" }); }, recognize: async () => [] });
-  assert.equal(fallback.repairMode, "local-background-fallback");
-  assert.ok(fallback.warnings.some((item) => item.code === "IMAGE_PROVIDER_RATE_LIMITED"));
-  assert.equal((await sharp(fallback.buffer).metadata()).format, "png");
+  await assert.rejects(generateCrispTextImage({ source, edits, generate: async () => ({ buffer: source }), recognize: async () => [] }), { code: "IMAGE_TEXT_QUALITY_REJECTED" });
+  await assert.rejects(generateCrispTextImage({ source, edits, generate: async () => { throw Object.assign(new Error("busy"), { code: "IMAGE_PROVIDER_RATE_LIMITED" }); }, recognize: async () => [] }), { code: "IMAGE_PROVIDER_RATE_LIMITED" });
+});
+
+test("overlapping repair rectangles never restore previously erased source pixels", async () => {
+  const background = await sharp({ create: { width: 180, height: 100, channels: 3, background: "#ffffff" } }).png().toBuffer();
+  const source = await sharp(background).composite([{ input: Buffer.from('<svg width="180" height="100"><rect x="72" y="40" width="5" height="15" fill="black"/></svg>') }]).png().toBuffer();
+  const edits = [
+    { originalText: "A", currentText: "A", bbox: { x: 40, y: 25, width: 40, height: 45 }, style: { color: "#000000", fontSize: 20 } },
+    { originalText: "B", currentText: "B", bbox: { x: 78, y: 25, width: 40, height: 45 }, style: { color: "#000000", fontSize: 20 } },
+  ];
+  const result = await generateCrispTextImage({ source, edits, generate: async () => ({ buffer: background }), recognize: async () => [] });
+  const pixel = await sharp(result.background).extract({ left: 74, top: 47, width: 1, height: 1 }).removeAlpha().raw().toBuffer();
+  assert.ok(pixel[0] > 240, "later padded rectangles must not paste the original black glyph back");
+});
+
+test("multiline text is preserved as separate editable SVG lines", () => {
+  const svg = textOverlay("FIRST\nSECOND", { fontSize: 40 }, 200, 90).toString();
+  assert.equal((svg.match(/<tspan /g) || []).length, 2);
+  assert.ok(Number(svg.match(/font-size="([\d.]+)"/)[1]) <= 36);
 });
 
 test("upload, OCR, text update, async edit and file archival form one working flow", async () => {
@@ -157,7 +173,7 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   assert.deepEqual(JSON.parse(task.input_json).detectionIds, [detection.id, secondDetectionId]);
   let recognizeIndex = 0;
   const result = await executeImageTextEditTask(task, JSON.parse(task.input_json), {
-    generate: async ({ buffer, prompt }) => { assert.ok(prompt.includes("只移除")); return { buffer }; },
+    generate: async ({ prompt }) => { assert.ok(prompt.includes("只移除")); return { buffer: await sharp({ create: { width: 900, height: 420, channels: 3, background: "#f1f5ff" } }).png().toBuffer() }; },
     recognize: async () => [{ text: ["HELLO AI", "SECOND AI"][recognizeIndex++] }],
   });
   assert.equal(result.status, "completed");
@@ -179,14 +195,21 @@ test("upload, OCR, text update, async edit and file archival form one working fl
   const reapplied = createImageTextEditTask(user, tool, { assetId: project.assets[0].id, detectionId: detection.id, useAiRepair: false, preserveStyle: true });
   assert.equal(JSON.parse(db.prepare("SELECT input_json FROM tasks WHERE id=?").get(reapplied.id).input_json).sourceFileId, project.assets[0].originalFileId);
   const replay = JSON.parse(db.prepare("SELECT input_json FROM tasks WHERE id=?").get(reapplied.id).input_json);
+  assert.equal(reapplied.creditCost, 0, "saved-background edits do not charge again");
+  assert.ok(replay.backgroundFileId);
   assert.deepEqual(replay.detectionIds, [detection.id, secondDetectionId]);
   updateImageTextDetection(user.id, detection.id, { text: "UNSUBMITTED CHANGE" });
   assert.equal(replay.edits[0].currentText, "HELLO AGAIN", "queued edits must be an immutable snapshot");
+  const rerendered = await executeImageTextEditTask(db.prepare("SELECT * FROM tasks WHERE id=?").get(reapplied.id), replay, {
+    generate: async () => { throw new Error("saved-background edits must not call the model"); },
+  });
+  assert.notEqual(rerendered.output.resultFileId, fresh.assets[0].currentFileId);
+  assert.equal(getImageTextProject(user.id, project.id).assets[0].currentFileId, rerendered.output.resultFileId, "preview points to the newly rendered image");
   const { failTaskExecution } = await import("../server/runtime.mjs");
   failTaskExecution(reapplied.id, "IMAGE_TEXT_QUALITY_REJECTED");
   failTaskExecution(reapplied.id, "IMAGE_TEXT_QUALITY_REJECTED");
   assert.equal(db.prepare("SELECT SUM(amount) AS balance FROM credit_ledger WHERE user_id=?").get(user.id).balance, 70, "failed generation refunds once");
-  assert.equal(getImageTextProject(user.id, project.id).assets[0].currentFileId, fresh.assets[0].currentFileId, "failure retains the previous valid result");
+  assert.equal(getImageTextProject(user.id, project.id).assets[0].currentFileId, rerendered.output.resultFileId, "failure retains the previous valid result");
 });
 
 test("a PDF page imports as an OCR-backed visual reconstruction asset", async () => {
