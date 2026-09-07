@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { createHash } from "node:crypto";
-import { db } from "./database.mjs";
+import { db, refreshImageRuntimeStatuses } from "./database.mjs";
 import { decryptCredential, encryptCredential } from "./model-gateway.mjs";
 import { modelStudioWorkspaceCredentials } from "./model-studio-workspace.mjs";
 
@@ -334,13 +334,7 @@ export async function saveImageEditProviderConfiguration(purpose, data, actorUse
   `).run(purpose, input.adapter, input.baseUrl, input.modelId, encrypted.ciphertext, encrypted.iv, encrypted.tag,
     input.credentialSource === "workspace" ? input.workspace.keyHint : (input.apiKey ? keyHint(apiKey) : existing.key_hint), version, input.status, input.creditCost,
     tested.latencyMs, tested.testedAt, actorUserId, existing?.created_at || timestamp, timestamp, input.credentialSource);
-  if (purpose === "image_editing") {
-    db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(input.status === "active" ? "ready" : "configuration_required");
-    const upscale = row("image_upscaling");
-    if (!upscale) db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(input.status === "active" ? "ready" : "configuration_required");
-  } else if (purpose === "image_upscaling") {
-    db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(input.status === "active" ? "ready" : "configuration_required");
-  }
+  if (["image_editing", "image_upscaling"].includes(purpose)) refreshImageRuntimeStatuses();
   return publicConfig(purpose);
 }
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { db } from "./database.mjs";
+import { db, refreshImageRuntimeStatuses } from "./database.mjs";
 import { decryptCredential, encryptCredential } from "./model-gateway.mjs";
 
 const owner = "platform:model_studio_workspace";
@@ -114,9 +114,7 @@ export async function saveModelStudioWorkspaceConfiguration(data, actorUserId = 
     last_test_status,last_test_latency_ms,last_tested_at,updated_by,created_at,updated_at,credential_source
   ) VALUES ('image_text_ocr','dashscope',?,'qwen-vl-ocr-latest',?,?,?,?,1,'active',1,'inherited',NULL,NULL,?, ?,?,'workspace')`)
     .run(input.baseUrl, encrypted.ciphertext, encrypted.iv, encrypted.tag, `••••${apiKey.slice(-4)}`, actorUserId, timestamp, timestamp);
-  const runtimeStatus = input.status === "active" ? "ready" : "configuration_required";
-  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit' AND EXISTS (SELECT 1 FROM image_provider_configs WHERE purpose='image_editing' AND credential_source='workspace' AND status='active')").run(runtimeStatus);
-  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale' AND EXISTS (SELECT 1 FROM image_provider_configs WHERE purpose IN ('image_upscaling','image_editing') AND credential_source='workspace' AND status='active')").run(runtimeStatus);
+  refreshImageRuntimeStatuses();
   const foodVisionReady = input.status === "active" || Boolean(db.prepare("SELECT 1 FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active'").get());
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-food-vision'").run(foodVisionReady ? "ready" : "configuration_required");
   return publicConfig();

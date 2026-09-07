@@ -816,6 +816,17 @@ export function refreshRuntimeStatuses() {
   const musicReady = db.prepare("SELECT 1 AS ready FROM music_provider_configs WHERE status = 'active' LIMIT 1").get();
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'builtin-music'")
     .run(musicReady ? "ready" : "configuration_required");
+  refreshImageRuntimeStatuses();
+  const foodVisionReady = db.prepare(`
+    SELECT 1 AS ready FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active'
+    UNION ALL
+    SELECT 1 AS ready FROM model_studio_workspace_configs WHERE id = 'default' AND status = 'active'
+    LIMIT 1
+  `).get();
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-food-vision'").run(foodVisionReady ? "ready" : "configuration_required");
+}
+
+export function refreshImageRuntimeStatuses() {
   const imageEditingReady = db.prepare(`
     SELECT 1 AS ready FROM image_provider_configs AS provider
     WHERE provider.purpose = 'image_editing' AND provider.status = 'active'
@@ -833,15 +844,9 @@ export function refreshRuntimeStatuses() {
       ))
     LIMIT 1
   `).get();
-  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-edit'").run(imageEditingReady ? "ready" : "configuration_required");
+  const editingStatus = imageEditingReady ? "ready" : "configuration_required";
+  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind IN ('platform-image-edit','image-text-edit')").run(editingStatus);
   db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-image-upscale'").run(imageUpscalingReady ? "ready" : "configuration_required");
-  const foodVisionReady = db.prepare(`
-    SELECT 1 AS ready FROM platform_model_configs WHERE purpose = 'food_nutrition' AND status = 'active'
-    UNION ALL
-    SELECT 1 AS ready FROM model_studio_workspace_configs WHERE id = 'default' AND status = 'active'
-    LIMIT 1
-  `).get();
-  db.prepare("UPDATE tools SET runtime_status = ? WHERE runtime_kind = 'platform-food-vision'").run(foodVisionReady ? "ready" : "configuration_required");
 }
 
 export function audit(userId, action, targetType = null, targetId = null, metadata = {}) {

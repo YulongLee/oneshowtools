@@ -56,6 +56,7 @@ test("image editing configuration is encrypted, redacted, and activates all comm
   const stored = db.prepare("SELECT * FROM image_provider_configs WHERE purpose = 'image_editing'").get();
   assert.notEqual(stored.key_ciphertext, "image-edit-secret-1234");
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM tools WHERE runtime_kind = 'platform-image-edit' AND runtime_status = 'ready'").get().count, 8);
+  assert.equal(db.prepare("SELECT runtime_status FROM tools WHERE slug = 'image-text-editor'").get().runtime_status, "ready");
   assert.equal(imageEditProviderConfiguration("image_upscaling").configured, false);
 });
 
