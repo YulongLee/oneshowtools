@@ -42,13 +42,14 @@ function addUser() {
   return { id };
 }
 
-test("word immersion is seeded as an administrator-only testing product", () => {
-  const tool = db.prepare("SELECT id,credit_cost AS creditCost FROM tools WHERE slug='word-immersion'").get();
+test("word immersion is published for ordinary users without changing its price", () => {
+  const tool = db.prepare("SELECT id,active,credit_cost AS creditCost FROM tools WHERE slug='word-immersion'").get();
   assert.equal(tool.id, "tool_word_immersion");
   assert.equal(tool.creditCost, 20);
   const version = db.prepare("SELECT lifecycle_state AS lifecycleState,visibility FROM tool_versions WHERE tool_id=? ORDER BY version DESC LIMIT 1").get(tool.id);
-  assert.equal(version.lifecycleState, "testing");
-  assert.equal(version.visibility, "private");
+  assert.equal(tool.active, 1);
+  assert.equal(version.lifecycleState, "published");
+  assert.equal(version.visibility, "public");
   const catalog = immersionCatalog("nobody");
   assert.equal(catalog.books.length, 6);
   assert.deepEqual(catalog.levels.map((item) => item.value), [10, 20, 30, 50, 70]);

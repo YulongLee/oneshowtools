@@ -688,6 +688,23 @@ export function initializeDatabase() {
     }
   }
 
+  // One-time launch: do not overwrite subsequent administrator publication changes.
+  const wordImmersionPublicationKey = "tool_word_immersion_publication_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(wordImmersionPublicationKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE tools SET active = 1, updated_at = ? WHERE slug = 'word-immersion'").run(timestamp);
+      db.prepare(`UPDATE tool_versions SET lifecycle_state = 'published', visibility = 'public'
+        WHERE id = (SELECT id FROM tool_versions WHERE tool_id = 'tool_word_immersion' ORDER BY version DESC LIMIT 1)`).run();
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+        .run(wordImmersionPublicationKey, JSON.stringify({ slug: "word-immersion", published: true }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   const imageTextEditorTestingKey = "tool_image_text_editor_testing_v1";
   if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(imageTextEditorTestingKey)) {
     db.exec("BEGIN IMMEDIATE");

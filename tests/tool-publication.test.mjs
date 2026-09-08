@@ -14,7 +14,7 @@ const request = (path, options = {}) => new Request(`http://localhost${path}`, o
 
 test("new installations publish the approved launch tools", async () => {
   const published = db.prepare("SELECT slug FROM tools WHERE active = 1 ORDER BY slug").all().map((tool) => tool.slug);
-  assert.deepEqual(published, ["ai-music-studio", "ai-outfit-changer", "hang-la-tier-list-generator", "interview-assistant", "mbti-personality-test", "stock-pet"]);
+  assert.deepEqual(published, ["ai-music-studio", "ai-outfit-changer", "hang-la-tier-list-generator", "interview-assistant", "mbti-personality-test", "stock-pet", "word-immersion"]);
 
   const storefront = await (await handleApi(request("/api/tools"))).json();
   assert.deepEqual(storefront.tools.map((tool) => tool.slug).sort(), published);
@@ -29,6 +29,30 @@ test("new installations publish the approved launch tools", async () => {
   assert.equal(musicStatusBody.lyrics.slug, "lyrics-generator");
   assert.equal(typeof musicStatusBody.lyrics.creditCost, "number");
   assert.equal(published.includes("lyrics-generator"), false);
+});
+
+test("word immersion is publicly listed and still requires login for private reading data", async () => {
+  const storefront = await (await handleApi(request("/api/tools"))).json();
+  const wordIn = storefront.tools.find((tool) => tool.slug === "word-immersion");
+  assert.equal(wordIn.publicationState, "published");
+  assert.equal(wordIn.lifecycleState, "published");
+  const response = await handleApi(request("/api/word-immersion/documents"));
+  assert.equal(response.status, 401);
+});
+
+test("ordinary members can access WordIn and later administrator changes survive restart", async () => {
+  const { hashToken } = await import("../server/security.mjs");
+  const stamp = Date.now();
+  db.prepare("INSERT INTO users (id,name,email,password_hash,email_verified,created_at,updated_at) VALUES ('wordin-member','Member','wordin-member@example.test','unused',1,?,?)").run(stamp, stamp);
+  db.prepare("INSERT INTO sessions (id,user_id,token_hash,expires_at,created_at,last_seen_at) VALUES ('wordin-session','wordin-member',?,?,?,?)").run(hashToken("wordin-test-session"), stamp + 60000, stamp, stamp);
+  const memberRequest = () => request("/api/word-immersion/documents", { headers: { cookie: "ost_session=wordin-test-session" } });
+  assert.equal((await handleApi(memberRequest())).status, 200);
+  db.prepare("UPDATE tools SET active=0 WHERE slug='word-immersion'").run();
+  const { initializeDatabase } = await import("../server/database.mjs");
+  initializeDatabase();
+  assert.equal(db.prepare("SELECT active FROM tools WHERE slug='word-immersion'").get().active, 0);
+  assert.equal((await handleApi(memberRequest())).status, 404);
+  db.prepare("UPDATE tools SET active=1 WHERE slug='word-immersion'").run();
 });
 
 test("career marketplace entry opens the official independent interview product", async () => {

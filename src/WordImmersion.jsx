@@ -12,7 +12,7 @@ const errorText = {
   IMMERSION_FILE_TOO_LARGE: "文件不能超过 12 MB。",
   IMMERSION_FILE_UNSUPPORTED: "支持 PDF、DOCX、TXT 和 Markdown 文件。",
   IMMERSION_TEXT_NOT_FOUND: "没有从文档中识别到可阅读的文字。",
-  IMMERSION_DOCUMENT_TOO_LONG: "当前测试版单份内容最多 5 万字。",
+  IMMERSION_DOCUMENT_TOO_LONG: "单份内容最多 5 万字，请分批导入。",
   IMMERSION_DOCUMENT_PARSE_FAILED: "文档解析失败，请换成 PDF、DOCX 或纯文本重试。",
   IMMERSION_VOCABULARY_NOT_FOUND: "请选择一个有效词库。",
   IMMERSION_CUSTOM_VOCABULARY_INVALID: "没有识别到有效英文单词，请每行输入一个单词。",
@@ -191,11 +191,11 @@ export function WordImmersion({ tool, onBack, onCompleted }) {
   if (view === "vocabulary") return <Vocabulary vocabulary={vocabulary} onBack={() => setView("library")} onAction={wordAction} />;
   return <section className="wi-shell">
     <button className="wi-top-back" onClick={onBack}><ArrowLeft size={17} />返回工具市场</button>
-    <header className="wi-hero"><div className="wi-brand-icon"><img src="/word-immersion/wordin-icon-v2.png" alt="词浸应用图标" /></div><div><span>WORDIN · AI 沉浸式英语阅读 <i>测试中</i></span><h1>读你真正想读的，顺便学会英语</h1><p>把你感兴趣的中文内容变成中英混合读物，在熟悉的语境中学习目标词汇。</p><div><small><Check weight="bold" />保留原意</small><small><Check weight="bold" />个性化词库</small><small><Check weight="bold" />学习轨迹</small></div></div><aside><strong>{tool.creditCost}</strong><span>积分 / 次</span></aside></header>
+    <header className="wi-hero"><div className="wi-brand-icon"><img src="/word-immersion/wordin-icon-v2.png" alt="词浸应用图标" /></div><div><span>WORDIN · AI 沉浸式英语阅读 <i>{tool.publicationState === "testing" ? "测试中" : "已上线"}</i></span><h1>读你真正想读的，顺便学会英语</h1><p>把你感兴趣的中文内容变成中英混合读物，在熟悉的语境中学习目标词汇。</p><div><small><Check weight="bold" />保留原意</small><small><Check weight="bold" />个性化词库</small><small><Check weight="bold" />学习轨迹</small></div></div><aside><strong>{tool.creditCost}</strong><span>积分 / 次</span></aside></header>
     <nav className="wi-main-tabs"><button className="active"><BookOpenText />我的阅读</button><button onClick={() => setView("vocabulary")}><Brain />我的词汇 <span>{vocabulary.stats.encountered}</span></button><button className="wi-new-button" onClick={() => setView("create")}><Plus />创建沉浸阅读</button></nav>
     <div className="wi-overview"><article><span><Books /></span><div><strong>{documents.length}</strong><small>我的读物</small></div></article><article><span><Clock /></span><div><strong>{documents.filter((item) => item.readingProgress > 0 && item.readingProgress < 100).length}</strong><small>正在阅读</small></div></article><article><span><Brain /></span><div><strong>{vocabulary.stats.encountered}</strong><small>累计遇词</small></div></article><article><span><TrendUp /></span><div><strong>{vocabulary.stats.known}</strong><small>已掌握</small></div></article></div>
     <main className="wi-library"><header><div><small>MY READING</small><h2>阅读库</h2></div><button onClick={() => setView("create")}><UploadSimple />导入新内容</button></header>{error && <p className="wi-error" role="alert">{error}</p>}{loading ? <div className="wi-loading"><SpinnerGap className="wi-spin" />正在加载…</div> : documents.length ? <div className="wi-document-list">{documents.map((item) => <DocumentCard key={item.id} item={item} onOpen={openDocument} onDelete={removeDocument} />)}</div> : <EmptyLibrary onCreate={() => setView("create")} />}</main>
-    <footer className="wi-footer"><Headphones size={18} /><span>阅读中遇到问题？可在右下角联系智能客服。</span><span>测试版 · 生成内容请结合原文核对</span></footer>
+    <footer className="wi-footer"><Headphones size={18} /><span>阅读中遇到问题？可在右下角联系智能客服。</span><span>AI 生成内容请结合原文核对</span></footer>
   </section>;
 }
 
