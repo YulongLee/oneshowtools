@@ -6,7 +6,7 @@ const clean = (value, max = 1000) => String(value ?? "").replace(/\0/g, "").trim
 const safeName = (value, fallback = "image") => String(value || fallback).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9\u4e00-\u9fff_-]+/g, "-").slice(0, 80) || fallback;
 
 export const aiImageToolSlugs = new Set([
-  "ai-outfit-changer", "ai-id-photo", "ai-professional-headshot", "ai-product-photo",
+  "ai-outfit-changer", "ai-id-photo", "ai-id-photo-studio", "ai-professional-headshot", "ai-product-photo",
   "ai-portrait-studio", "ai-smart-cutout", "ai-background-replacer", "ai-image-restorer",
   "sliding-ancestor-generator",
 ]);
@@ -33,6 +33,7 @@ function promptFor(slug, form, hasReference) {
     : "";
   const rules = "Photorealistic commercial-quality result. Preserve the person's identity, facial structure, skin tone and body proportions exactly when a person is present. Do not alter logos, product shape or factual visual details unless explicitly requested. No extra fingers, no warped anatomy, no text, no watermark.";
   const prompts = {
+    "ai-id-photo-studio": `Create a polished identity-preserving ID photo or employee badge portrait. ${style}. Background: ${color}. ${outfit}. Keep natural facial features and realistic skin texture. ${detail}`,
     "ai-outfit-changer": hasReference
       ? `ONE-SHOW-TOOLS / REFERENCE OUTFIT TRANSFER
 

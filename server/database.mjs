@@ -522,6 +522,7 @@ export function initializeDatabase() {
     ["tool_ai_outfit", "ai-outfit-changer", "AI 一键换装", "AI Outfit Changer", "上传人像并描述服装，或同时上传服装参考图，生成保留本人特征的真实换装效果。", "Change an outfit from a description or clothing reference while preserving the person's identity.", "image", "MagicWand", 30, "platform-image-edit"],
     ["tool_sliding_ancestor", "sliding-ancestor-generator", "滑动变祖器", "Sliding Power-Up Generator", "上传一张人物照片，生成同一个人从虚到夯、严格按强度排列的 10 种连续形态。", "Upload a portrait and create ten strictly ordered power stages of the same person, from fragile to formidable.", "image", "ArrowsOutLineHorizontal", 120, "platform-image-edit"],
     ["tool_ai_id_photo", "ai-id-photo", "AI 证件照", "AI ID Photo", "智能生成规范构图、自然光线和指定底色的高清证件照。", "Create a polished ID photo with compliant framing, natural lighting, and a selected background.", "image", "UserCircle", 25, "platform-image-edit"],
+    ["tool_ai_id_photo_studio", "ai-id-photo-studio", "证照 · AI 证件照与工牌", "ID Studio · AI ID Photo & Badge", "AI 生成证件照、职业照与员工工牌。Beta 测试中，暂不扣积分。", "Generate ID photos, professional portraits, and employee badges. Beta testing; no credits charged.", "image", "UserFocus", 0, "platform-image-edit"],
     ["tool_ai_headshot", "ai-professional-headshot", "AI 职业形象照", "AI Professional Headshot", "保留人物身份特征，生成适合简历、LinkedIn 和企业主页的职业形象照。", "Create identity-preserving professional headshots for resumes, LinkedIn, and company profiles.", "image", "Briefcase", 35, "platform-image-edit"],
     ["tool_ai_product", "ai-product-photo", "AI 商品图", "AI Product Photo", "保留商品外观与包装信息，生成电商白底图、场景图和广告级商品图。", "Create commercial product photos while preserving shape, colors, logos, and packaging.", "image", "ImageSquare", 35, "platform-image-edit"],
     ["tool_ai_portrait", "ai-portrait-studio", "AI 写真", "AI Portrait Studio", "根据风格和场景描述生成保留本人特征的高品质个人写真。", "Generate premium identity-preserving portraits from a chosen style and scene.", "image", "Sparkle", 40, "platform-image-edit"],
@@ -703,6 +704,17 @@ export function initializeDatabase() {
       db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  const idPhotoStudioTestingKey = "tool_ai_id_photo_studio_testing_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(idPhotoStudioTestingKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE tools SET active = 0, runtime_status = 'ready', updated_at = ? WHERE slug = 'ai-id-photo-studio'").run(timestamp);
+      db.prepare(`INSERT INTO tool_versions (id, tool_id, version, lifecycle_state, visibility, name_zh, name_en, description_zh, description_en, category, icon, credit_cost, contract_version, runtime_kind, created_at) SELECT ?, id, 1, 'testing', 'private', name_zh, name_en, description_zh, description_en, category, icon, credit_cost, 'v1', runtime_kind, ? FROM tools WHERE slug = 'ai-id-photo-studio' AND NOT EXISTS (SELECT 1 FROM tool_versions WHERE tool_id = 'tool_ai_id_photo_studio')`).run(randomUUID(), timestamp);
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)").run(idPhotoStudioTestingKey, JSON.stringify({ slug: "ai-id-photo-studio", lifecycle: "testing", adminOnly: true, beta: true }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
   }
 
   const imageTextEditorTestingKey = "tool_image_text_editor_testing_v1";
