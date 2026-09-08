@@ -1,0 +1,1 @@
+{"name":"oneshowtools-desktop","version":"0.1.0","private":true,"main":"main.cjs","scripts":{"start":"electron ."},"devDependencies":{"electron":"^36.0.0"}}
