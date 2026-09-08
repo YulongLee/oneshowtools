@@ -42,6 +42,7 @@ const commercialToolIconBySlug = {
   "interview-assistant": "/tool-icons-v2/optimized/interview-assistant.png",
   "ai-music-studio": "/tool-icons-v2/optimized/ai-music-studio.png",
   "ai-outfit-changer": "/tool-icons-v2/optimized/ai-outfit-changer.png",
+  "ai-id-photo-studio": "/tool-icons-v2/ai-id-photo-studio.png",
   "ai-product-photo": "/tool-icons-v2/optimized/ai-image-generation.png",
   "ai-portrait-studio": "/tool-icons-v2/optimized/ai-image-generation.png",
   "seo-workbench": "/tool-icons-v2/optimized/seo-analysis.png",
