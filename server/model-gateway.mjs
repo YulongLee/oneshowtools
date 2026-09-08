@@ -527,7 +527,7 @@ export function supportsLatencyOptimizedThinking(baseUrl, modelId) {
 }
 
 function modelRequest(safeBase, protocol, apiKey, modelId, instruction, text, workspaceId = null, messages = null, maxOutputTokens = null, latencyOptimized = false) {
-  const outputLimit = Number.isFinite(Number(maxOutputTokens)) ? Math.min(8192, Math.max(64, Number(maxOutputTokens))) : null;
+  const outputLimit = maxOutputTokens != null && Number.isFinite(Number(maxOutputTokens)) ? Math.min(8192, Math.max(64, Number(maxOutputTokens))) : null;
   const root = safeBase.href.replace(/\/$/, "");
   if (protocol === "anthropic") {
     const suffix = safeBase.pathname.replace(/\/$/, "").endsWith("/v1") ? "messages" : "v1/messages";
@@ -807,6 +807,8 @@ export async function invokeModel({
   connectionId = null,
   signal,
   timeoutMs = null,
+  maxOutputTokens = null,
+  latencyOptimized = false,
 }) {
   const route = resolveRoute(userId, connectionId);
   const invocationId = randomUUID();
@@ -817,7 +819,7 @@ export async function invokeModel({
     VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
   `).run(invocationId, taskId, userId, route.routeKind, route.connectionId, capability, startedAt);
   try {
-    const result = await requestModel({ ...route, instruction, text, signal, timeoutMs });
+    const result = await requestModel({ ...route, instruction, text, signal, timeoutMs, maxOutputTokens, latencyOptimized });
     db.prepare(`
       UPDATE model_invocations SET status = 'completed', input_tokens = ?, output_tokens = ?,
         latency_ms = ?, completed_at = ? WHERE id = ?

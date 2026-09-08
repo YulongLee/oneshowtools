@@ -5,6 +5,7 @@ import {
   Plus, SpeakerHigh, SpinnerGap, Trash, TrendUp, UploadSimple, X,
 } from "@phosphor-icons/react";
 import "./word-immersion.css";
+import { Reader, Vocabulary } from "./WordImmersionReader.jsx";
 
 const errorText = {
   IMMERSION_SOURCE_REQUIRED: "请粘贴至少 20 个字符，或上传一份文档。",
@@ -17,6 +18,13 @@ const errorText = {
   IMMERSION_CUSTOM_VOCABULARY_INVALID: "没有识别到有效英文单词，请每行输入一个单词。",
   INSUFFICIENT_CREDITS: "积分不足，请先充值后再生成。",
   MODEL_PROVIDER_NOT_CONFIGURED: "当前生成模型尚未配置，请联系管理员。",
+  IMMERSION_GENERATION_IN_PROGRESS: "内容正在生成，请等待完成后再操作。",
+  IMMERSION_INVALID_MODEL_OUTPUT: "本次内容未生成完整，已保留完成的章节，可重试续接。",
+  IMMERSION_NO_MATCHING_WORDS: "所选词库没有适合这篇文章的词汇，本次积分已退回。请更换相关词库后生成。",
+  IMMERSION_ALREADY_READY: "这份读物已生成，请直接开始阅读。",
+  IMMERSION_CHAPTER_NOT_READY: "本章还未生成完成。",
+  IMMERSION_PROGRESS_INVALID: "阅读位置无效，请重新打开读物。",
+  IMMERSION_CUSTOM_VOCABULARY_REQUIRED: "请填写词库名称，并至少输入一个英文单词。",
 };
 
 async function request(path, options = {}) {
@@ -55,13 +63,15 @@ function DocumentCard({ item, onOpen, onDelete }) {
   </article>;
 }
 
-function CreateWorkspace({ catalog, tool, onCancel, onCreated }) {
+function CreateWorkspace({ catalog, tool, onCancel, onCreated, existing }) {
   const [mode, setMode] = useState("paste");
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
+  const [title, setTitle] = useState(existing?.title || "");
+  const [text, setText] = useState(existing?.chapters?.map((chapter) => chapter.sourceText).join("\n\n") || "");
   const [file, setFile] = useState(null);
-  const [bookId, setBookId] = useState(catalog.books?.[0]?.id || "");
-  const [level, setLevel] = useState(20);
+  const [books, setBooks] = useState(catalog.books || []);
+  const [bookId, setBookId] = useState(existing?.vocabularyBook?.id || catalog.books?.[0]?.id || "");
+  const [level, setLevel] = useState(existing?.immersionLevel || 20);
+  const [draftId, setDraftId] = useState(existing?.id || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [customOpen, setCustomOpen] = useState(false);
@@ -74,7 +84,7 @@ function CreateWorkspace({ catalog, tool, onCancel, onCreated }) {
     setBusy(true); setError("");
     try {
       const { book } = await request("/api/word-immersion/vocabulary-books", json("POST", { name: customName, words: customWords }));
-      catalog.books.push(book); setBookId(book.id); setCustomOpen(false);
+      setBooks((previous) => [...previous, book]); setBookId(book.id); setCustomOpen(false);
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
   }
@@ -82,13 +92,16 @@ function CreateWorkspace({ catalog, tool, onCancel, onCreated }) {
     setBusy(true); setError("");
     try {
       let response;
-      if (mode === "file") {
+      if (draftId) {
+        response = { document: { id: draftId } };
+      } else if (mode === "file") {
         if (!file) throw new Error("请先上传文档。");
         const form = new FormData(); form.append("file", file); if (title) form.append("title", title);
         response = await request("/api/word-immersion/documents", { method: "POST", body: form });
       } else {
         response = await request("/api/word-immersion/documents", json("POST", { title, text }));
       }
+      setDraftId(response.document.id);
       await request(`/api/word-immersion/documents/${response.document.id}/generate`, json("POST", { vocabularyBookId: bookId, immersionLevel: level }));
       onCreated(response.document.id);
     } catch (cause) { setError(cause.message); }
@@ -99,13 +112,13 @@ function CreateWorkspace({ catalog, tool, onCancel, onCreated }) {
     <div className="wi-create-grid">
       <article className="wi-create-panel wi-source-panel">
         <div className="wi-step-title"><span>01</span><div><h3>添加阅读内容</h3><p>支持粘贴文本或上传常见文档</p></div></div>
-        <div className="wi-segment"><button className={mode === "paste" ? "active" : ""} onClick={() => setMode("paste")}>粘贴文本</button><button className={mode === "file" ? "active" : ""} onClick={() => setMode("file")}>上传文件</button></div>
-        <label className="wi-field"><span>读物标题（可选）</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：我的第一篇沉浸阅读" /></label>
-        {mode === "paste" ? <label className="wi-field"><span>原文内容</span><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="粘贴中文文章、学习资料或你真正想读的内容……" /><small>{text.length.toLocaleString()} / 50,000 字符</small></label> : <button className={`wi-upload ${file ? "has-file" : ""}`} onClick={() => inputRef.current?.click()}><input ref={inputRef} type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf" hidden onChange={(event) => setFile(event.target.files?.[0] || null)} />{file ? <><FileDoc size={32} weight="duotone" /><strong>{file.name}</strong><span>{(file.size / 1024 / 1024).toFixed(2)} MB · 点击更换</span></> : <><CloudArrowUp size={34} weight="duotone" /><strong>拖拽或点击上传文档</strong><span>PDF · DOCX · TXT · Markdown，最大 12 MB</span></>}</button>}
+        <div className="wi-segment" inert={draftId ? true : undefined}><button className={mode === "paste" ? "active" : ""} onClick={() => setMode("paste")}>粘贴文本</button><button className={mode === "file" ? "active" : ""} onClick={() => setMode("file")}>上传文件</button></div>
+        <label className="wi-field"><span>读物标题（可选）</span><input disabled={Boolean(draftId)} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：我的第一篇沉浸阅读" /></label>
+        {mode === "paste" ? <label className="wi-field"><span>原文内容</span><textarea maxLength={50000} disabled={Boolean(draftId)} value={text} onChange={(event) => setText(event.target.value)} placeholder="粘贴中文文章、学习资料或你真正想读的内容……" /><small>{text.length.toLocaleString()} / 50,000 字符</small></label> : <button className={`wi-upload ${file ? "has-file" : ""}`} disabled={Boolean(draftId)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); if (!draftId) setFile(event.dataTransfer.files?.[0] || null); }} onClick={() => inputRef.current?.click()}><input ref={inputRef} type="file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf" hidden onChange={(event) => setFile(event.target.files?.[0] || null)} />{file ? <><FileDoc size={32} weight="duotone" /><strong>{file.name}</strong><span>{(file.size / 1024 / 1024).toFixed(2)} MB · 点击更换</span></> : <><CloudArrowUp size={34} weight="duotone" /><strong>拖拽或点击上传文档</strong><span>PDF · DOCX · TXT · Markdown，最大 12 MB</span></>}</button>}
       </article>
       <article className="wi-create-panel">
         <div className="wi-step-title"><span>02</span><div><h3>选择目标词库</h3><p>生成内容会自然融入这些词汇</p></div></div>
-        <div className="wi-book-grid">{catalog.books.map((book) => <button key={book.id} className={bookId === book.id ? "active" : ""} onClick={() => setBookId(book.id)}><span>{book.kind === "custom" ? <FileText size={18} /> : <Books size={18} />}</span><div><strong>{book.nameZh}</strong><small>{book.wordCount} 个词</small></div>{bookId === book.id && <Check size={16} weight="bold" />}</button>)}</div>
+        <p className="wi-safe-note">内置为体验用示例词库。系统会显示实际词数，也可导入自己的词表。</p><div className="wi-book-grid">{books.map((book) => <button key={book.id} className={bookId === book.id ? "active" : ""} onClick={() => setBookId(book.id)}><span>{book.kind === "custom" ? <FileText size={18} /> : <Books size={18} />}</span><div><strong>{book.nameZh}</strong><small>{book.wordCount} 个词{book.isSample ? " · 示例词库" : ""}</small></div>{bookId === book.id && <Check size={16} weight="bold" />}</button>)}</div>
         <button className="wi-add-book" onClick={() => setCustomOpen(true)}><Plus size={16} />导入自定义词库</button>
       </article>
       <article className="wi-create-panel wi-level-panel">
@@ -114,44 +127,25 @@ function CreateWorkspace({ catalog, tool, onCancel, onCreated }) {
         <input className="wi-range" type="range" min="0" max="4" value={[10,20,30,50,70].indexOf(level)} onChange={(event) => setLevel([10,20,30,50,70][Number(event.target.value)])} />
         <div className="wi-level-labels"><span>轻度</span><span>日常</span><span>进阶</span><span>深度</span><span>挑战</span></div>
         <p className="wi-level-note"><MagicWand size={17} weight="duotone" />{levelMeta?.description}</p>
+        {catalog.generationAvailable === false && <p className="wi-error" role="status">生成服务尚未就绪，请在 AI Runtime 配置可用模型后重试。已有读物可继续阅读和复习。</p>}
         <div className="wi-generate-summary"><span><Coins size={17} />本次生成</span><strong>{tool.creditCost} 积分</strong></div>
-        {error && <p className="wi-error">{error}</p>}
-        <button className="wi-primary" disabled={busy || !bookId || (mode === "paste" ? text.trim().length < 20 : !file)} onClick={generate}>{busy ? <SpinnerGap className="wi-spin" size={18} /> : <MagicWand size={18} weight="fill" />}{busy ? "正在创建…" : "开始生成沉浸阅读"}</button>
-        <small className="wi-safe-note">AI 只调整语言呈现，不改变原文事实与逻辑。</small>
+        {error && <p className="wi-error" role="alert">{error}</p>}
+        <button className="wi-primary" disabled={busy || catalog.generationAvailable === false || !bookId || (!draftId && (mode === "paste" ? text.trim().length < 20 || text.length > 50000 : !file))} onClick={generate}>{busy ? <SpinnerGap className="wi-spin" size={18} /> : <MagicWand size={18} weight="fill" />}{busy ? "正在提交…" : draftId ? "继续生成沉浸阅读" : "开始生成沉浸阅读"}</button>
+        <small className="wi-safe-note">AI 尽量保留原意，在中文语境中融入英文词汇。</small>
       </article>
     </div>
-    {customOpen && <div className="wi-modal"><div><button className="wi-modal-close" onClick={() => setCustomOpen(false)}><X /></button><h3>导入自定义词库</h3><p>每行一个英文单词，可用冒号补充中文释义。</p><input value={customName} onChange={(event) => setCustomName(event.target.value)} placeholder="词库名称" /><textarea value={customWords} onChange={(event) => setCustomWords(event.target.value)} placeholder={"momentum：动力\nresilient：有韧性的\ninsight：洞见"} /><button className="wi-primary" disabled={busy} onClick={addBook}>保存并使用</button></div></div>}
+    {customOpen && <div className="wi-modal" role="dialog" aria-modal="true" aria-label="导入自定义词库"><div><button className="wi-modal-close" onClick={() => setCustomOpen(false)}><X /></button><h3>导入自定义词库</h3><p>每行一个英文单词，可用冒号补充中文释义。</p><input value={customName} onChange={(event) => setCustomName(event.target.value)} placeholder="词库名称" /><textarea value={customWords} onChange={(event) => setCustomWords(event.target.value)} placeholder={"momentum：动力\nresilient：有韧性的\ninsight：洞见"} /><button className="wi-primary" disabled={busy || !customName.trim() || !customWords.trim()} onClick={addBook}>保存并使用</button></div></div>}
   </section>;
 }
 
-function Generating({ document, onBack }) {
+function Generating({ document, onBack, onRetry, error, onRefresh }) {
   const total = document?.generation?.totalChapters || document?.chapterCount || 1;
   const completed = document?.generation?.completedChapters || document?.generatedChapters || 0;
-  const percent = Math.max(6, Math.round(completed / total * 100));
-  return <section className="wi-generating"><button className="wi-back-link" onClick={onBack}><ArrowLeft size={16} />返回阅读库</button><div className="wi-orbit"><span><BookOpenText size={48} weight="duotone" /></span><i /><i /></div><small>AI IMMERSION ENGINE</small><h2>{document?.status === "failed" ? "这次生成没有完成" : "正在为你重写阅读体验"}</h2><p>{document?.status === "failed" ? "可以返回后重新创建，原始内容不会丢失。" : `正在处理第 ${Math.min(completed + 1, total)} / ${total} 章，通常需要几十秒。`}</p><div className="wi-generating-progress"><i style={{ width: `${percent}%` }} /></div><strong>{percent}%</strong></section>;
+  const percent = Math.round(completed / total * 100);
+  const failed = document?.status === "failed";
+  return <section className="wi-generating"><button className="wi-back-link" onClick={onBack}><ArrowLeft size={16} />返回阅读库</button><div className="wi-orbit"><span><BookOpenText size={48} weight="duotone" /></span>{!failed && <><i /><i /></>}</div><h2>{failed ? "这次生成没有完成" : document?.status === "queued" ? "读物已加入生成队列" : "正在生成沉浸读物"}</h2><p>{failed ? errorText[document.errorCode] || "已保留原文和完成的章节，可沿用设置继续生成。" : `已完成 ${completed} / ${total} 章。长文需要更久，你可以返回阅读库稍后查看。`}</p><div className="wi-generating-progress"><i style={{ width: `${percent}%` }} /></div><strong>{percent}%</strong>{error && <p role="alert" className="wi-error">{error}</p>}{failed ? <button className="wi-primary" style={{ maxWidth: 280, marginTop: 20 }} onClick={onRetry}>查看设置并继续生成</button> : error && <button onClick={onRefresh}>重新获取进度</button>}</section>;
 }
 
-function Reader({ document, initialChapter = 0, onBack, onProgress, onWord }) {
-  const [chapterIndex, setChapterIndex] = useState(Math.min(initialChapter, Math.max(0, document.chapters.length - 1)));
-  const [wordCard, setWordCard] = useState(null);
-  const chapter = document.chapters[chapterIndex];
-  const percentage = Math.round((chapterIndex + 1) / document.chapters.length * 100);
-  function go(next) { const index = Math.max(0, Math.min(document.chapters.length - 1, next)); setChapterIndex(index); setWordCard(null); onProgress(index, Math.round((index + 1) / document.chapters.length * 100)); window.scrollTo({ top: 0, behavior: "smooth" }); }
-  function openWord(segment) { setWordCard(segment); onWord(segment.word, "view"); }
-  function speak(word) { if (!("speechSynthesis" in window)) return; speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(word); utterance.lang = "en-US"; utterance.rate = .82; speechSynthesis.speak(utterance); }
-  return <section className="wi-reader">
-    <header><button className="wi-back-link" onClick={onBack}><ArrowLeft size={16} />我的阅读库</button><div><strong>{document.title}</strong><small>{chapterIndex + 1} / {document.chapters.length}</small></div><span>{percentage}%</span></header>
-    <div className="wi-reader-progress"><i style={{ width: `${percentage}%` }} /></div>
-    <main><div className="wi-reader-meta"><span>CHAPTER {String(chapterIndex + 1).padStart(2,"0")}</span><small>{document.vocabularyBook?.nameZh} · {document.immersionLevel}% 沉浸</small></div><h1>{chapter.title}</h1><article>{chapter.segments.map((segment, index) => segment.type === "word" ? <button key={index} className="wi-word" onClick={() => openWord(segment)}>{segment.text}</button> : <span key={index}>{segment.text}</span>)}</article><footer><button disabled={chapterIndex === 0} onClick={() => go(chapterIndex - 1)}><ArrowLeft />上一章</button><button disabled={chapterIndex === document.chapters.length - 1} onClick={() => go(chapterIndex + 1)}>下一章<ArrowRight /></button></footer></main>
-    {wordCard && <aside className="wi-word-card"><button className="wi-modal-close" onClick={() => setWordCard(null)}><X /></button><div className="wi-word-title"><div><strong>{wordCard.word}</strong><small>{wordCard.phonetic || "点击发音，加深记忆"}</small></div><button onClick={() => speak(wordCard.word)}><SpeakerHigh size={19} /></button></div><p>{wordCard.translation || wordCard.original}</p>{wordCard.original && <small>原文表达：{wordCard.original}</small>}<div><button onClick={() => onWord(wordCard.word, "unknown")}>还不熟</button><button onClick={() => onWord(wordCard.word, "save")}>加入生词本</button><button className="active" onClick={() => { onWord(wordCard.word, "known"); setWordCard(null); }}><Check />已掌握</button></div></aside>}
-  </section>;
-}
-
-function Vocabulary({ vocabulary, onBack, onAction }) {
-  const [filter, setFilter] = useState("all");
-  const words = vocabulary.words.filter((word) => filter === "all" || word.knownStatus === filter);
-  return <section className="wi-vocabulary"><header><button className="wi-back-link" onClick={onBack}><ArrowLeft size={16} />返回词浸</button><small>MY VOCABULARY</small><h2>我的词汇轨迹</h2><p>每次自然遇见、点击和复习，都会沉淀为真实的学习记录。</p></header><div className="wi-stat-grid"><article><span><Books /></span><strong>{vocabulary.stats.encountered}</strong><small>遇见词汇</small></article><article><span><Brain /></span><strong>{vocabulary.stats.learning}</strong><small>正在学习</small></article><article><span><TrendUp /></span><strong>{vocabulary.stats.known}</strong><small>已掌握</small></article></div><nav>{[["all","全部"],["learning","学习中"],["unknown","待复习"],["known","已掌握"]].map(([key,label]) => <button key={key} className={filter === key ? "active" : ""} onClick={() => setFilter(key)}>{label}</button>)}</nav><div className="wi-word-list">{words.length ? words.map((word) => <article key={word.id}><div><strong>{word.word}</strong><small>{word.phonetic}</small></div><p>{word.translation || "释义将在持续阅读中完善"}</p><span>遇见 {word.exposureCount} 次</span><i style={{ "--score": `${word.familiarityScore}%` }} /><button onClick={() => onAction(word.word, word.knownStatus === "known" ? "unknown" : "known")}>{word.knownStatus === "known" ? "重新学习" : "标记掌握"}</button></article>) : <div className="wi-list-empty">开始阅读后，你遇见的目标词会出现在这里。</div>}</div></section>;
-}
 
 export function WordImmersion({ tool, onBack, onCompleted }) {
   const [view, setView] = useState("library");
@@ -170,26 +164,37 @@ export function WordImmersion({ tool, onBack, onCompleted }) {
   useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [view]);
   useEffect(() => {
     if (view !== "generating" || !activeId) return undefined;
+    let stopped = false; let timer;
     const poll = async () => {
-      try { const { document } = await request(`/api/word-immersion/documents/${activeId}`); setActive(document); if (document.status === "ready") { setView("reader"); refresh(); onCompleted?.(); } }
-      catch (cause) { setError(cause.message); }
+      try {
+        const { document } = await request(`/api/word-immersion/documents/${activeId}?source=1`);
+        if (stopped) return;
+        setActive(document); setError("");
+        if (document.status === "ready") { setView("reader"); refresh().catch(() => {}); onCompleted?.(); return; }
+        if (document.status === "failed") return;
+      } catch (cause) { if (!stopped) setError(cause.message); }
+      if (!stopped) timer = window.setTimeout(poll, 3000);
     };
-    poll(); const timer = window.setInterval(poll, 2200); return () => window.clearInterval(timer);
+    poll(); return () => { stopped = true; window.clearTimeout(timer); };
   }, [view, activeId, refresh, onCompleted]);
-  async function openDocument(item) { try { const { document } = await request(`/api/word-immersion/documents/${item.id}`); setActive(document); setView(document.status === "ready" ? "reader" : "generating"); } catch (cause) { setError(cause.message); } }
-  async function removeDocument(item) { if (!window.confirm(`确定删除《${item.title}》吗？`)) return; await request(`/api/word-immersion/documents/${item.id}`, { method: "DELETE" }); refresh(); }
-  async function wordAction(word, action) { try { await request("/api/word-immersion/vocabulary/action", json("POST", { word, action })); setVocabulary(await request("/api/word-immersion/vocabulary")); } catch {} }
-  async function saveProgress(chapterIndex, percentage) { if (!activeId) return; request(`/api/word-immersion/documents/${activeId}/progress`, json("PATCH", { chapterIndex, percentage })).catch(() => {}); }
-  if (view === "create") return <CreateWorkspace catalog={catalog} tool={tool} onCancel={() => setView("library")} onCreated={(id) => { setActive({ id }); setView("generating"); }} />;
-  if (view === "generating") return <Generating document={active} onBack={() => { setView("library"); refresh(); }} />;
-  if (view === "reader" && active) return <Reader document={active} initialChapter={active.readingChapter} onBack={() => { setView("library"); refresh(); }} onProgress={saveProgress} onWord={wordAction} />;
+  async function openDocument(item) { try { setError(""); const { document } = await request(`/api/word-immersion/documents/${item.id}?source=1`); setActive(document); setView(document.status === "ready" ? "reader" : document.status === "draft" ? "retry" : "generating"); } catch (cause) { setError(cause.message); } }
+  async function removeDocument(item) { if (!window.confirm(`确定删除《${item.title}》吗？`)) return; try { await request(`/api/word-immersion/documents/${item.id}`, { method: "DELETE" }); await refresh(); } catch (cause) { setError(cause.message); } }
+  async function wordAction(word, action) { await request("/api/word-immersion/vocabulary/action", json("POST", { word, action })); setVocabulary(await request("/api/word-immersion/vocabulary")); }
+  const saveProgress = useCallback(async (chapterIndex, completed) => {
+    const { progress } = await request(`/api/word-immersion/documents/${activeId}/progress`, json("PATCH", { chapterIndex, completed }));
+    return progress;
+  }, [activeId]);
+  const returnToLibrary = () => { setView("library"); setError(""); refresh().catch((cause) => setError(cause.message)); };
+  if (view === "create" || view === "retry") return <CreateWorkspace catalog={catalog} tool={tool} existing={view === "retry" ? active : null} onCancel={returnToLibrary} onCreated={(id) => { setActive({ id }); setError(""); setView("generating"); }} />;
+  if (view === "generating") return <Generating document={active} error={error} onBack={returnToLibrary} onRetry={() => setView("retry")} onRefresh={() => openDocument(active)} />;
+  if (view === "reader" && active) return <Reader key={active.id} document={active} onBack={returnToLibrary} onProgress={saveProgress} onWord={wordAction} vocabulary={vocabulary} />;
   if (view === "vocabulary") return <Vocabulary vocabulary={vocabulary} onBack={() => setView("library")} onAction={wordAction} />;
   return <section className="wi-shell">
     <button className="wi-top-back" onClick={onBack}><ArrowLeft size={17} />返回工具市场</button>
-    <header className="wi-hero"><div className="wi-brand-icon"><img src="/word-immersion/wordin-icon-v2.png" alt="词浸应用图标" /></div><div><span>WORDIN · AI 沉浸式英语阅读 <i>测试中</i></span><h1>读你真正想读的，顺便学会英语</h1><p>将任何文章转化为循序渐进的沉浸式英文读物，让词汇在真实语境中自然发生。</p><div><small><Check weight="bold" />保留原意</small><small><Check weight="bold" />个性化词库</small><small><Check weight="bold" />学习轨迹</small></div></div><aside><strong>{tool.creditCost}</strong><span>积分 / 次</span></aside></header>
+    <header className="wi-hero"><div className="wi-brand-icon"><img src="/word-immersion/wordin-icon-v2.png" alt="词浸应用图标" /></div><div><span>WORDIN · AI 沉浸式英语阅读 <i>测试中</i></span><h1>读你真正想读的，顺便学会英语</h1><p>把你感兴趣的中文内容变成中英混合读物，在熟悉的语境中学习目标词汇。</p><div><small><Check weight="bold" />保留原意</small><small><Check weight="bold" />个性化词库</small><small><Check weight="bold" />学习轨迹</small></div></div><aside><strong>{tool.creditCost}</strong><span>积分 / 次</span></aside></header>
     <nav className="wi-main-tabs"><button className="active"><BookOpenText />我的阅读</button><button onClick={() => setView("vocabulary")}><Brain />我的词汇 <span>{vocabulary.stats.encountered}</span></button><button className="wi-new-button" onClick={() => setView("create")}><Plus />创建沉浸阅读</button></nav>
-    <div className="wi-overview"><article><span><Books /></span><div><strong>{documents.length}</strong><small>我的读物</small></div></article><article><span><Clock /></span><div><strong>{documents.filter((item) => item.readingProgress > 0).length}</strong><small>正在阅读</small></div></article><article><span><Brain /></span><div><strong>{vocabulary.stats.encountered}</strong><small>累计遇词</small></div></article><article><span><TrendUp /></span><div><strong>{vocabulary.stats.known}</strong><small>已掌握</small></div></article></div>
-    <main className="wi-library"><header><div><small>MY READING</small><h2>阅读库</h2></div><button onClick={() => setView("create")}><UploadSimple />导入新内容</button></header>{error && <p className="wi-error">{error}</p>}{loading ? <div className="wi-loading"><SpinnerGap className="wi-spin" />正在加载…</div> : documents.length ? <div className="wi-document-list">{documents.map((item) => <DocumentCard key={item.id} item={item} onOpen={openDocument} onDelete={removeDocument} />)}</div> : <EmptyLibrary onCreate={() => setView("create")} />}</main>
+    <div className="wi-overview"><article><span><Books /></span><div><strong>{documents.length}</strong><small>我的读物</small></div></article><article><span><Clock /></span><div><strong>{documents.filter((item) => item.readingProgress > 0 && item.readingProgress < 100).length}</strong><small>正在阅读</small></div></article><article><span><Brain /></span><div><strong>{vocabulary.stats.encountered}</strong><small>累计遇词</small></div></article><article><span><TrendUp /></span><div><strong>{vocabulary.stats.known}</strong><small>已掌握</small></div></article></div>
+    <main className="wi-library"><header><div><small>MY READING</small><h2>阅读库</h2></div><button onClick={() => setView("create")}><UploadSimple />导入新内容</button></header>{error && <p className="wi-error" role="alert">{error}</p>}{loading ? <div className="wi-loading"><SpinnerGap className="wi-spin" />正在加载…</div> : documents.length ? <div className="wi-document-list">{documents.map((item) => <DocumentCard key={item.id} item={item} onOpen={openDocument} onDelete={removeDocument} />)}</div> : <EmptyLibrary onCreate={() => setView("create")} />}</main>
     <footer className="wi-footer"><Headphones size={18} /><span>阅读中遇到问题？可在右下角联系智能客服。</span><span>测试版 · 生成内容请结合原文核对</span></footer>
   </section>;
 }

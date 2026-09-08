@@ -368,6 +368,7 @@ export function initializeDatabase() {
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0034_tool_manuals.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0035_promotion_center.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0036_word_immersion.sql"), "utf8"));
+  db.exec(readFileSync(resolve(projectRoot, "db/migrations/0041_word_immersion_reading.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0037_image_text_editor.sql"), "utf8"));
   db.exec(readFileSync(resolve(projectRoot, "db/migrations/0038_ppt_text_editor.sql"), "utf8"));
   const imageTextAssetColumns = new Set(db.prepare("PRAGMA table_info(image_text_assets)").all().map((item) => item.name));

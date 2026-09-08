@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { PDFParse } from "pdf-parse";
 import JSZip from "jszip";
 import { audit, db } from "./database.mjs";
-import { invokeModel, toolModelSelection } from "./model-gateway.mjs";
+import { gatewayFlags, invokeModel, toolModelSelection } from "./model-gateway.mjs";
 import { assertUserFileCapacity } from "./file-quota.mjs";
 import { deleteStoredFile, putStoredFile } from "./object-storage.mjs";
+import { buildImmersionSegments } from "./word-immersion-content.mjs";
 
 const MAX_DOCUMENT_BYTES = 12 * 1024 * 1024;
 const MAX_SOURCE_CHARACTERS = 50_000;
@@ -86,32 +87,33 @@ async function extractDocument(file) {
 
 export function splitImmersionChapters(source, fallbackTitle = "开始阅读") {
   const text = String(source || "").trim();
-  const paragraphs = text.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+  const paragraphs = text.split(/\n+/).map((item) => item.trim()).filter(Boolean)
+    .flatMap((item) => Array.from({ length: Math.ceil(item.length / CHAPTER_TARGET_CHARACTERS) }, (_, i) => item.slice(i * CHAPTER_TARGET_CHARACTERS, (i + 1) * CHAPTER_TARGET_CHARACTERS)));
   const chapters = [];
   let current = { title: fallbackTitle, paragraphs: [] };
   const heading = /^(?:#{1,3}\s+.+|第[一二三四五六七八九十百零〇0-9]+[章节回篇].*|chapter\s+\d+.*)$/i;
   for (const paragraph of paragraphs) {
-    if (heading.test(paragraph) && current.paragraphs.length) {
-      chapters.push(current);
-      current = { title: paragraph.replace(/^#{1,3}\s+/, "").slice(0, 120), paragraphs: [] };
+    if (paragraph.length < 120 && heading.test(paragraph)) {
+      if (current.paragraphs.length) chapters.push(current);
+      current = { title: paragraph.replace(/^#{1,3}\s+/, "").slice(0, 120), paragraphs: [paragraph] };
       continue;
     }
     const length = current.paragraphs.join("\n\n").length;
-    if (length >= CHAPTER_TARGET_CHARACTERS && current.paragraphs.length) {
+    if (length + paragraph.length + 2 > CHAPTER_TARGET_CHARACTERS && current.paragraphs.length) {
       chapters.push(current);
       current = { title: `${fallbackTitle} ${chapters.length + 1}`, paragraphs: [] };
     }
     current.paragraphs.push(paragraph);
   }
   if (current.paragraphs.length) chapters.push(current);
-  return chapters.slice(0, 16).map((chapter, index) => ({
+  return chapters.map((chapter, index) => ({
     title: chapter.title || `${fallbackTitle} ${index + 1}`,
     text: chapter.paragraphs.join("\n\n"),
   }));
 }
 
 function serializeBook(row) {
-  return row && { id: row.id, code: row.code, nameZh: row.name_zh, nameEn: row.name_en, descriptionZh: row.description_zh, descriptionEn: row.description_en, kind: row.kind, wordCount: Number(row.word_count || 0) };
+  return row && { id: row.id, code: row.code, nameZh: row.name_zh, nameEn: row.name_en, descriptionZh: row.description_zh, descriptionEn: row.description_en, kind: row.kind, wordCount: Number(row.word_count || 0), isSample: row.kind === "built_in" && Number(row.word_count || 0) < 100 };
 }
 
 export function immersionCatalog(userId) {
@@ -119,7 +121,10 @@ export function immersionCatalog(userId) {
     LEFT JOIN vocabulary_words w ON w.book_id = b.id
     WHERE b.active = 1 AND (b.owner_user_id IS NULL OR b.owner_user_id = ?)
     GROUP BY b.id ORDER BY b.kind, b.created_at`).all(userId).map(serializeBook);
-  return { books, levels: [
+  const flags = gatewayFlags();
+  const selection = toolModelSelection(userId, "tool_word_immersion");
+  const generationAvailable = selection !== "managed" || (flags.managedConfigured && flags.managedExecutionEnabled);
+  return { books, generationAvailable, levels: [
     { value: 10, name: "轻度", description: "保持阅读流畅，少量接触目标词" },
     { value: 20, name: "日常", description: "推荐模式，阅读与学习更平衡" },
     { value: 30, name: "进阶", description: "提高词汇和短语出现频率" },
@@ -231,7 +236,8 @@ export function getImmersionDocument(userId, documentId, includeSource = false) 
   const chapters = db.prepare(`SELECT id,chapter_index,title,source_text,segments_json,status,word_count
     FROM immersion_chapters WHERE document_id=? ORDER BY chapter_index`).all(documentId).map((chapter) => ({
       id: chapter.id, index: chapter.chapter_index, title: chapter.title, status: chapter.status, wordCount: chapter.word_count,
-      ...(includeSource ? { sourceText: chapter.source_text } : {}),
+    ...(includeSource ? { sourceText: chapter.source_text } : {}),
+    completed: Boolean(db.prepare("SELECT completed FROM immersion_chapter_readings WHERE user_id=? AND chapter_id=?").get(userId, chapter.id)?.completed),
       segments: chapter.status === "ready" ? JSON.parse(chapter.segments_json || "[]") : [],
     }));
   const generation = db.prepare(`SELECT t.status,t.completed_chapters AS completedChapters,t.total_chapters AS totalChapters,t.error_code AS errorCode
@@ -243,6 +249,7 @@ export function createImmersionGeneration(user, documentId, payload) {
   const document = documentRow(user.id, documentId);
   if (!document) throw immersionError("IMMERSION_DOCUMENT_NOT_FOUND", 404);
   if (["queued", "generating"].includes(document.status)) throw immersionError("IMMERSION_GENERATION_IN_PROGRESS", 409);
+  if (document.status === "ready") throw immersionError("IMMERSION_ALREADY_READY", 409);
   const level = Number(payload.immersionLevel || 20);
   if (!allowedLevels.has(level)) throw immersionError("IMMERSION_LEVEL_INVALID");
   const book = db.prepare("SELECT id FROM vocabulary_books WHERE id=? AND active=1 AND (owner_user_id IS NULL OR owner_user_id=?)").get(String(payload.vocabularyBookId || ""), user.id);
@@ -253,13 +260,18 @@ export function createImmersionGeneration(user, documentId, payload) {
   const taskId = randomUUID();
   const timestamp = Date.now();
   const modelConnectionId = toolModelSelection(user.id, tool.id, payload.modelConnectionId || null);
+  const flags = gatewayFlags();
+  if (modelConnectionId === "managed" && (!flags.managedConfigured || !flags.managedExecutionEnabled)) throw immersionError("MODEL_PROVIDER_NOT_CONFIGURED", 503);
+  const resume = document.status === "failed" && document.vocabulary_book_id === book.id && document.immersion_level === level;
+  const completed = resume ? db.prepare("SELECT COUNT(*) AS count FROM immersion_chapters WHERE document_id=? AND status='ready'").get(documentId).count : 0;
   db.exec("BEGIN IMMEDIATE");
   try {
-    db.prepare(`UPDATE immersion_documents SET vocabulary_book_id=?,immersion_level=?,status='queued',generated_chapters=0,error_code=NULL,updated_at=? WHERE id=?`).run(book.id, level, timestamp, documentId);
-    db.prepare(`UPDATE immersion_chapters SET segments_json='[]',status='draft',updated_at=? WHERE document_id=?`).run(timestamp, documentId);
+    db.prepare(`UPDATE immersion_documents SET vocabulary_book_id=?,immersion_level=?,status='queued',generated_chapters=?,error_code=NULL,updated_at=? WHERE id=?`).run(book.id, level, completed, timestamp, documentId);
+    if (!resume) db.prepare(`UPDATE immersion_chapters SET segments_json='[]',status='draft',updated_at=? WHERE document_id=?`).run(timestamp, documentId);
     db.prepare(`INSERT INTO tasks (id,user_id,tool_id,status,input_json,credit_cost,created_at,updated_at) VALUES (?,?,?,'queued',?,?,?,?)`)
       .run(taskId, user.id, tool.id, JSON.stringify({ documentId, vocabularyBookId: book.id, immersionLevel: level, modelConnectionId }), tool.credit_cost, timestamp, timestamp);
     db.prepare(`INSERT INTO immersion_generation_tasks (task_id,document_id,status,total_chapters,created_at,updated_at) VALUES (?,?,'queued',?,?,?)`).run(taskId, documentId, document.chapter_count, timestamp, timestamp);
+    db.prepare("UPDATE immersion_generation_tasks SET completed_chapters=? WHERE task_id=?").run(completed, taskId);
     if (tool.credit_cost > 0) {
       db.prepare(`INSERT INTO credit_ledger (id,user_id,type,amount,description_zh,description_en,reference_type,reference_id,created_at)
         VALUES (?,?,'consumption',?,'生成词浸沉浸阅读','Generated WordIn immersion reading','task',?,?)`).run(randomUUID(), user.id, -tool.credit_cost, taskId, timestamp);
@@ -270,30 +282,21 @@ export function createImmersionGeneration(user, documentId, payload) {
   return { id: taskId, status: "queued", creditCost: tool.credit_cost };
 }
 
-function parseModelSegments(raw) {
-  const compact = String(raw || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  let payload;
-  try { payload = JSON.parse(compact); } catch { throw immersionError("IMMERSION_INVALID_MODEL_OUTPUT", 502, true); }
-  const source = Array.isArray(payload) ? payload : payload.segments;
-  if (!Array.isArray(source) || !source.length || source.length > 800) throw immersionError("IMMERSION_INVALID_MODEL_OUTPUT", 502, true);
-  return source.map((segment) => {
-    if (segment?.type === "word") {
-      const word = String(segment.word || "").trim().slice(0, 60);
-      const text = String(segment.text || word).slice(0, 100);
-      if (!word || !text) throw immersionError("IMMERSION_INVALID_MODEL_OUTPUT", 502, true);
-      return { type: "word", text, word, original: String(segment.original || "").slice(0, 80), translation: String(segment.translation || "").slice(0, 120), phonetic: String(segment.phonetic || "").slice(0, 100), exposureLevel: Math.min(4, Math.max(1, Number(segment.exposureLevel || 1))) };
-    }
-    const text = String(segment?.text || "");
-    if (!text) throw immersionError("IMMERSION_INVALID_MODEL_OUTPUT", 502, true);
-    return { type: "normal", text };
-  });
+
+export function selectImmersionWords(words, source, learned = []) {
+  const status = new Map(learned.map((word) => [word.word.toLowerCase(), word.knownStatus]));
+  const lowerSource = source.toLowerCase();
+  const score = (word) => (lowerSource.includes(word.word.toLowerCase()) ? 10 : 0)
+    + String(word.translation || "").split(/[；;，,、]/).filter((meaning) => meaning.trim().length >= 2 && source.includes(meaning.trim())).length * 10
+    + (status.get(word.word.toLowerCase()) === "unknown" ? 3 : status.get(word.word.toLowerCase()) === "known" ? -2 : 0);
+  return words.map((word, index) => ({ word, score: score(word), index })).sort((a, b) => b.score - a.score || a.index - b.index).slice(0, 160).map((item) => item.word);
 }
 
 export async function executeImmersionTask(task, input, modelInvoker = invokeModel) {
   const document = documentRow(task.user_id, input.documentId);
   if (!document) throw immersionError("IMMERSION_DOCUMENT_NOT_FOUND", 404);
   const chapters = db.prepare("SELECT * FROM immersion_chapters WHERE document_id=? ORDER BY chapter_index").all(document.id);
-  const words = db.prepare(`SELECT word,phonetic,translation_zh AS translation FROM vocabulary_words WHERE book_id=? ORDER BY difficulty,word LIMIT 160`).all(input.vocabularyBookId);
+  const words = db.prepare(`SELECT word,phonetic,translation_zh AS translation FROM vocabulary_words WHERE book_id=? ORDER BY difficulty,word`).all(input.vocabularyBookId);
   if (!words.length) throw immersionError("IMMERSION_VOCABULARY_EMPTY", 422);
   const learned = db.prepare(`SELECT word,exposure_count AS exposureCount,known_status AS knownStatus,familiarity_score AS familiarityScore
     FROM user_vocabulary_progress WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 60`).all(task.user_id);
@@ -301,6 +304,7 @@ export async function executeImmersionTask(task, input, modelInvoker = invokeMod
   db.prepare("UPDATE immersion_documents SET status='generating',updated_at=? WHERE id=?").run(timestamp, document.id);
   db.prepare("UPDATE immersion_generation_tasks SET status='running',updated_at=? WHERE task_id=?").run(timestamp, task.id);
   for (const [chapterNumber, chapter] of chapters.entries()) {
+    if (chapter.status === "ready") continue;
     db.prepare("UPDATE immersion_chapters SET status='generating',updated_at=? WHERE id=?").run(Date.now(), chapter.id);
     const result = await modelInvoker({
       userId: task.user_id,
@@ -308,30 +312,24 @@ export async function executeImmersionTask(task, input, modelInvoker = invokeMod
       capability: "word-immersion",
       connectionId: input.modelConnectionId || null,
       timeoutMs: 120_000,
-      instruction: `你是“词浸”沉浸式阅读改写引擎。保持原文事实、人物、数字、专业术语和逻辑完全不变，只在语义自然时把中文词语或表达融入目标英文词汇。沉浸度 ${input.immersionLevel}% 代表大致密度，不是机械字符比例。首次接触可在英文后保留简短中文提示，熟悉后减少提示。不要强行插词或制造病句。只输出严格 JSON：{"segments":[{"type":"normal","text":"原文"},{"type":"word","text":"significant（显著的）","word":"significant","original":"显著的","translation":"显著的；重要的","phonetic":"","exposureLevel":1}]}。normal 与 word 片段连续拼接后必须构成完整正文。`,
-      text: `目标词库：${JSON.stringify(words)}\n用户近期词汇记忆：${JSON.stringify(learned)}\n需要改写的章节：\n${chapter.source_text}`,
+      maxOutputTokens: 4096,
+      latencyOptimized: true,
+      instruction: `你是词浸阅读引擎。只选择原文中语义适合替换为目标英文的连续词语，不改写整篇文章。保持人物、数字、术语和事实。沉浸度 ${input.immersionLevel}% 是近似目标，宁可少替换，不强行插词。只用提供词库中的word；english是其语境下的英文表达或词形。original必须逐字来自原文，occurrence为该片段在原文中第几次出现（从1开始）。各片段不能重叠；不替换数字。只输出JSON：{"replacements":[{"original":"挑战","word":"challenge","english":"challenge","occurrence":1}]}。无合适词返回空数组。`,
+      text: `目标词库：${JSON.stringify(selectImmersionWords(words, chapter.source_text, learned))}\n用户近期词汇记忆：${JSON.stringify(learned)}\n需要改写的章节：\n${chapter.source_text}`,
     });
-    const segments = parseModelSegments(result.text);
+    const segments = buildImmersionSegments(result.text, chapter.source_text, words, learned);
     db.exec("BEGIN IMMEDIATE");
     try {
       const seenAt = Date.now();
       db.prepare("UPDATE immersion_chapters SET segments_json=?,status='ready',updated_at=? WHERE id=?").run(JSON.stringify(segments), seenAt, chapter.id);
-      const insertExposure = db.prepare(`INSERT INTO word_exposures (id,user_id,document_id,chapter_id,word,context_text,exposure_level,created_at) VALUES (?,?,?,?,?,?,?,?)`);
-      const upsertProgress = db.prepare(`INSERT INTO user_vocabulary_progress
-        (id,user_id,word,translation_zh,phonetic,exposure_count,first_seen_at,last_seen_at,next_review_at,created_at,updated_at)
-        VALUES (?,?,?,?,?,1,?,?,?,?,?) ON CONFLICT(user_id,word) DO UPDATE SET
-          translation_zh=CASE WHEN excluded.translation_zh<>'' THEN excluded.translation_zh ELSE translation_zh END,
-          phonetic=CASE WHEN excluded.phonetic<>'' THEN excluded.phonetic ELSE phonetic END,
-          exposure_count=exposure_count+1,last_seen_at=excluded.last_seen_at,next_review_at=excluded.next_review_at,updated_at=excluded.updated_at`);
-      for (const segment of segments.filter((item) => item.type === "word")) {
-        insertExposure.run(randomUUID(), task.user_id, document.id, chapter.id, segment.word.toLowerCase(), segment.text, segment.exposureLevel, seenAt);
-        upsertProgress.run(randomUUID(), task.user_id, segment.word.toLowerCase(), segment.translation, segment.phonetic, seenAt, seenAt, seenAt + 86_400_000, seenAt, seenAt);
-      }
       db.prepare("UPDATE immersion_documents SET generated_chapters=?,updated_at=? WHERE id=?").run(chapterNumber + 1, seenAt, document.id);
       db.prepare("UPDATE immersion_generation_tasks SET completed_chapters=?,updated_at=? WHERE task_id=?").run(chapterNumber + 1, seenAt, task.id);
       db.exec("COMMIT");
     } catch (error) { db.exec("ROLLBACK"); throw error; }
   }
+  const hasVocabulary = db.prepare("SELECT segments_json FROM immersion_chapters WHERE document_id=?").all(document.id)
+    .some(chapter => JSON.parse(chapter.segments_json || "[]").some(segment => segment.type === "word"));
+  if (!hasVocabulary) throw immersionError("IMMERSION_NO_MATCHING_WORDS", 422);
   const completedAt = Date.now();
   db.prepare("UPDATE immersion_documents SET status='ready',error_code=NULL,updated_at=? WHERE id=?").run(completedAt, document.id);
   db.prepare("UPDATE immersion_generation_tasks SET status='completed',updated_at=? WHERE task_id=?").run(completedAt, task.id);
@@ -347,6 +345,8 @@ export function failImmersionTask(taskId, errorCode) {
 }
 
 export async function deleteImmersionDocument(user, documentId) {
+  const document = documentRow(user.id, documentId);
+  if (document && ["queued", "generating"].includes(document.status)) throw immersionError("IMMERSION_GENERATION_IN_PROGRESS", 409);
   const row = db.prepare(`SELECT d.id,f.storage_name AS storageName,s.provider,s.object_key AS objectKey
     FROM immersion_documents d LEFT JOIN files f ON f.id=d.original_file_id LEFT JOIN file_storage_objects s ON s.file_id=f.id
     WHERE d.id=? AND d.user_id=?`).get(documentId, user.id);
@@ -364,14 +364,41 @@ export async function deleteImmersionDocument(user, documentId) {
 }
 
 export function updateReadingProgress(userId, documentId, payload) {
-  if (!documentRow(userId, documentId)) throw immersionError("IMMERSION_DOCUMENT_NOT_FOUND", 404);
-  const percentage = Math.min(100, Math.max(0, Number(payload.percentage || 0)));
-  const chapterIndex = Math.max(0, Number(payload.chapterIndex || 0));
-  const paragraphIndex = Math.max(0, Number(payload.paragraphIndex || 0));
-  db.prepare(`INSERT INTO immersion_reading_progress (user_id,document_id,chapter_index,paragraph_index,percentage,updated_at)
-    VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,document_id) DO UPDATE SET chapter_index=excluded.chapter_index,paragraph_index=excluded.paragraph_index,percentage=excluded.percentage,updated_at=excluded.updated_at`)
-    .run(userId, documentId, chapterIndex, paragraphIndex, percentage, Date.now());
-  return { documentId, chapterIndex, paragraphIndex, percentage };
+  const document = documentRow(userId, documentId);
+  if (!document) throw immersionError("IMMERSION_DOCUMENT_NOT_FOUND", 404);
+  const chapterIndex = Number(payload.chapterIndex);
+  if (!Number.isInteger(chapterIndex) || chapterIndex < 0 || chapterIndex >= document.chapter_count) throw immersionError("IMMERSION_PROGRESS_INVALID");
+  const chapter = db.prepare("SELECT * FROM immersion_chapters WHERE document_id=? AND chapter_index=? AND status='ready'").get(documentId, chapterIndex);
+  if (!chapter) throw immersionError("IMMERSION_CHAPTER_NOT_READY", 409);
+  const now = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const firstVisit = db.prepare("INSERT OR IGNORE INTO immersion_chapter_readings (user_id,chapter_id,completed,visited_at) VALUES (?,?,0,?)").run(userId, chapter.id, now).changes;
+    if (firstVisit) {
+      const segments = JSON.parse(chapter.segments_json);
+      const context = segments.map((item) => item.text).join("");
+      for (const segment of segments.filter((item) => item.type === "word")) {
+        const word = segment.word.toLowerCase();
+        const position = context.indexOf(segment.text);
+        const excerpt = context.slice(Math.max(0, position - 60), position + segment.text.length + 100);
+        db.prepare("INSERT INTO word_exposures (id,user_id,document_id,chapter_id,word,context_text,exposure_level,created_at) VALUES (?,?,?,?,?,?,?,?)")
+          .run(randomUUID(), userId, documentId, chapter.id, word, excerpt, segment.exposureLevel, now);
+        db.prepare(`INSERT INTO user_vocabulary_progress
+          (id,user_id,word,translation_zh,phonetic,exposure_count,first_seen_at,last_seen_at,next_review_at,created_at,updated_at)
+          VALUES (?,?,?,?,?,1,?,?,?,?,?) ON CONFLICT(user_id,word) DO UPDATE SET
+          translation_zh=excluded.translation_zh,phonetic=excluded.phonetic,exposure_count=exposure_count+1,last_seen_at=excluded.last_seen_at,updated_at=excluded.updated_at`)
+          .run(randomUUID(), userId, word, segment.translation, segment.phonetic, now, now, now, now, now);
+      }
+    }
+    if (payload.completed === true) db.prepare("UPDATE immersion_chapter_readings SET completed=1 WHERE user_id=? AND chapter_id=?").run(userId, chapter.id);
+    const read = db.prepare("SELECT COUNT(*) AS count FROM immersion_chapter_readings r JOIN immersion_chapters c ON c.id=r.chapter_id WHERE r.user_id=? AND c.document_id=? AND r.completed=1").get(userId, documentId).count;
+    const percentage = Math.round(read / document.chapter_count * 100);
+    db.prepare(`INSERT INTO immersion_reading_progress (user_id,document_id,chapter_index,paragraph_index,percentage,updated_at)
+      VALUES (?,?,?,0,?,?) ON CONFLICT(user_id,document_id) DO UPDATE SET chapter_index=excluded.chapter_index,percentage=excluded.percentage,updated_at=excluded.updated_at`)
+      .run(userId, documentId, chapterIndex, percentage, now);
+    db.exec("COMMIT");
+    return { documentId, chapterIndex, percentage, completed: Boolean(payload.completed || db.prepare("SELECT completed FROM immersion_chapter_readings WHERE user_id=? AND chapter_id=?").get(userId, chapter.id)?.completed) };
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
 export function recordVocabularyAction(userId, payload) {
@@ -380,10 +407,11 @@ export function recordVocabularyAction(userId, payload) {
   if (!word || !["view", "save", "known", "unknown"].includes(action)) throw immersionError("IMMERSION_WORD_ACTION_INVALID");
   const row = db.prepare("SELECT * FROM user_vocabulary_progress WHERE user_id=? AND word=?").get(userId, word);
   if (!row) throw immersionError("IMMERSION_WORD_NOT_FOUND", 404);
-  const status = action === "known" ? "known" : action === "unknown" ? "unknown" : row.known_status;
+  const status = action === "known" ? "known" : action === "unknown" ? "unknown" : action === "save" ? "learning" : row.known_status;
   const familiarity = action === "known" ? Math.min(100, row.familiarity_score + 20) : action === "unknown" ? Math.max(0, row.familiarity_score - 10) : action === "save" ? Math.max(10, row.familiarity_score) : row.familiarity_score;
+  const nextReview = action === "view" ? row.next_review_at : Date.now() + (status === "known" ? 7 : 1) * 86_400_000;
   db.prepare(`UPDATE user_vocabulary_progress SET click_count=click_count+1,known_status=?,familiarity_score=?,next_review_at=?,updated_at=? WHERE id=?`)
-    .run(status, familiarity, Date.now() + (status === "known" ? 7 : 1) * 86_400_000, Date.now(), row.id);
+    .run(status, familiarity, nextReview, Date.now(), row.id);
   if (payload.exposureId) db.prepare("UPDATE word_exposures SET clicked_at=? WHERE id=? AND user_id=?").run(Date.now(), String(payload.exposureId), userId);
   return userVocabulary(userId).words.find((item) => item.word === word);
 }
@@ -391,6 +419,8 @@ export function recordVocabularyAction(userId, payload) {
 export function userVocabulary(userId) {
   const rows = db.prepare(`SELECT * FROM user_vocabulary_progress WHERE user_id=? ORDER BY
     CASE known_status WHEN 'unknown' THEN 0 WHEN 'learning' THEN 1 ELSE 2 END,last_seen_at DESC`).all(userId);
-  const words = rows.map((row) => ({ id: row.id, word: row.word, translation: row.translation_zh, phonetic: row.phonetic, exposureCount: row.exposure_count, clickCount: row.click_count, knownStatus: row.known_status, familiarityScore: row.familiarity_score, firstSeenAt: row.first_seen_at, lastSeenAt: row.last_seen_at, nextReviewAt: row.next_review_at }));
-  return { words, stats: { encountered: words.length, learning: words.filter((item) => item.knownStatus === "learning").length, known: words.filter((item) => item.knownStatus === "known").length, unknown: words.filter((item) => item.knownStatus === "unknown").length } };
+  const words = rows.map((row) => ({ id: row.id, word: row.word, translation: row.translation_zh, phonetic: row.phonetic, exposureCount: row.exposure_count, clickCount: row.click_count, knownStatus: row.known_status, familiarityScore: row.familiarity_score, firstSeenAt: row.first_seen_at, lastSeenAt: row.last_seen_at, nextReviewAt: row.next_review_at,
+    context: db.prepare("SELECT context_text AS text FROM word_exposures WHERE user_id=? AND word=? ORDER BY created_at DESC LIMIT 1").get(userId, row.word)?.text || "",
+  }));
+  return { words, stats: { encountered: words.length, learning: words.filter((item) => item.knownStatus === "learning").length, known: words.filter((item) => item.knownStatus === "known").length, unknown: words.filter((item) => item.knownStatus === "unknown").length, due: words.filter((item) => !item.nextReviewAt || item.nextReviewAt <= Date.now()).length } };
 }

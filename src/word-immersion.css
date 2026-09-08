@@ -6,3 +6,31 @@
 .wi-brand-icon{left:38px;top:41px;width:92px;height:92px;border-radius:27px;background:rgba(255,255,255,.06);box-shadow:0 18px 44px rgba(52,100,255,.34)}.wi-brand-icon img{display:block;width:100%;height:100%;object-fit:contain;border-radius:27px}
 @media(max-width:1050px){.wi-create-grid{grid-template-columns:1fr}.wi-create-panel{min-height:auto}.wi-document-list{grid-template-columns:1fr}.wi-hero{padding-right:40px}.wi-hero aside{display:none}.wi-word-list>article{grid-template-columns:130px 1fr 80px}.wi-word-list i,.wi-word-list button{display:none}}@media(max-width:720px){.wi-shell,.wi-create,.wi-vocabulary{padding:16px}.wi-hero{padding:110px 22px 28px}.wi-brand-icon{left:22px;top:22px;width:68px;height:68px}.wi-hero h1{font-size:28px}.wi-hero>div>div{flex-wrap:wrap}.wi-main-tabs button{padding:10px;font-size:0}.wi-main-tabs button svg{font-size:16px}.wi-main-tabs .wi-new-button{font-size:12px}.wi-overview{grid-template-columns:1fr 1fr}.wi-document-card{grid-template-columns:auto 1fr}.wi-card-open,.wi-icon-button{display:none}.wi-reader>header{padding:0 15px}.wi-reader>main{padding:45px 22px}.wi-reader article{font-size:18px}.wi-word-card{right:12px;left:12px;bottom:12px;width:auto}.wi-stat-grid{grid-template-columns:1fr}.wi-create>header>div{margin-left:0}.wi-create>header{display:block}.wi-word-list>article{grid-template-columns:100px 1fr}.wi-word-list>article>span{display:none}}
 .wi-reader>header{top:76px}.wi-reader-progress{top:146px}
+.wi-reading-controls{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:28px}
+.wi-reading-controls label{display:flex;gap:8px;align-items:center;min-width:0;flex:1}
+.wi-reading-controls select{min-width:0;max-width:360px;width:100%}
+.wi-reading-controls button,.wi-reading-controls select,.wi-review-card>button,.wi-review-actions button{border:1px solid #dce4f2;border-radius:10px;padding:10px 12px;background:#fff;color:#3659e9;font:inherit;cursor:pointer}
+.wi-reading-controls button:disabled{opacity:.45;cursor:default}
+.wi-reading-controls button[aria-pressed=true]{background:#eaf0ff}
+.wi-notice{padding:12px 16px;background:#e9f7f2;color:#176347;border-radius:10px;font-size:14px}
+.wi-vocabulary-tools{display:flex;gap:12px;max-width:1100px;margin:0 auto 16px}
+.wi-vocabulary-tools input{flex:1;min-width:0;padding:12px;border:1px solid #dce4f2;border-radius:12px;font:inherit}
+.wi-vocabulary-tools .wi-primary{width:auto}
+.wi-review-card{max-width:650px;margin:50px auto;padding:40px;border:1px solid #dce4f2;border-radius:20px;background:white;text-align:center}
+.wi-review-card h2{font-size:36px;margin:24px 0;overflow-wrap:anywhere}
+.wi-review-card blockquote{margin:24px 0;padding:18px;background:#f4f7fc;border-radius:12px;text-align:left;line-height:1.9;white-space:pre-wrap}
+.wi-review-actions{display:flex;justify-content:center;gap:12px;margin-top:24px}
+.wi-review-card .wi-primary{background:#3659e9;color:white;margin-top:20px}
+.wi-review-card p{line-height:1.7;color:#60708d}
+.wi-review-card button:disabled{opacity:.5;cursor:default}
+.wi-word-card .wi-word-title{padding-top:25px}
+.wi-reader>header strong{max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wi-reader main>footer{flex-wrap:wrap;gap:12px}
+.wi-create .wi-book-grid small,.wi-create .wi-step-title p,.wi-create .wi-field>span,.wi-create .wi-level-note,.wi-create .wi-level-labels,.wi-document-copy small,.wi-word-list small,.wi-word-list p,.wi-word-list span,.wi-word-card>div:last-child button{font-size:14px}
+.wi-generating{min-height:580px;padding:30px}.wi-generating>p{max-width:620px;line-height:1.8}
+.wi-shell button:focus-visible,.wi-create button:focus-visible,.wi-reader button:focus-visible,.wi-vocabulary button:focus-visible{outline:3px solid #3659e9;outline-offset:3px}
+.wi-create input:disabled,.wi-create textarea:disabled{background:#f5f7fa;color:#687793}
+.wi-word-list>article{grid-template-columns:minmax(100px,170px) 1fr 100px 150px 100px}
+@media(max-width:1050px){.wi-word-list>article{grid-template-columns:1fr 1fr}.wi-word-list button{display:block}.wi-word-list>article>small{display:block}.wi-card-open,.wi-icon-button{display:inline-flex;justify-content:center}.wi-document-card{grid-template-columns:auto 1fr}.wi-vocabulary>nav{flex-wrap:wrap}.wi-main-tabs{flex-wrap:wrap}.wi-main-tabs button{font-size:14px}.wi-vocabulary-tools{flex-wrap:wrap}}
+@media(max-width:720px){.wi-reading-controls label{flex-basis:100%}.wi-review-card{padding:24px 18px;margin:24px auto}.wi-review-actions{flex-direction:column}.wi-vocabulary-tools .wi-primary{width:100%}.wi-reader>header{grid-template-columns:auto 1fr auto;gap:8px}.wi-reader>main{padding:28px 16px}.wi-reader h1{font-size:28px}.wi-reader-meta{flex-wrap:wrap;gap:10px}.wi-word-card{box-sizing:border-box}.wi-list-empty{padding:30px 16px}}
+@media(prefers-reduced-motion:reduce){.wi-orbit i,.wi-spin{animation:none}.wi-reader-progress i,.wi-generating-progress i{transition:none}}

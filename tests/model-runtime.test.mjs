@@ -26,6 +26,7 @@ const provider = createServer(async (request, response) => {
     apiKey: request.headers["x-api-key"] || null,
     anthropicVersion: request.headers["anthropic-version"] || null,
     workspaceId: request.headers["x-dashscope-workspace"] || null,
+    maxTokens: payload.max_tokens,
   });
   response.setHeader("content-type", "application/json");
   if (promptText.includes("lyrics_request")) {
@@ -111,6 +112,7 @@ test("managed runtime returns a provider-neutral result and redacted status", as
     text: "Hello",
   });
   assert.equal(result.text, "ok:internal-model-id");
+  assert.equal(observedRequests.at(-1).maxTokens, undefined, "unspecified output length must not silently become 64 tokens");
   assert.equal(result.route, "managed");
   const publicStatus = JSON.stringify(runtimeSummary(userId));
   assert.match(publicStatus, /OneShowModel/);
@@ -133,6 +135,12 @@ test("managed runtime accepts image input for vision-backed tools", async () => 
   const invocation = db.prepare("SELECT capability, status FROM model_invocations WHERE id = ?").get(result.invocationId);
   assert.equal(invocation.capability, "vision:food_nutrition");
   assert.equal(invocation.status, "completed");
+});
+
+test('text tools can explicitly request a bounded output budget', async () => {
+  const userId=addUser('word-output-budget@example.com');
+  await invokeModel({userId,instruction:'Test',text:'Hello',maxOutputTokens:4096,latencyOptimized:true});
+  assert.equal(observedRequests.at(-1).maxTokens,4096);
 });
 
 test("AI writing exposes 7 modules and 49 templates, then performs draft and review calls", async () => {
