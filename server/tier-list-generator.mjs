@@ -95,13 +95,41 @@ export async function processTierList(form) {
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
     if (!tierItems.length) continue;
     const itemGap = Math.max(8, Math.round(width * 0.009));
-    const maxItemWidth = Math.max(48, Math.floor((itemAreaWidth - itemGap * (tierItems.length + 1)) / tierItems.length));
-    const itemSize = Math.min(Math.round(rowHeight * 0.78), maxItemWidth);
-    const y = headerHeight + tierIndex * (rowHeight + rowGap) + Math.round((rowHeight - itemSize) / 2);
+    const availableWidth = itemAreaWidth - itemGap * 2;
+    const availableHeight = rowHeight - itemGap * 2;
+    let columns = 1;
+    let rows = tierItems.length;
+    let itemSize = 1;
+    for (let candidateColumns = 1; candidateColumns <= tierItems.length; candidateColumns += 1) {
+      const candidateRows = Math.ceil(tierItems.length / candidateColumns);
+      const candidateSize = Math.floor(Math.min(
+        (availableWidth - itemGap * (candidateColumns - 1)) / candidateColumns,
+        (availableHeight - itemGap * (candidateRows - 1)) / candidateRows,
+      ));
+      if (candidateSize > itemSize) {
+        columns = candidateColumns;
+        rows = candidateRows;
+        itemSize = candidateSize;
+      }
+    }
+    itemSize = Math.max(1, itemSize);
+    const gridWidth = columns * itemSize + (columns - 1) * itemGap;
+    const gridHeight = rows * itemSize + (rows - 1) * itemGap;
+    const startX = rowX + labelWidth + Math.max(itemGap, Math.round((itemAreaWidth - gridWidth) / 2));
+    const startY = headerHeight + tierIndex * (rowHeight + rowGap) + Math.max(itemGap, Math.round((rowHeight - gridHeight) / 2));
     for (const [itemIndex, item] of tierItems.entries()) {
       const input = Buffer.from(await files[Number(item.fileIndex)].arrayBuffer());
-      const image = await sharp(input).rotate().resize(itemSize, itemSize, { fit: "cover", position: "attention" }).png().toBuffer();
-      composites.push({ input: image, left: rowX + labelWidth + itemGap + itemIndex * (itemSize + itemGap), top: y });
+      const image = await sharp(input).rotate().resize(itemSize, itemSize, {
+        fit: "contain",
+        background: { r: 255, g: 255, b: 255, alpha: 0 },
+      }).png().toBuffer();
+      const itemColumn = itemIndex % columns;
+      const itemRow = Math.floor(itemIndex / columns);
+      composites.push({
+        input: image,
+        left: startX + itemColumn * (itemSize + itemGap),
+        top: startY + itemRow * (itemSize + itemGap),
+      });
     }
   }
 

@@ -45,6 +45,20 @@ test("empty tier rows stay visually clean without instructional copy", async () 
   assert.equal(source.includes("横版 (16:9)"), false);
 });
 
+test("uploaded images stay fully visible in the tray, preview, and exported grid", async () => {
+  const source = await readFile(new URL("../src/TierListGenerator.jsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../src/tier-list-generator.css", import.meta.url), "utf8");
+  const serverSource = await readFile(new URL("../server/tier-list-generator.mjs", import.meta.url), "utf8");
+  assert.match(styles, /Show every uploaded image without cropping/);
+  assert.match(styles, /\.tier-asset img\{[\s\S]*?object-fit:contain/);
+  assert.match(styles, /\.tier-material-tray \.tier-tray-grid\{[\s\S]*?grid-template-columns:repeat\(auto-fill,82px\)/);
+  assert.match(styles, /\.tier-preview-row img\{[\s\S]*?object-fit:contain/);
+  assert.match(serverSource, /fit: "contain"/);
+  assert.match(serverSource, /itemColumn = itemIndex % columns/);
+  assert.ok(source.indexOf('className="tier-tray-grid"') < source.indexOf('className="tier-upload-button"'));
+  assert.match(styles, /\.tier-material-tray\.has-assets \.tier-upload-button\{/);
+});
+
 test("retired landscape exports fall back to the visible portrait format", async () => {
   const form = new FormData();
   form.append("layout", "landscape");
