@@ -52,6 +52,7 @@ test("uploaded images stay fully visible in the tray, preview, and exported grid
   assert.match(styles, /Show every uploaded image without cropping/);
   assert.match(styles, /\.tier-asset img\{[\s\S]*?object-fit:contain/);
   assert.match(styles, /\.tier-material-tray \.tier-tray-grid\{[\s\S]*?grid-template-columns:repeat\(auto-fill,82px\)/);
+  assert.match(styles, /\.tier-material-tray \.tier-tray-grid\{[\s\S]*?width:100%/);
   assert.match(styles, /\.tier-preview-row img\{[\s\S]*?object-fit:contain/);
   assert.match(serverSource, /fit: "contain"/);
   assert.match(serverSource, /itemColumn = itemIndex % columns/);

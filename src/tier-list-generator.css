@@ -69,7 +69,9 @@
   align-content:start;
   justify-content:start;
   flex:1;
+  width:100%;
   min-width:0;
+  box-sizing:border-box;
   gap:10px;
   overflow:visible;
 }
