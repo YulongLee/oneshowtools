@@ -30,6 +30,7 @@ const StockPetProduct = lazy(() => import("./StockPetProduct.jsx").then((module)
 const FortuneCatProduct = lazy(() => import("./FortuneCatProduct.jsx").then((module) => ({ default: module.FortuneCatProduct })));
 const WordImmersion = lazy(() => import("./WordImmersion.jsx").then((module) => ({ default: module.WordImmersion })));
 const ImageTextEditor = lazy(() => import("./ImageTextEditor.jsx").then((module) => ({ default: module.ImageTextEditor })));
+const KillLineAnalyzer = lazy(() => import("./KillLineAnalyzer.jsx").then((module) => ({ default: module.KillLineAnalyzer })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -864,6 +865,7 @@ function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, au
   if (tool.slug === "sliding-ancestor-generator") return <SlidingAncestorStudio tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "word-immersion") return <WordImmersion tool={tool} onBack={onBack} onCompleted={onCompleted} />;
   if (tool.slug === "image-text-editor") return <ImageTextEditor tool={tool} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
+  if (tool.slug === "product-kill-line-analyzer") return <KillLineAnalyzer tool={tool} locale={locale} onBack={onBack} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} runtime={runtime} lyricsHistoryTasks={allTasks.filter((item) => item.toolId === "tool_lyrics_generator")} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;
