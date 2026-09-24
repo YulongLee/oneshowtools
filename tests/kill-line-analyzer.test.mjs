@@ -36,6 +36,14 @@ test("products can be hidden from the curve without deleting their data", async 
   assert.match(source, /EyeSlash/);
 });
 
+test("nearby product markers are spread apart and retain their true-coordinate anchors", async () => {
+  const source = await readFile(new URL("../src/KillLineAnalyzer.jsx", import.meta.url), "utf8");
+  assert.match(source, /function spreadChartPoints/);
+  assert.match(source, /minDistance = 76/);
+  assert.match(source, /kill-point-leader/);
+  assert.match(source, /kill-point-anchor/);
+});
+
 test("kill line uses its dedicated marketplace icon", async () => {
   const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const icon = await readFile(new URL("../public/tool-icons-v2/product-kill-line-analyzer-v1.png", import.meta.url));

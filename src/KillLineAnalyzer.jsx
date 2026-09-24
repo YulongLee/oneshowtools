@@ -115,6 +115,28 @@ function zoomDomain(domain, zoom, log = false) {
   return [center - half, center + half];
 }
 
+function spreadChartPoints(products, toX, toY) {
+  const placed = [];
+  const minDistance = 76;
+  return products.map((product) => {
+    const anchorX = toX(product.xValue); const anchorY = toY(product.yValue);
+    const candidates = [{ x: anchorX, y: anchorY }];
+    for (const radius of [54, 82, 112, 144]) {
+      for (let index = 0; index < 12; index += 1) {
+        const angle = -Math.PI / 2 + index * Math.PI / 6;
+        candidates.push({ x: anchorX + Math.cos(angle) * radius, y: anchorY + Math.sin(angle) * radius });
+      }
+    }
+    const fits = ({ x, y }) => x >= PLOT.left + 32 && x <= WIDTH - PLOT.right - 32 && y >= PLOT.top + 32 && y <= HEIGHT - PLOT.bottom - 54
+      && placed.every((point) => Math.hypot(point.x - x, point.y - y) >= minDistance);
+    const position = candidates.find(fits) || candidates.filter(({ x, y }) => x >= PLOT.left + 28 && x <= WIDTH - PLOT.right - 28 && y >= PLOT.top + 28 && y <= HEIGHT - PLOT.bottom - 48)
+      .sort((a, b) => Math.min(...placed.map((point) => Math.hypot(point.x - b.x, point.y - b.y)), Infinity) - Math.min(...placed.map((point) => Math.hypot(point.x - a.x, point.y - a.y)), Infinity))[0]
+      || { x: anchorX, y: anchorY };
+    placed.push(position);
+    return { ...product, anchorX, anchorY, plotX: position.x, plotY: position.y, displaced: Math.hypot(position.x - anchorX, position.y - anchorY) > 3 };
+  });
+}
+
 export function KillLineAnalyzer({ onBack }) {
   const [project, setProject] = useState(() => safeProject(JSON.parse(localStorage.getItem(STORAGE_KEY) || "null")) || newProject());
   const [selectedId, setSelectedId] = useState(project.products[0]?.id || "");
@@ -165,6 +187,7 @@ export function KillLineAnalyzer({ onBack }) {
     if (project.presentation.order === "x-desc") return items.sort((a, b) => b.xValue - a.xValue);
     return items;
   }, [statusProducts, project.presentation.order]);
+  const layoutProducts = spreadChartPoints(orderedProducts, sx, sy);
   const desirable = statusProducts.map((product) => {
     const xScore = project.axes.xDirection === "lower" ? 1 - (product.xValue - xDomain[0]) / (xDomain[1] - xDomain[0]) : (product.xValue - xDomain[0]) / (xDomain[1] - xDomain[0]);
     const yScore = project.axes.yDirection === "higher" ? (product.yValue - yDomain[0]) / (yDomain[1] - yDomain[0]) : 1 - (product.yValue - yDomain[0]) / (yDomain[1] - yDomain[0]);
@@ -233,7 +256,7 @@ export function KillLineAnalyzer({ onBack }) {
             {stage >= 3 && <><line x1={PLOT.left} y1={PLOT.top} x2={PLOT.left} y2={PLOT.top + plotHeight} className="kill-axis" /><text transform={`translate(27 ${PLOT.top + plotHeight / 2}) rotate(-90)`} textAnchor="middle" className="kill-axis-name">{project.axes.yName}（{project.axes.yUnit}）</text></>}
             {showLine && curvePath && <path d={curvePath} fill="none" className="kill-line" pathLength="1" />}
             {project.line.mode === "manual" && !presentation && project.line.points.map((point, index) => <g className="kill-control" key={`${point.x}-${point.y}-${index}`} onPointerDown={(event) => { event.stopPropagation(); setDragPoint(index); event.currentTarget.setPointerCapture?.(event.pointerId); }} onDoubleClick={() => update(["line", "points"], project.line.points.filter((_, itemIndex) => itemIndex !== index))}><circle cx={sx(point.x)} cy={sy(point.y)} r="8" className="kill-control-point" /><text x={sx(point.x)} y={sy(point.y) - 13} textAnchor="middle" className="kill-control-label">{point.x}, {point.y}</text></g>)}
-            {orderedProducts.slice(0, stage >= 99 ? orderedProducts.length : visibleCount).map((product) => { const dimmed = focusId && focusId !== product.id; const killed = showRegions && !product.pass && project.presentation.killAnimation; const radius = focusId === product.id ? 28 : 23; return <g key={product.id} className={`kill-point ${selectedId === product.id ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${killed ? "is-killed" : ""}`} transform={`translate(${sx(product.xValue)} ${sy(product.yValue)})`} onClick={(event) => { event.stopPropagation(); setSelectedId(product.id); setTab("products"); }}><title>{`${product.name}\n${project.axes.xName}: ${product.xValue} ${project.axes.xUnit}\n${project.axes.yName}: ${product.yValue.toFixed(1)} ${project.axes.yUnit}\n${product.price} ${product.duration}\n${product.note}`}</title><circle r={radius + 5} fill="#fff" stroke={product.highlight || product.id === topId ? "#10b981" : "#cbd5e1"} strokeWidth={product.highlight || product.id === topId ? 4 : 2} />{product.logo ? <image href={product.logo} x={-radius} y={-radius} width={radius * 2} height={radius * 2} preserveAspectRatio="xMidYMid meet" /> : <><circle r={radius} fill={product.color} /><text textAnchor="middle" y="5" className="kill-initials">{initials(product.name)}</text></>}<text y={radius + 24} textAnchor="middle" className="kill-product-name">{product.name}</text><text y={radius + 40} textAnchor="middle" className="kill-product-value">{product.xValue} · {product.yValue.toFixed(0)}</text>{product.id === topId && <g transform={`translate(${radius - 4} ${-radius - 4})`}><circle r="12" fill="#10b981" /><text textAnchor="middle" y="4" className="kill-top-check">★</text></g>}{killed && <text y={-radius - 12} textAnchor="middle" className="kill-killed-text">被斩杀</text>}</g>; })}
+            {layoutProducts.slice(0, stage >= 99 ? layoutProducts.length : visibleCount).map((product) => { const dimmed = focusId && focusId !== product.id; const killed = showRegions && !product.pass && project.presentation.killAnimation; const radius = focusId === product.id ? 28 : 23; return <g key={product.id}>{product.displaced && <><line x1={product.anchorX} y1={product.anchorY} x2={product.plotX} y2={product.plotY} className="kill-point-leader" /><circle cx={product.anchorX} cy={product.anchorY} r="3.5" className="kill-point-anchor" /></>}<g className={`kill-point ${selectedId === product.id ? "selected" : ""} ${dimmed ? "dimmed" : ""} ${killed ? "is-killed" : ""}`} transform={`translate(${product.plotX} ${product.plotY})`} onClick={(event) => { event.stopPropagation(); setSelectedId(product.id); setTab("products"); }}><title>{`${product.name}\n${project.axes.xName}: ${product.xValue} ${project.axes.xUnit}\n${project.axes.yName}: ${product.yValue.toFixed(1)} ${project.axes.yUnit}\n${product.price} ${product.duration}\n${product.note}`}</title><circle r={radius + 5} fill="#fff" stroke={product.highlight || product.id === topId ? "#10b981" : "#cbd5e1"} strokeWidth={product.highlight || product.id === topId ? 4 : 2} />{product.logo ? <image href={product.logo} x={-radius} y={-radius} width={radius * 2} height={radius * 2} preserveAspectRatio="xMidYMid meet" /> : <><circle r={radius} fill={product.color} /><text textAnchor="middle" y="5" className="kill-initials">{initials(product.name)}</text></>}<text y={radius + 24} textAnchor="middle" className="kill-product-name">{product.name}</text><text y={radius + 40} textAnchor="middle" className="kill-product-value">{product.xValue} · {product.yValue.toFixed(0)}</text>{product.id === topId && <g transform={`translate(${radius - 4} ${-radius - 4})`}><circle r="12" fill="#10b981" /><text textAnchor="middle" y="4" className="kill-top-check">★</text></g>}{killed && <text y={-radius - 12} textAnchor="middle" className="kill-killed-text">被斩杀</text>}</g></g>; })}
             <g transform={`translate(${PLOT.left} ${HEIGHT - 7})`}><text className="kill-watermark">OneShowTools · Product Kill Line Analyzer</text></g>
           </svg>
         </div>
