@@ -51,6 +51,7 @@ const commercialToolIconBySlug = {
   "pdf-summary": "/tool-icons-v2/optimized/pdf-tools.png",
   "pdf-merge": "/tool-icons-v2/optimized/pdf-tools.png",
   "hang-la-tier-list-generator": "/tool-icons-v2/optimized/hang-la-tier-list-generator.png",
+  "product-kill-line-analyzer": "/tool-icons-v2/product-kill-line-analyzer-v1.png",
   "sliding-ancestor-generator": "/tool-icons-v2/optimized/sliding-ancestor-generator.png",
   "mbti-personality-test": "/mbti/mbti-icon-v1.webp",
   "food-nutrition-analyzer": "/food-nutrition/food-nutrition-icon-v1.webp",

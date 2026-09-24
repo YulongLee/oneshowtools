@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, ArrowsClockwise, ChartScatter, Check, Copy, DownloadSimple, Eye,
+  ArrowLeft, ArrowsClockwise, Check, Copy, DownloadSimple, Eye,
   EyeSlash, ImageSquare, Pause, Play, Plus, PresentationChart, Trash, UploadSimple, X,
 } from "@phosphor-icons/react";
 import "./kill-line-analyzer.css";
@@ -210,7 +210,7 @@ export function KillLineAnalyzer({ onBack }) {
   };
 
   return <main className={`kill-line-page ${presentation ? "is-presenting" : ""}`}>
-    {!presentation && <><button className="kill-back" onClick={onBack}><ArrowLeft size={17} />返回工具市场</button><header className="kill-hero"><span><ChartScatter size={34} weight="duotone" /></span><div><small>PRODUCT KILL LINE · ADMIN BETA</small><h1>斩杀线 · 二维产品竞争力分析器</h1><p>用两个关键维度看清产品位置，建立规则，画出真正有解释力的竞争力边界。</p></div><em>管理员测试</em></header></>}
+    {!presentation && <><button className="kill-back" onClick={onBack}><ArrowLeft size={17} />返回工具市场</button><header className="kill-hero"><span className="kill-hero-icon"><img src="/tool-icons-v2/product-kill-line-analyzer-v1.png" alt="" /></span><div><small>PRODUCT KILL LINE · ADMIN BETA</small><h1>斩杀线 · 二维产品竞争力分析器</h1><p>用两个关键维度看清产品位置，建立规则，画出真正有解释力的竞争力边界。</p></div><em>管理员测试</em></header></>}
     <section className="kill-workspace">
       {!presentation && <aside className="kill-config">
         <nav>{[["products", "产品"], ["axis", "坐标"], ["line", "斩杀线"], ["score", "评分"], ["export", "导出"]].map(([key, name]) => <button className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{name}</button>)}</nav>

@@ -26,3 +26,11 @@ test("kill line workspace contains the commercial P0 analysis flow", async () =>
   assert.match(source, /demoProducts[\s\S]*OfferBiye/);
   assert.match(source, /localStorage\.setItem\(STORAGE_KEY/);
 });
+
+test("kill line uses its dedicated marketplace icon", async () => {
+  const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const icon = await readFile(new URL("../public/tool-icons-v2/product-kill-line-analyzer-v1.png", import.meta.url));
+  assert.match(appSource, /product-kill-line-analyzer-v1\.png/);
+  assert.equal(icon.subarray(1, 4).toString(), "PNG");
+  assert.ok(icon.length > 10_000);
+});
