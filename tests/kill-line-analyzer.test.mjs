@@ -45,6 +45,12 @@ test("nearby product markers are spread apart and retain their true-coordinate a
   assert.match(source, /kill-point-label/);
 });
 
+test("killed products preserve the original uploaded logo colors", async () => {
+  const styles = await readFile(new URL("../src/kill-line-analyzer.css", import.meta.url), "utf8");
+  assert.match(styles, /\.kill-point\.is-killed\{filter:none\}/);
+  assert.match(styles, /\.kill-point\.is-killed \.kill-point-label rect\{fill:#fffafa;stroke:#fecaca\}/);
+});
+
 test("kill line uses its dedicated marketplace icon", async () => {
   const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const icon = await readFile(new URL("../public/tool-icons-v2/product-kill-line-analyzer-v1.png", import.meta.url));
