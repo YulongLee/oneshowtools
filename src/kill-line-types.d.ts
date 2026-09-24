@@ -12,6 +12,7 @@ export interface ProductPoint {
   description: string;
   note: string;
   highlight: boolean;
+  visible: boolean;
   color: string;
   features: Record<string, FeatureStatus>;
 }

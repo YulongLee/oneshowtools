@@ -27,6 +27,15 @@ test("kill line workspace contains the commercial P0 analysis flow", async () =>
   assert.match(source, /localStorage\.setItem\(STORAGE_KEY/);
 });
 
+test("products can be hidden from the curve without deleting their data", async () => {
+  const source = await readFile(new URL("../src/KillLineAnalyzer.jsx", import.meta.url), "utf8");
+  assert.match(source, /visible:\s*true/);
+  assert.match(source, /filter\(\(product\) => product\.visible !== false\)/);
+  assert.match(source, /从图表隐藏/);
+  assert.match(source, /显示到图表/);
+  assert.match(source, /EyeSlash/);
+});
+
 test("kill line uses its dedicated marketplace icon", async () => {
   const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const icon = await readFile(new URL("../public/tool-icons-v2/product-kill-line-analyzer-v1.png", import.meta.url));
