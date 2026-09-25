@@ -31,6 +31,7 @@ const FortuneCatProduct = lazy(() => import("./FortuneCatProduct.jsx").then((mod
 const WordImmersion = lazy(() => import("./WordImmersion.jsx").then((module) => ({ default: module.WordImmersion })));
 const ImageTextEditor = lazy(() => import("./ImageTextEditor.jsx").then((module) => ({ default: module.ImageTextEditor })));
 const KillLineAnalyzer = lazy(() => import("./KillLineAnalyzer.jsx").then((module) => ({ default: module.KillLineAnalyzer })));
+const ValueRankingTool = lazy(() => import("./ValueRankingTool.jsx").then((module) => ({ default: module.ValueRankingTool })));
 
 const iconMap = {
   MagicWand, Sparkle, FilePdf, ImageSquare, Microphone, NotePencil, ChartLineUp, Robot,
@@ -52,6 +53,7 @@ const commercialToolIconBySlug = {
   "pdf-merge": "/tool-icons-v2/optimized/pdf-tools.png",
   "hang-la-tier-list-generator": "/tool-icons-v2/optimized/hang-la-tier-list-generator.png",
   "product-kill-line-analyzer": "/tool-icons-v2/product-kill-line-analyzer-v1.png",
+  "value-ranking-tool": "/tool-icons-v2/value-ranking-tool.svg",
   "sliding-ancestor-generator": "/tool-icons-v2/optimized/sliding-ancestor-generator.png",
   "mbti-personality-test": "/mbti/mbti-icon-v1.webp",
   "food-nutrition-analyzer": "/food-nutrition/food-nutrition-icon-v1.webp",
@@ -867,6 +869,7 @@ function ToolPage({ tool, catalog, task, historyTasks, allTasks = [], locale, au
   if (tool.slug === "word-immersion") return <WordImmersion tool={tool} onBack={onBack} onCompleted={onCompleted} />;
   if (tool.slug === "image-text-editor") return <ImageTextEditor tool={tool} authenticated={authenticated} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} />;
   if (tool.slug === "product-kill-line-analyzer") return <KillLineAnalyzer tool={tool} locale={locale} onBack={onBack} />;
+  if (tool.slug === "value-ranking-tool") return <ValueRankingTool tool={tool} locale={locale} onBack={onBack} />;
   if (tool.slug === "ai-music-studio") return <MusicStudio locale={locale} authenticated={authenticated} account={account} focusTaskId={task?.id} runtime={runtime} lyricsHistoryTasks={allTasks.filter((item) => item.toolId === "tool_lyrics_generator")} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "lyrics-generator") return <LyricsGenerator tool={tool} task={task} historyTasks={historyTasks} locale={locale} authenticated={authenticated} runtime={runtime} onBack={onBack} onAuth={onAuth} onCompleted={onCompleted} onModelChange={onModelChange} />;
   if (tool.slug === "seo-agent") return <SeoAgentWorkspace locale={locale} account={account} onBack={onBack} onCompleted={onCompleted} />;
