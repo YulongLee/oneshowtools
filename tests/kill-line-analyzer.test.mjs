@@ -22,9 +22,17 @@ test("product kill line is seeded as an administrator-only testing tool", () => 
 
 test("kill line workspace contains the commercial P0 analysis flow", async () => {
   const source = await readFile(new URL("../src/KillLineAnalyzer.jsx", import.meta.url), "utf8");
-  for (const contract of ["AI 面试助手", "linear", "log", "manual", "formula", "功能评分", "演示模式", "聚焦", "导出高清 PNG", "导出可编辑 SVG", "示例数据，仅用于功能演示"]) assert.match(source, new RegExp(contract));
-  assert.match(source, /demoProducts[\s\S]*OfferBiye/);
+  for (const contract of ["linear", "log", "manual", "formula", "功能评分", "演示模式", "聚焦", "导出高清 PNG", "导出可编辑 SVG"]) assert.match(source, new RegExp(contract));
+  assert.doesNotMatch(source, /interview:\s*\{/);
+  assert.match(source, /const newProject = \(key = "blank"\)/);
   assert.match(source, /localStorage\.setItem\(STORAGE_KEY/);
+});
+
+test("legacy official interview demo products are removed without deleting custom products", async () => {
+  const source = await readFile(new URL("../src/KillLineAnalyzer.jsx", import.meta.url), "utf8");
+  assert.match(source, /product\.description === "Demo 产品"/);
+  assert.match(source, /product\.note === "示例数据，仅用于功能演示"/);
+  assert.match(source, /retainedProducts\.length \? retainedProducts : \[blankProduct\(0\), blankProduct\(1\)\]/);
 });
 
 test("products can be hidden from the curve without deleting their data", async () => {
