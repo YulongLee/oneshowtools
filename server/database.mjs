@@ -667,6 +667,24 @@ export function initializeDatabase() {
     }
   }
 
+  // One-time public launch. Keep this separate from the original testing seed so
+  // existing installations are promoted without resetting later admin changes.
+  const productKillLinePublicationKey = "tool_product_kill_line_publication_v1";
+  if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(productKillLinePublicationKey)) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("UPDATE tools SET active = 1, runtime_status = 'ready', updated_at = ? WHERE slug = 'product-kill-line-analyzer'").run(timestamp);
+      db.prepare(`UPDATE tool_versions SET lifecycle_state = 'published', visibility = 'public', published_at = COALESCE(published_at, ?)
+        WHERE id = (SELECT id FROM tool_versions WHERE tool_id = 'tool_product_kill_line' ORDER BY version DESC LIMIT 1)`).run(timestamp);
+      db.prepare("INSERT INTO platform_settings (key, value_json, updated_at) VALUES (?, ?, ?)")
+        .run(productKillLinePublicationKey, JSON.stringify({ slug: "product-kill-line-analyzer", lifecycle: "published", published: true }), timestamp);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   const valueRankingPublicationKey = "tool_value_ranking_publication_v1";
   if (!db.prepare("SELECT 1 FROM platform_settings WHERE key = ?").get(valueRankingPublicationKey)) {
     db.exec("BEGIN IMMEDIATE");

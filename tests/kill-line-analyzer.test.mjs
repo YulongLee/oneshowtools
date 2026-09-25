@@ -11,13 +11,13 @@ const { db } = await import(`../server/database.mjs?kill-line=${Date.now()}`);
 
 test.after(async () => { await rm(testDataDirectory, { recursive: true, force: true }); });
 
-test("product kill line is seeded as an administrator-only testing tool", () => {
+test("product kill line is publicly launched", () => {
   const tool = db.prepare("SELECT id, active, runtime_status, credit_cost, runtime_kind FROM tools WHERE slug = 'product-kill-line-analyzer'").get();
-  assert.deepEqual({ ...tool }, { id: "tool_product_kill_line", active: 0, runtime_status: "ready", credit_cost: 0, runtime_kind: "builtin-kill-line" });
+  assert.deepEqual({ ...tool }, { id: "tool_product_kill_line", active: 1, runtime_status: "ready", credit_cost: 0, runtime_kind: "builtin-kill-line" });
   const version = db.prepare("SELECT lifecycle_state, visibility FROM tool_versions WHERE tool_id = ? ORDER BY version DESC LIMIT 1").get(tool.id);
-  assert.deepEqual({ ...version }, { lifecycle_state: "testing", visibility: "private" });
-  const setting = JSON.parse(db.prepare("SELECT value_json FROM platform_settings WHERE key = 'tool_product_kill_line_testing_v1'").get().value_json);
-  assert.equal(setting.adminOnly, true);
+  assert.deepEqual({ ...version }, { lifecycle_state: "published", visibility: "public" });
+  const setting = JSON.parse(db.prepare("SELECT value_json FROM platform_settings WHERE key = 'tool_product_kill_line_publication_v1'").get().value_json);
+  assert.equal(setting.published, true);
 });
 
 test("kill line workspace contains the commercial P0 analysis flow", async () => {
