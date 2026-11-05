@@ -33,13 +33,20 @@ const normalizeTool = (tool) => ({
   slug: tool.slug,
   nameZh: tool.nameZh || tool.name_zh || tool.name || "在线工具",
   descriptionZh: tool.descriptionZh || tool.description_zh || tool.description || "在 OneShowTools 在线完成任务。",
-  keywords: tool.keywords || "在线 AI 工具,实用 AI 工具",
+  keywords: tool.keywords || "",
   creditCost: Number(tool.creditCost ?? tool.credit_cost ?? 0),
 });
 
 export function mergePublicTools(tools = []) {
   const merged = new Map(CORE_TOOLS.map((tool) => [tool.slug, tool]));
-  for (const item of tools.map(normalizeTool)) merged.set(item.slug, { ...merged.get(item.slug), ...item });
+  for (const item of tools.map(normalizeTool)) {
+    const existing = merged.get(item.slug);
+    merged.set(item.slug, {
+      ...existing,
+      ...item,
+      keywords: item.keywords || existing?.keywords || "在线 AI 工具,实用 AI 工具",
+    });
+  }
   return [...merged.values()];
 }
 
@@ -98,7 +105,7 @@ function toolShell(tool, tools) {
     <header><a href="/"><strong>OneShowTools</strong></a><nav><a href="/#tools">全部工具</a><a href="/legal/privacy">隐私政策</a></nav></header>
     <article>
       <p class="eyebrow">ONESHOWTOOLS · ONLINE TOOL</p>
-      <h1>${esc(tool.nameZh)}：在线${esc(primary)}</h1>
+      <h1>${esc(tool.nameZh)}：${esc(primary)}</h1>
       <p>${esc(tool.descriptionZh)} 该工具在浏览器中提供从输入、设置到结果预览与下载的完整流程，适合个人创作、办公处理和视频内容制作。</p>
       <section><h2>${esc(tool.nameZh)}能做什么？</h2><p>${esc(tool.descriptionZh)} 页面会根据任务类型展示所需素材、可调整参数和结果状态，避免用户在多个应用之间来回切换。处理完成后请先核对关键文字、数值、人物或版式，再将结果用于正式发布。</p></section>
       <section><h2>如何使用${esc(tool.nameZh)}？</h2><ol><li>打开工具并阅读支持的文件格式或输入要求。</li><li>上传拥有合法使用权的素材，填写与结果有关的必要信息。</li><li>确认参数后开始处理，并在结果区域检查生成或分析内容。</li><li>确认无误后下载或保存；如果结果不符合预期，可调整输入后重新处理。</li></ol></section>

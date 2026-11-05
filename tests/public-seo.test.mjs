@@ -40,6 +40,18 @@ test("each core tool receives unique metadata, a canonical URL and WebApplicatio
   }
 });
 
+test("database tool records retain curated SEO keywords when no override is supplied", async () => {
+  const source = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const html = injectSeoDocument(source, "/tools/food-nutrition-analyzer", [{
+    slug: "food-nutrition-analyzer",
+    name_zh: "AI 食物热量分析",
+    description_zh: "后台维护的产品说明",
+  }]);
+  assert.match(html, /<title>拍照识别食物热量｜AI 食物热量分析 - OneShowTools<\/title>/);
+  assert.match(html, /<h1>AI 食物热量分析：拍照识别食物热量<\/h1>/);
+  assert.doesNotMatch(html, /在线在线/);
+});
+
 test("sitemap, robots and llms discovery files expose public pages without old-domain references", async () => {
   const sitemap = await readFile(new URL("../public/sitemap.xml", import.meta.url), "utf8");
   const robots = await readFile(new URL("../public/robots.txt", import.meta.url), "utf8");
