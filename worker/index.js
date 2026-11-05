@@ -5,6 +5,7 @@ import { error, json, readJson } from "./lib/http.js";
 import { normalizeLocale } from "./lib/locale.js";
 import { billingRepository, identityRepository } from "./lib/repositories.js";
 import { handleToolContract } from "./lib/tool-contract.js";
+import { CORE_TOOLS, injectSeoDocument } from "../shared/public-seo.mjs";
 
 const securityHeaders = {
   "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com",
@@ -18,10 +19,14 @@ const freshShellHeaders = {
   expires: "0",
 };
 
-function withFreshAppShell(response) {
+async function withFreshAppShell(response, pathname = "/") {
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(securityHeaders)) headers.set(key, value);
   for (const [key, value] of Object.entries(freshShellHeaders)) headers.set(key, value);
+  if (response.headers.get("content-type")?.includes("text/html")) {
+    const html = await response.text();
+    return new Response(injectSeoDocument(html, pathname, CORE_TOOLS), { status: response.status, headers });
+  }
   return new Response(response.body, { status: response.status, headers });
 }
 
@@ -159,7 +164,7 @@ export default {
 
     if (assetResponse.status !== 404) {
       if (acceptsHtml && assetResponse.headers.get("content-type")?.includes("text/html")) {
-        return withFreshAppShell(assetResponse);
+        return withFreshAppShell(assetResponse, url.pathname);
       }
       return assetResponse;
     }
@@ -170,6 +175,6 @@ export default {
     indexUrl.pathname = "/index.html";
     indexUrl.search = "";
     const fallback = await env.ASSETS.fetch(new Request(indexUrl, request));
-    return withFreshAppShell(fallback);
+    return withFreshAppShell(fallback, url.pathname);
   },
 };

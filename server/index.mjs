@@ -1,4 +1,5 @@
 import { createReadStream, existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -6,6 +7,8 @@ import { handleApi } from "./api.mjs";
 import { handlePromotionRedirect } from "./promotion-center.mjs";
 import { getServerConfig, validateServerConfig } from "./config.mjs";
 import { startWorker, stopWorker } from "./jobs.mjs";
+import { db } from "./database.mjs";
+import { injectSeoDocument } from "../shared/public-seo.mjs";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 const clientRoot = resolve(projectRoot, "dist/client");
@@ -54,7 +57,12 @@ async function sendResponse(res, response) {
   res.end();
 }
 
-function serveFile(res, pathname) {
+function publicToolsForSeo() {
+  return db.prepare(`SELECT slug, name_zh AS nameZh, description_zh AS descriptionZh,
+    credit_cost AS creditCost FROM tools WHERE active = 1 ORDER BY name_zh`).all();
+}
+
+async function serveFile(res, pathname) {
   const requested = pathname === "/" ? "/index.html" : pathname;
   const candidate = resolve(clientRoot, `.${requested}`);
   const safe = candidate.startsWith(clientRoot);
@@ -63,6 +71,12 @@ function serveFile(res, pathname) {
   res.statusCode = 200;
   res.setHeader("content-type", mimeTypes[extname(target)] || "application/octet-stream");
   res.setHeader("x-content-type-options", "nosniff");
+  if (target === resolve(clientRoot, "index.html")) {
+    const html = await readFile(target, "utf8");
+    res.setHeader("cache-control", "no-cache, no-store, must-revalidate");
+    res.end(injectSeoDocument(html, pathname, publicToolsForSeo()));
+    return true;
+  }
   createReadStream(target).pipe(res);
   return true;
 }
@@ -77,7 +91,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) {
       return sendResponse(res, await handleApi(toRequest(req)));
     }
-    if (!serveFile(res, url.pathname)) {
+    if (!await serveFile(res, url.pathname)) {
       res.statusCode = 404;
       res.end("Run npm run build before starting the production server.");
     }

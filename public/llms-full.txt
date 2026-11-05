@@ -1,0 +1,26 @@
+# OneShowTools
+> 面向中文用户的在线 AI 工具箱，提供图片、文档、音乐、学习与产品分析工具。
+
+## 平台能力
+OneShowTools 将不同任务做成独立的在线工具。每个工具提供专用输入、参数设置、处理状态、结果预览和下载流程。登录用户可以在任务中心和文件中心管理结果。
+
+## 核心工具
+- [AI 食物热量分析](https://oneshowtools.com/tools/food-nutrition-analyzer): 上传食物照片，识别菜品和份量并估算热量、蛋白质、碳水、脂肪、膳食纤维与钠。
+- [AI 冰箱食谱](https://oneshowtools.com/tools/ai-fridge-recipe): 识别冰箱照片中的食材，生成菜谱、缺少食材和采购清单。
+- [AI 音乐工作室](https://oneshowtools.com/tools/ai-music-studio): 使用灵感、自定义歌词或纯音乐模式创作音乐并管理试听与下载。
+- [AI 一键换装](https://oneshowtools.com/tools/ai-outfit-changer): 根据服装描述或服装参考图生成人像换装效果。
+- [字迹 · AI 视觉结构重建](https://oneshowtools.com/tools/image-text-editor): 把图片、海报、截图和 PDF 重建为可编辑文字图层并导出 PPTX、SVG 或图片。
+- [夯拉排行榜生成器](https://oneshowtools.com/tools/hang-la-tier-list-generator): 上传图片、自定义等级并拖拽排序，导出排行榜长图。
+- [证照 · AI 证件照与工牌](https://oneshowtools.com/tools/ai-id-photo-studio): 生成证件照、职业照和员工工牌头像。
+- [面试稳 AI 助手](https://oneshowtools.com/tools/interview-assistant): 结合简历和岗位，提供语音识别、截图解题、回答思路与复盘。
+- [MBTI 性格偏好自测](https://oneshowtools.com/tools/mbti-personality-test): 通过原创平衡题了解四维偏好和模糊维度。
+- [性价比排名工具](https://oneshowtools.com/tools/value-ranking-tool): 按总价和可使用小时数计算每小时价格并排名。
+- [斩杀线 · 二维产品竞争力分析器](https://oneshowtools.com/tools/product-kill-line-analyzer): 用二维坐标、可调斩杀线和功能评分分析竞争力边界。
+- [滑动变祖器](https://oneshowtools.com/tools/sliding-ancestor-generator): 生成同一人物从虚到夯的十种连续形态。
+- [词浸 · AI 沉浸式英语阅读](https://oneshowtools.com/tools/word-immersion): 把目标英语词汇融入用户真正想读的内容。
+
+## 关键事实
+- OneShowTools 由杭州临平知界智能技术运营。
+- 工具费用以各工具页面提交前显示为准。
+- AI 结果可能存在误差，正式使用前应人工核对。
+- 用户应确保拥有上传素材的合法使用权。

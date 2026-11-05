@@ -1,0 +1,20 @@
+# OneShowTools
+> 面向中文用户的在线 AI 工具箱，提供图片、文档、音乐、学习与产品分析工具。
+
+## 核心工具
+- [AI 食物热量分析](https://oneshowtools.com/tools/food-nutrition-analyzer): 上传食物照片估算热量和主要营养素。
+- [AI 冰箱食谱](https://oneshowtools.com/tools/ai-fridge-recipe): 识别冰箱食材并生成菜谱和采购清单。
+- [AI 音乐工作室](https://oneshowtools.com/tools/ai-music-studio): 从灵感、歌词或纯音乐需求生成音乐。
+- [AI 一键换装](https://oneshowtools.com/tools/ai-outfit-changer): 通过描述或服装参考图完成人像换装。
+- [字迹 · AI 视觉结构重建](https://oneshowtools.com/tools/image-text-editor): 把图片、海报、截图和 PDF 重建为可编辑图层。
+- [证照 · AI 证件照与工牌](https://oneshowtools.com/tools/ai-id-photo-studio): 生成证件照、职业照和工牌头像。
+- [MBTI 性格偏好自测](https://oneshowtools.com/tools/mbti-personality-test): 通过 64 道平衡题了解四维偏好。
+- [性价比排名工具](https://oneshowtools.com/tools/value-ranking-tool): 按每小时价格比较多个同类产品。
+- [斩杀线 · 产品竞争力分析器](https://oneshowtools.com/tools/product-kill-line-analyzer): 在二维坐标中分析产品竞争力边界。
+- [词浸 · AI 沉浸式英语阅读](https://oneshowtools.com/tools/word-immersion): 把目标词汇融入真正想读的内容。
+
+## 平台说明
+- [首页](https://oneshowtools.com/): 浏览全部已上线工具
+- [用户服务协议](https://oneshowtools.com/legal/terms): 服务和内容规则
+- [隐私政策](https://oneshowtools.com/legal/privacy): 数据处理与用户权利
+- [积分与退款规则](https://oneshowtools.com/legal/credits): 费用、扣费和失败退回规则

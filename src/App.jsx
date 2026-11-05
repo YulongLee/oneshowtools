@@ -17,6 +17,7 @@ import {
 import { SupportWidget } from "./SupportWidget.jsx";
 import { LEGAL_VERSION } from "./LegalPage.jsx";
 import "./workbench.css";
+import { SITE_URL, pageSeo } from "../shared/public-seo.mjs";
 
 const SeoAgentWorkspace = lazy(() => import("./SeoAgentWorkspace.jsx").then((module) => ({ default: module.SeoAgentWorkspace })));
 const MusicStudio = lazy(() => import("./MusicStudio.jsx").then((module) => ({ default: module.MusicStudio })));
@@ -2687,7 +2688,31 @@ export function App() {
       .then((result)=>{setPrivateData((current)=>({...current,favorites:result.favorites||[],favoriteCollections:result.collections||[],favoriteCounts:result.counts||current.favoriteCounts}));localStorage.removeItem(`ost_favorites_${session.id}`);})
       .catch(()=>{});
   }, [session, tools]);
-  useEffect(() => { document.documentElement.lang = locale; localStorage.setItem("ost_locale", locale); document.title = "OneShowTools Platform"; }, [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    localStorage.setItem("ost_locale", locale);
+    const page = pageSeo(routeSlug ? `/tools/${routeSlug}` : "/", tools);
+    const canonicalUrl = `${SITE_URL}${page.pathname === "/" ? "/" : page.pathname}`;
+    document.title = page.title;
+    const setMeta = (selector, attribute, value) => {
+      let element = document.head.querySelector(selector);
+      if (!element) {
+        element = document.createElement("meta");
+        const [name, property] = selector.includes("property=") ? [null, selector.match(/property="([^"]+)/)?.[1]] : [selector.match(/name="([^"]+)/)?.[1], null];
+        if (name) element.setAttribute("name", name);
+        if (property) element.setAttribute("property", property);
+        document.head.appendChild(element);
+      }
+      element.setAttribute(attribute, value);
+    };
+    setMeta('meta[name="description"]', "content", page.description);
+    setMeta('meta[property="og:title"]', "content", page.title);
+    setMeta('meta[property="og:description"]', "content", page.description);
+    setMeta('meta[property="og:url"]', "content", canonicalUrl);
+    let canonical = document.head.querySelector('link[rel="canonical"]');
+    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
+    canonical.href = canonicalUrl;
+  }, [locale, routeSlug, tools]);
   useEffect(() => { localStorage.setItem("ost_sidebar_collapsed", sidebarCollapsed ? "1" : "0"); }, [sidebarCollapsed]);
   useEffect(() => {
     const authStatus = new URLSearchParams(location.search).get("auth");
